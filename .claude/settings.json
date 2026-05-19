@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm info *)",
+      "WebFetch(domain:arxiv.org)"
+    ]
+  }
+}

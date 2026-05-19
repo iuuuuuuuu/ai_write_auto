@@ -1,0 +1,44 @@
+import { z } from 'zod'
+import { eq } from 'drizzle-orm'
+import { getDatabase, schema } from '../../database'
+import { verifyPassword, signToken } from '../../utils/auth'
+
+const loginSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+})
+
+export default defineEventHandler(async (event) => {
+  const body = await readBody(event)
+  const { username, password } = loginSchema.parse(body)
+
+  const db = await getDatabase()
+  const users = await (db as any).select().from(schema.users).where(eq(schema.users.username, username)).limit(1)
+  const user = users[0]
+
+  if (!user || !verifyPassword(password, user.passwordHash)) {
+    throw createError({ statusCode: 401, message: 'Invalid credentials' })
+  }
+
+  const token = signToken({
+    userId: user.id,
+    username: user.username,
+    role: user.role,
+  })
+
+  setCookie(event, 'auth_token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 7,
+    path: '/',
+  })
+
+  return {
+    user: {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+    },
+  }
+})

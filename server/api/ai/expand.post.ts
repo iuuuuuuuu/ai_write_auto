@@ -1,0 +1,86 @@
+import { z } from 'zod'
+import { eq, and } from 'drizzle-orm'
+import { getDatabase, schema } from '../../database'
+import { streamAi } from '../../utils/ai-client'
+
+const expandSchema = z.object({
+  novelId: z.number().int().positive(),
+  chapterId: z.number().int().positive(),
+  selectedText: z.string().min(1),
+  direction: z.string().optional(),
+})
+
+export default defineEventHandler(async (event) => {
+  const auth = requireAuth(event)
+  const body = await readBody(event)
+  const data = expandSchema.parse(body)
+
+  const db = await getDatabase()
+
+  const aiConfigs = await (db as any)
+    .select()
+    .from(schema.aiConfigs)
+    .where(and(eq(schema.aiConfigs.userId, auth.userId), eq(schema.aiConfigs.purpose, 'generation')))
+    .limit(1)
+
+  if (!aiConfigs.length) {
+    throw createError({ statusCode: 400, message: 'No AI config found' })
+  }
+  const aiConfig = aiConfigs[0]
+
+  const chapters = await (db as any)
+    .select()
+    .from(schema.chapters)
+    .where(eq(schema.chapters.id, data.chapterId))
+    .limit(1)
+
+  const chapterContent = chapters[0]?.content || ''
+
+  const messages = [
+    {
+      role: 'system' as const,
+      content: '你是一位专业的小说作家。请将用户选中的文本进行扩写，使其更加丰富、生动、细腻。保持原有的风格和语气，不要改变情节走向。只返回扩写后的内容，不要其他说明。',
+    },
+    {
+      role: 'user' as const,
+      content: `章节上下文（供参考）：\n${chapterContent.slice(0, 2000)}\n\n需要扩写的段落：\n${data.selectedText}${data.direction ? `\n\n扩写方向：${data.direction}` : ''}`,
+    },
+  ]
+
+  setResponseHeaders(event, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+  })
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      const encoder = new TextEncoder()
+      try {
+        for await (const chunk of streamAi({
+          apiUrl: aiConfig.apiUrl,
+          apiKey: aiConfig.apiKey,
+          model: aiConfig.model,
+          messages,
+          temperature: parseFloat(aiConfig.temperature || '0.7'),
+          maxTokens: 2000,
+          stream: true,
+        })) {
+          if (chunk.content) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk.content, done: false })}\n\n`))
+          }
+          if (chunk.done) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '', done: true })}\n\n`))
+            controller.close()
+            return
+          }
+        }
+      } catch (err: any) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: err.message, done: true })}\n\n`))
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream)
+})
