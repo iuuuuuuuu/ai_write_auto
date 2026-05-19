@@ -26,3 +26,4 @@ logs
 # Data directory (SQLite DB, backups, config)
 data/
 *.db
+.playwright-mcp

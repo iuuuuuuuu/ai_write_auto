@@ -1,13 +1,27 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
-/* Force dark theme variables for a premium dark UI */
+/* Design tokens */
 :root {
   --ui-radius: 0.5rem;
-  color-scheme: dark;
+  color-scheme: light;
+  --ui-bg: oklch(0.985 0.002 285.82);
+  --ui-bg-muted: oklch(0.965 0.004 285.82);
+  --ui-bg-elevated: oklch(1.0 0 0);
+  --ui-bg-accented: oklch(0.945 0.004 285.82);
+  --ui-bg-inverted: oklch(0.145 0.014 285.82);
+  --ui-border: oklch(0.885 0.006 285.82);
+  --ui-border-muted: oklch(0.925 0.004 285.82);
+  --ui-border-accented: oklch(0.845 0.008 285.82);
+  --ui-text: oklch(0.25 0.01 285.82);
+  --ui-text-highlighted: oklch(0.145 0.014 285.82);
+  --ui-text-muted: oklch(0.5 0.014 285.82);
+  --ui-text-dimmed: oklch(0.6 0.012 285.82);
+  --ui-text-toned: oklch(0.4 0.012 285.82);
 }
 
-:root, .dark {
+.dark {
+  color-scheme: dark;
   --ui-bg: oklch(0.145 0.014 285.82);
   --ui-bg-muted: oklch(0.178 0.014 285.82);
   --ui-bg-elevated: oklch(0.205 0.015 285.82);

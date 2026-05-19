@@ -3,6 +3,10 @@ export default defineNuxtConfig({
     port: 4530
   },
 
+  app: {
+    pageTransition: { name: 'page', mode: 'out-in' }
+  },
+
   css: ['~/assets/css/main.css'],
 
   compatibilityDate: '2025-07-15',
@@ -11,7 +15,7 @@ export default defineNuxtConfig({
   modules: ['@nuxt/ui', '@nuxtjs/i18n'],
 
   colorMode: {
-    preference: 'dark',
+    preference: 'system',
     fallback: 'dark'
   },
 
