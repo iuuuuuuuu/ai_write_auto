@@ -33,7 +33,7 @@ const navItems = computed(() => [
           name="i-lucide-pen-tool"
           class="w-4 h-4 text-primary-400"
         />
-        <span class="text-sm font-medium text-white">{{
+        <span class="text-sm font-medium text-(--ui-text)">{{
           t('common.appName')
         }}</span>
       </div>
@@ -59,7 +59,7 @@ const navItems = computed(() => [
               class="w-3.5 h-3.5 text-primary-400"
             />
           </div>
-          <span class="text-sm font-semibold text-white">{{
+          <span class="text-sm font-semibold text-(--ui-text)">{{
             t('common.appName')
           }}</span>
         </div>
@@ -152,7 +152,7 @@ const navItems = computed(() => [
                   name="i-lucide-pen-tool"
                   class="w-4 h-4 text-primary-400"
                 />
-                <span class="text-sm font-semibold text-white">{{
+                <span class="text-sm font-semibold text-(--ui-text)">{{
                   t('common.appName')
                 }}</span>
               </div>

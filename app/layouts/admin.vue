@@ -6,8 +6,15 @@ const { user, logout } = useAuth()
 const sidebarOpen = ref(false)
 
 const adminNavItems = computed(() => [
-  { label: t('common.admin'), icon: 'i-lucide-shield-check', to: '/admin' }
+  { label: '概览', icon: 'i-lucide-layout-dashboard', to: '/admin' },
+  { label: '用户', icon: 'i-lucide-users', to: '/admin/users' },
+  { label: '小说', icon: 'i-lucide-library', to: '/admin/novels' },
+  { label: '模型配置', icon: 'i-lucide-cpu', to: '/admin/ai-configs' }
 ])
+
+function isActiveNav(to: string) {
+  return to === '/admin' ? route.path === to : route.path.startsWith(to)
+}
 </script>
 
 <template>
@@ -69,7 +76,7 @@ const adminNavItems = computed(() => [
             :to="item.to"
             class="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm transition-colors"
             :class="
-              route.path === item.to ?
+              isActiveNav(item.to) ?
                 'bg-primary-500/10 text-primary-400'
               : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)'
             "
@@ -117,7 +124,12 @@ const adminNavItems = computed(() => [
                 v-for="item in adminNavItems"
                 :key="item.to"
                 :to="item.to"
-                class="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
+                class="flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm transition-colors"
+                :class="
+                  isActiveNav(item.to) ?
+                    'bg-primary-500/10 text-primary-400'
+                  : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)'
+                "
                 @click="sidebarOpen = false"
               >
                 <UIcon

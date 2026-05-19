@@ -6,6 +6,12 @@ const route = useRoute()
 const novelId = computed(() => Number(route.params.id))
 const chapterId = computed(() => Number(route.params.chapterId))
 
+function getNovelTo() {
+  return {
+    path: `/novels/${novelId.value}`
+  }
+}
+
 const { data: chapter, refresh: refreshChapter } = await useFetch(
   `/api/novels/${novelId.value}/chapters/${chapterId.value}`
 )
@@ -252,7 +258,7 @@ onBeforeUnmount(() => {
         variant="ghost"
         icon="i-lucide-arrow-left"
         size="sm"
-        :to="`/novels/${novelId}`"
+        :to="getNovelTo()"
       />
       <div class="flex-1 min-w-0">
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
