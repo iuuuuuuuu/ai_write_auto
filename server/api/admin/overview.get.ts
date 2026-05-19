@@ -1,35 +1,31 @@
-import { isNull } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
-
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
   const [users, novels, aiConfigs, tokenUsage] = await Promise.all([
-    db.select().from(schema.users),
-    db.select().from(schema.novels).where(isNull(schema.novels.deletedAt)),
-    db.select().from(schema.aiConfigs),
-    db.select().from(schema.tokenUsage)
+    em.find('User', {}),
+    em.find('Novel', { deletedAt: null }),
+    em.find('AiConfig', {}),
+    em.find('TokenUsage', {}),
   ])
 
   const totalTokens = tokenUsage.reduce(
-    (sum, item) => sum + item.tokensInput + item.tokensOutput,
+    (sum: number, item: any) => sum + item.tokensInput + item.tokensOutput,
     0
   )
-  const enabledAiConfigs = aiConfigs.filter((config) => config.enabled).length
+  const enabledAiConfigs = aiConfigs.filter((config: any) => config.enabled).length
 
   return {
     users: {
       total: users.length,
-      admins: users.filter((user) => user.role === 'admin').length,
-      regular: users.filter((user) => user.role === 'user').length
+      admins: users.filter((user: any) => user.role === 'admin').length,
+      regular: users.filter((user: any) => user.role === 'user').length
     },
     novels: {
       total: novels.length,
-      draft: novels.filter((novel) => novel.status === 'draft').length,
-      inProgress: novels.filter((novel) => novel.status === 'in_progress')
-        .length,
-      completed: novels.filter((novel) => novel.status === 'completed').length
+      draft: novels.filter((novel: any) => novel.status === 'draft').length,
+      inProgress: novels.filter((novel: any) => novel.status === 'in_progress').length,
+      completed: novels.filter((novel: any) => novel.status === 'completed').length
     },
     aiConfigs: {
       total: aiConfigs.length,

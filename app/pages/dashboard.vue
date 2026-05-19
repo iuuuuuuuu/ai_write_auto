@@ -101,7 +101,7 @@ function getStatusType(status: string) {
           class="group p-5 rounded-xl bg-(--ui-bg-muted) border border-(--ui-border) hover:border-primary-500/30 transition-colors"
         >
           <div class="flex items-start justify-between gap-2">
-            <h3 class="font-medium text-(--ui-text) group-hover:text-primary-300 transition-colors truncate">
+            <h3 class="font-medium text-(--ui-text) group-hover:text-primary-600 dark:group-hover:text-primary-300 transition-colors truncate">
               {{ novel.title }}
             </h3>
             <NTag :type="getStatusType(novel.status)" size="small">

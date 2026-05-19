@@ -1,6 +1,3 @@
-import { eq } from 'drizzle-orm'
-import { getDatabase, schema } from '../../../database'
-
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const id = Number(getRouterParam(event, 'id'))
@@ -16,8 +13,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const db = await getDatabase()
-  await db.delete(schema.users).where(eq(schema.users.id, id))
+  const em = useEm(event)
+  await em.nativeDelete('User', { id })
 
   return { success: true }
 })

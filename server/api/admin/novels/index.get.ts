@@ -1,42 +1,27 @@
-import { getDatabase, schema } from '../../../database'
-
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
   const [novels, users, chapters] = await Promise.all([
-    db.select().from(schema.novels),
-    db
-      .select({
-        id: schema.users.id,
-        username: schema.users.username,
-        role: schema.users.role
-      })
-      .from(schema.users),
-    db
-      .select({
-        id: schema.chapters.id,
-        novelId: schema.chapters.novelId,
-        wordCount: schema.chapters.wordCount,
-        deletedAt: schema.chapters.deletedAt
-      })
-      .from(schema.chapters)
+    em.find('Novel', {}),
+    em.find('User', {}),
+    em.find('Chapter', {}),
   ])
 
-  const usersById = new Map(users.map((user) => [user.id, user]))
+  const usersById = new Map(users.map((user: any) => [user.id, { id: user.id, username: user.username, role: user.role }]))
 
-  return novels.map((novel) => {
+  return novels.map((novel: any) => {
     const novelChapters = chapters.filter(
-      (chapter) => chapter.novelId === novel.id && chapter.deletedAt === null
+      (chapter: any) => chapter.novel === novel.id && chapter.deletedAt === null
     )
     const wordCount = novelChapters.reduce(
-      (sum, chapter) => sum + (chapter.wordCount || 0),
+      (sum: number, chapter: any) => sum + (chapter.wordCount || 0),
       0
     )
 
     return {
       ...novel,
-      user: usersById.get(novel.userId) || null,
+      user: usersById.get(novel.user) || null,
       chapterCount: novelChapters.length,
       wordCount
     }

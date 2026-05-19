@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 import { verifyPassword, signToken } from '../../utils/auth'
 
 const loginSchema = z.object({
@@ -12,9 +10,8 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const { username, password } = loginSchema.parse(body)
 
-  const db = await getDatabase()
-  const users = await (db as any).select().from(schema.users).where(eq(schema.users.username, username)).limit(1)
-  const user = users[0]
+  const em = useEm(event)
+  const user = await em.findOne('User', { username })
 
   if (!user || !verifyPassword(password, user.passwordHash)) {
     throw createError({ statusCode: 401, message: 'Invalid credentials' })
@@ -40,5 +37,6 @@ export default defineEventHandler(async (event) => {
       username: user.username,
       role: user.role,
     },
+    token,
   }
 })

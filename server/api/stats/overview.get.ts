@@ -1,26 +1,15 @@
-import { eq, and, isNull } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
-
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.userId, auth.userId), isNull(schema.novels.deletedAt)))
-
+  const novels = await em.find('Novel', { user: auth.userId, deletedAt: null })
   const totalWords = novels.reduce((sum: number, n: any) => sum + (n.wordCount || 0), 0)
 
   const today: string = new Date().toISOString().split('T')[0]!
-  const todayStats = await (db as any)
-    .select()
-    .from(schema.writingStats)
-    .where(and(eq(schema.writingStats.userId, auth.userId), eq(schema.writingStats.date, today)))
-    .limit(1)
+  const todayStats = await em.findOne('WritingStat', { user: auth.userId, date: today })
 
   return {
-    todayWords: todayStats[0]?.wordsWritten || 0,
+    todayWords: (todayStats as any)?.wordsWritten || 0,
     streak: 0,
     totalNovels: novels.length,
     totalWords,

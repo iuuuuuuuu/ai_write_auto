@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 import { callAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 
@@ -15,31 +13,14 @@ export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const body = await readBody(event)
   const data = outlineGenSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(
-      and(
-        eq(schema.novels.id, data.novelId),
-        eq(schema.novels.userId, auth.userId)
-      )
-    )
-    .limit(1)
-
-  if (!novels.length) {
+  const novel = await em.findOne('Novel', { id: data.novelId, user: auth.userId })
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
-  const novel = novels[0]
 
-  const aiConfig = await resolveUserAiConfig(
-    db,
-    auth.userId,
-    'generation',
-    data.aiConfigId
-  )
+  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
 
   const messages = [
     {
@@ -51,7 +32,7 @@ export default defineEventHandler(async (event) => {
     },
     {
       role: 'user' as const,
-      content: `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}\n故事核心想法：${data.idea}`
+      content: `小说标题：${(novel as any).title}\n类型：${(novel as any).genre || '未指定'}\n故事核心想法：${data.idea}`
     }
   ]
 

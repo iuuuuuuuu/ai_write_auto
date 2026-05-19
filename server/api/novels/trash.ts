@@ -1,31 +1,22 @@
-import { eq, and, isNotNull } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
-
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const method = getMethod(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
   if (method === 'GET') {
-    const deletedNovels = await (db as any)
-      .select()
-      .from(schema.novels)
-      .where(and(eq(schema.novels.userId, auth.userId), isNotNull(schema.novels.deletedAt)))
+    const novels = await em.find('Novel', {
+      user: auth.userId,
+      deletedAt: { $ne: null },
+    })
 
-    const deletedChapters = await (db as any)
-      .select({
-        id: schema.chapters.id,
-        title: schema.chapters.title,
-        chapterNumber: schema.chapters.chapterNumber,
-        novelId: schema.chapters.novelId,
-        deletedAt: schema.chapters.deletedAt,
-        wordCount: schema.chapters.wordCount,
-      })
-      .from(schema.chapters)
-      .innerJoin(schema.novels, eq(schema.chapters.novelId, schema.novels.id))
-      .where(and(eq(schema.novels.userId, auth.userId), isNotNull(schema.chapters.deletedAt)))
+    const chapters = await em.find('Chapter', {
+      novel: { user: auth.userId },
+      deletedAt: { $ne: null },
+    }, {
+      populate: ['novel'],
+    })
 
-    return { novels: deletedNovels, chapters: deletedChapters }
+    return { novels, chapters }
   }
 
   if (method === 'POST') {
@@ -33,40 +24,34 @@ export default defineEventHandler(async (event) => {
     const { type, id } = body
 
     if (type === 'novel') {
-      const result = await (db as any)
-        .update(schema.novels)
-        .set({ deletedAt: null })
-        .where(and(eq(schema.novels.id, id), eq(schema.novels.userId, auth.userId)))
-        .returning()
+      const novel = await em.findOne('Novel', {
+        id,
+        user: auth.userId,
+      })
 
-      if (!result.length) throw createError({ statusCode: 404, message: 'Not found' })
-      return result[0]
+      if (!novel) {
+        throw createError({ statusCode: 404, message: 'Not found' })
+      }
+
+      novel.deletedAt = null
+      await em.nativeUpdate('Chapter', { novel: id }, { deletedAt: null })
+      await em.flush()
+      return { success: true }
     }
 
     if (type === 'chapter') {
-      const chapters = await (db as any)
-        .select({ novelId: schema.chapters.novelId })
-        .from(schema.chapters)
-        .where(eq(schema.chapters.id, id))
-        .limit(1)
+      const chapter = await em.findOne('Chapter', {
+        id,
+        novel: { user: auth.userId },
+      })
 
-      if (!chapters.length) throw createError({ statusCode: 404, message: 'Not found' })
+      if (!chapter) {
+        throw createError({ statusCode: 404, message: 'Not found' })
+      }
 
-      const novels = await (db as any)
-        .select()
-        .from(schema.novels)
-        .where(and(eq(schema.novels.id, chapters[0].novelId), eq(schema.novels.userId, auth.userId)))
-        .limit(1)
-
-      if (!novels.length) throw createError({ statusCode: 403, message: 'Forbidden' })
-
-      const result = await (db as any)
-        .update(schema.chapters)
-        .set({ deletedAt: null })
-        .where(eq(schema.chapters.id, id))
-        .returning()
-
-      return result[0]
+      chapter.deletedAt = null
+      await em.flush()
+      return { success: true }
     }
 
     throw createError({ statusCode: 400, message: 'Invalid type' })

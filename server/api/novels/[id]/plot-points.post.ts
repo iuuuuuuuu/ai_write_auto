@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../../database'
 
 const plotPointSchema = z.object({
   description: z.string().min(1),
@@ -14,26 +12,21 @@ export default defineEventHandler(async (event) => {
   const novelId = parseInt(getRouterParam(event, 'id')!)
   const body = await readBody(event)
   const data = plotPointSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.id, novelId), eq(schema.novels.userId, auth.userId)))
-    .limit(1)
-
-  if (!novels.length) {
+  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId })
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const result = await (db as any).insert(schema.plotPoints).values({
-    novelId,
-    chapterId: data.chapterId || null,
+  const plotPoint = em.create('PlotPoint', {
+    novel: novelId,
+    chapter: data.chapterId || null,
     description: data.description,
     type: data.type,
     status: data.status,
-  }).returning()
+  })
+  await em.flush()
 
-  return result[0]
+  return plotPoint
 })

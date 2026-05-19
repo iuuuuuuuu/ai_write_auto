@@ -76,7 +76,7 @@ const navItems = computed(() => [
             class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm transition-colors"
             :class="
               route.path.startsWith(item.to) ?
-                'bg-primary-500/10 text-primary-300'
+                'bg-primary-500/10 text-primary-600 dark:text-primary-300'
               : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)'
             "
           >
@@ -180,7 +180,7 @@ const navItems = computed(() => [
                 class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm transition-colors"
                 :class="
                   route.path.startsWith(item.to) ?
-                    'bg-primary-500/10 text-primary-300'
+                    'bg-primary-500/10 text-primary-600 dark:text-primary-300'
                   : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)'
                 "
                 @click="sidebarOpen = false"

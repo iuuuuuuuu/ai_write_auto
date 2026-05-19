@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
+import { wrap } from '@mikro-orm/core'
 import { maskApiKey } from '../../utils/ai-configs'
 
 const aiConfigSchema = z.object({
@@ -25,7 +24,7 @@ const deleteSchema = z.object({
   id: z.coerce.number().int().positive()
 })
 
-function serializeConfig(config: typeof schema.aiConfigs.$inferSelect) {
+function serializeConfig(config: any) {
   return {
     ...config,
     apiKey: '',
@@ -33,174 +32,90 @@ function serializeConfig(config: typeof schema.aiConfigs.$inferSelect) {
   }
 }
 
-async function clearDefaultForPurpose(
-  db: Awaited<ReturnType<typeof getDatabase>>,
-  userId: number,
-  purpose: typeof schema.aiConfigs.$inferSelect.purpose
-) {
-  await db
-    .update(schema.aiConfigs)
-    .set({ isDefault: false, updatedAt: new Date() })
-    .where(
-      and(
-        eq(schema.aiConfigs.userId, userId),
-        eq(schema.aiConfigs.purpose, purpose)
-      )
-    )
-}
-
-async function getUserConfigs(
-  db: Awaited<ReturnType<typeof getDatabase>>,
-  userId: number
-) {
-  return await db
-    .select()
-    .from(schema.aiConfigs)
-    .where(eq(schema.aiConfigs.userId, userId))
-}
-
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const method = getMethod(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
   if (method === 'GET') {
-    const configs = await getUserConfigs(db, auth.userId)
+    const configs = await em.find('AiConfig', { user: auth.userId })
     return configs.map(serializeConfig)
   }
 
   if (method === 'POST') {
     const body = await readBody(event)
     const data = aiConfigSchema.parse(body)
-
     if (data.id) {
-      const existing = await db
-        .select()
-        .from(schema.aiConfigs)
-        .where(
-          and(
-            eq(schema.aiConfigs.id, data.id),
-            eq(schema.aiConfigs.userId, auth.userId)
-          )
-        )
-        .limit(1)
-
-      if (!existing.length) {
+      const existing = await em.findOne('AiConfig', { id: data.id, user: auth.userId })
+      if (!existing) {
         throw createError({ statusCode: 404, message: 'AI config not found' })
       }
 
       if (data.isDefault) {
-        await clearDefaultForPurpose(db, auth.userId, data.purpose)
+        await em.nativeUpdate('AiConfig', { user: auth.userId, purpose: data.purpose }, { isDefault: false, updatedAt: new Date() })
       }
 
-      const updateData = {
+      wrap(existing).assign({
         name: data.name,
         purpose: data.purpose,
         apiUrl: data.apiUrl,
         model: data.model,
         temperature: data.temperature,
         maxTokens: data.maxTokens,
-        isDefault: data.isDefault ?? existing[0].isDefault,
-        enabled: data.enabled ?? existing[0].enabled,
+        isDefault: data.isDefault ?? (existing as any).isDefault,
+        enabled: data.enabled ?? (existing as any).enabled,
         updatedAt: new Date(),
-        ...(data.apiKey ? { apiKey: data.apiKey } : {})
-      }
-
-      const result = await db
-        .update(schema.aiConfigs)
-        .set(updateData)
-        .where(
-          and(
-            eq(schema.aiConfigs.id, data.id),
-            eq(schema.aiConfigs.userId, auth.userId)
-          )
-        )
-        .returning()
-      return serializeConfig(result[0])
+        ...(data.apiKey ? { apiKey: data.apiKey } : {}),
+      })
+      await em.flush()
+      return serializeConfig(existing)
     }
 
     if (!data.apiKey) {
       throw createError({ statusCode: 400, message: 'API key is required' })
     }
 
-    const existingForPurpose = await db
-      .select()
-      .from(schema.aiConfigs)
-      .where(
-        and(
-          eq(schema.aiConfigs.userId, auth.userId),
-          eq(schema.aiConfigs.purpose, data.purpose)
-        )
-      )
-
+    const existingForPurpose = await em.find('AiConfig', { user: auth.userId, purpose: data.purpose })
     const isDefault = data.isDefault ?? existingForPurpose.length === 0
     if (isDefault) {
-      await clearDefaultForPurpose(db, auth.userId, data.purpose)
+      await em.nativeUpdate('AiConfig', { user: auth.userId, purpose: data.purpose }, { isDefault: false, updatedAt: new Date() })
     }
 
-    const result = await db
-      .insert(schema.aiConfigs)
-      .values({
-        userId: auth.userId,
-        name: data.name,
-        purpose: data.purpose,
-        apiUrl: data.apiUrl,
-        apiKey: data.apiKey,
-        model: data.model,
-        temperature: data.temperature,
-        maxTokens: data.maxTokens,
-        isDefault,
-        enabled: data.enabled ?? true
-      })
-      .returning()
-    return serializeConfig(result[0])
+    const config = em.create('AiConfig', {
+      user: auth.userId,
+      name: data.name,
+      purpose: data.purpose,
+      apiUrl: data.apiUrl,
+      apiKey: data.apiKey,
+      model: data.model,
+      temperature: data.temperature,
+      maxTokens: data.maxTokens,
+      isDefault,
+      enabled: data.enabled ?? true,
+    })
+    await em.flush()
+    return serializeConfig(config)
   }
 
   if (method === 'DELETE') {
     const query = getQuery(event)
     const { id } = deleteSchema.parse(query)
 
-    const existing = await db
-      .select()
-      .from(schema.aiConfigs)
-      .where(
-        and(
-          eq(schema.aiConfigs.id, id),
-          eq(schema.aiConfigs.userId, auth.userId)
-        )
-      )
-      .limit(1)
-
-    if (!existing.length) {
+    const existing = await em.findOne('AiConfig', { id, user: auth.userId })
+    if (!existing) {
       throw createError({ statusCode: 404, message: 'AI config not found' })
     }
 
-    await db
-      .delete(schema.aiConfigs)
-      .where(
-        and(
-          eq(schema.aiConfigs.id, id),
-          eq(schema.aiConfigs.userId, auth.userId)
-        )
-      )
+    const wasDefault = (existing as any).isDefault
+    const purpose = (existing as any).purpose
 
-    if (existing[0].isDefault) {
-      const remaining = await db
-        .select()
-        .from(schema.aiConfigs)
-        .where(
-          and(
-            eq(schema.aiConfigs.userId, auth.userId),
-            eq(schema.aiConfigs.purpose, existing[0].purpose)
-          )
-        )
-        .limit(1)
+    await em.nativeDelete('AiConfig', { id, user: auth.userId })
 
-      if (remaining.length) {
-        await db
-          .update(schema.aiConfigs)
-          .set({ isDefault: true, updatedAt: new Date() })
-          .where(eq(schema.aiConfigs.id, remaining[0].id))
+    if (wasDefault) {
+      const remaining = await em.findOne('AiConfig', { user: auth.userId, purpose })
+      if (remaining) {
+        wrap(remaining).assign({ isDefault: true, updatedAt: new Date() })
+        await em.flush()
       }
     }
 

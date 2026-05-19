@@ -1,15 +1,13 @@
-import { eq, isNull, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
-
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.userId, auth.userId), isNull(schema.novels.deletedAt)))
-    .orderBy(schema.novels.updatedAt)
+  const novels = await em.find('Novel', {
+    user: auth.userId,
+    deletedAt: null,
+  }, {
+    orderBy: { updatedAt: 'DESC' },
+  })
 
   return novels
 })

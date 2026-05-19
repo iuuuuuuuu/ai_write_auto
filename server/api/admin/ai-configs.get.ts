@@ -1,27 +1,20 @@
-import { getDatabase, schema } from '../../database'
 import { maskApiKey } from '../../utils/ai-configs'
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
   const [configs, users] = await Promise.all([
-    db.select().from(schema.aiConfigs),
-    db
-      .select({
-        id: schema.users.id,
-        username: schema.users.username,
-        role: schema.users.role
-      })
-      .from(schema.users)
+    em.find('AiConfig', {}),
+    em.find('User', {}),
   ])
 
-  const usersById = new Map(users.map((user) => [user.id, user]))
+  const usersById = new Map(users.map((user: any) => [user.id, { id: user.id, username: user.username, role: user.role }]))
 
-  return configs.map((config) => ({
+  return configs.map((config: any) => ({
     id: config.id,
-    userId: config.userId,
-    user: usersById.get(config.userId) || null,
+    userId: config.user,
+    user: usersById.get(config.user) || null,
     name: config.name,
     purpose: config.purpose,
     apiUrl: config.apiUrl,

@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../../database'
 
 const characterSchema = z.object({
   name: z.string().min(1).max(100),
@@ -16,28 +14,23 @@ export default defineEventHandler(async (event) => {
   const novelId = parseInt(getRouterParam(event, 'id')!)
   const body = await readBody(event)
   const data = characterSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.id, novelId), eq(schema.novels.userId, auth.userId)))
-    .limit(1)
-
-  if (!novels.length) {
+  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId })
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const result = await (db as any).insert(schema.characters).values({
-    novelId,
+  const character = em.create('Character', {
+    novel: novelId,
     name: data.name,
     description: data.description || null,
     traits: data.traits || null,
     relationships: data.relationships || null,
     currentState: data.currentState || null,
     firstAppearanceChapter: data.firstAppearanceChapter || null,
-  }).returning()
+  })
+  await em.flush()
 
-  return result[0]
+  return character
 })

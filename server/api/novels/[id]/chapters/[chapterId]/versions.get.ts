@@ -1,28 +1,13 @@
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../../../../database'
-
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = parseInt(getRouterParam(event, 'id')!)
-  const chapterId = parseInt(getRouterParam(event, 'chapterId')!)
+  const novelId = Number(getRouterParam(event, 'id'))
+  const chapterId = Number(getRouterParam(event, 'chapterId'))
+  const em = useEm(event)
 
-  const db = await getDatabase()
+  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId })
+  if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
 
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.id, novelId), eq(schema.novels.userId, auth.userId)))
-    .limit(1)
-
-  if (!novels.length) {
-    throw createError({ statusCode: 404, message: 'Novel not found' })
-  }
-
-  const versions = await (db as any)
-    .select()
-    .from(schema.chapterVersions)
-    .where(eq(schema.chapterVersions.chapterId, chapterId))
-    .orderBy(schema.chapterVersions.versionNumber)
+  const versions = await em.find('ChapterVersion', { chapter: chapterId }, { orderBy: { versionNumber: 'ASC' } })
 
   return versions
 })

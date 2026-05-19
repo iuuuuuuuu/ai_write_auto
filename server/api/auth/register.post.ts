@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 import { hashPassword, signToken } from '../../utils/auth'
 
 const registerSchema = z.object({
@@ -9,31 +7,29 @@ const registerSchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
-  const db = await getDatabase()
+  const em = useEm(event)
 
-  const siteConfigs = await (db as any).select().from(schema.siteConfig).where(eq(schema.siteConfig.key, 'allow_registration'))
-  const allowReg = siteConfigs[0]?.value === 'true'
-
-  if (!allowReg) {
+  const allowRegConfig = await em.findOne('SiteConfig', { key: 'allow_registration' })
+  if (!allowRegConfig || allowRegConfig.value !== 'true') {
     throw createError({ statusCode: 403, message: 'Registration is disabled' })
   }
 
   const body = await readBody(event)
   const { username, password } = registerSchema.parse(body)
 
-  const existing = await (db as any).select().from(schema.users).where(eq(schema.users.username, username)).limit(1)
-  if (existing.length > 0) {
+  const existing = await em.findOne('User', { username })
+  if (existing) {
     throw createError({ statusCode: 409, message: 'Username already exists' })
   }
 
   const passwordHash = hashPassword(password)
-  const result = await (db as any).insert(schema.users).values({
+  const user = em.create('User', {
     username,
     passwordHash,
     role: 'user',
-  }).returning()
+  })
+  await em.flush()
 
-  const user = result[0]
   const token = signToken({
     userId: user.id,
     username: user.username,

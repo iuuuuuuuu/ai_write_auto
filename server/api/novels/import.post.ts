@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 
 const importSchema = z.object({
   title: z.string().min(1),
@@ -15,7 +13,7 @@ const CHAPTER_PATTERNS = [
   /^#{1,2}\s+Chapter\s+\d+/i,
 ]
 
-function splitIntoChapters(content: string, format: string): Array<{ title: string; content: string }> {
+function splitIntoChapters(content: string, _format: string): Array<{ title: string; content: string }> {
   const lines = content.split('\n')
   const chapters: Array<{ title: string; content: string }> = []
   let currentTitle = ''
@@ -56,23 +54,23 @@ export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const body = await readBody(event)
   const data = importSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novelResult = await (db as any).insert(schema.novels).values({
-    userId: auth.userId,
+  const novel = em.create('Novel', {
+    user: auth.userId,
     title: data.title,
     status: 'in_progress',
-  }).returning()
+  })
 
-  const novel = novelResult[0]
+  await em.flush()
+
   const chapters = splitIntoChapters(data.content, data.format)
 
   for (let i = 0; i < chapters.length; i++) {
     const ch = chapters[i]!
     const wordCount = ch.content.replace(/\s/g, '').length
-    await (db as any).insert(schema.chapters).values({
-      novelId: novel.id,
+    em.create('Chapter', {
+      novel: novel.id,
       chapterNumber: i + 1,
       title: ch.title,
       content: ch.content,
@@ -80,6 +78,8 @@ export default defineEventHandler(async (event) => {
       wordCount,
     })
   }
+
+  await em.flush()
 
   return { novelId: novel.id, chaptersImported: chapters.length }
 })

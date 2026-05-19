@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and, isNull } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 import { streamAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
@@ -27,40 +25,22 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const data = batchSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(
-      and(
-        eq(schema.novels.id, data.novelId),
-        eq(schema.novels.userId, auth.userId)
-      )
-    )
-    .limit(1)
-
-  if (!novels.length) {
+  const novel = await em.findOne('Novel', { id: data.novelId, user: auth.userId })
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const novel = novels[0]
-  const aiConfig = await resolveUserAiConfig(
-    db,
-    auth.userId,
-    'generation',
-    data.aiConfigId
-  )
+  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
 
-  const task = await (db as any)
-    .insert(schema.generationTasks)
-    .values({
-      novelId: data.novelId,
-      type: 'batch_generate',
-      status: 'running'
-    })
-    .returning()
+  const task = em.create('GenerationTask', {
+    novel: data.novelId,
+    type: 'batch_generate',
+    status: 'running',
+  })
+  await em.flush()
+  const taskId = (task as any).id
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -77,37 +57,11 @@ export default defineEventHandler(async (event) => {
             )
           )
 
-          const chapters = await (db as any)
-            .select()
-            .from(schema.chapters)
-            .where(
-              and(
-                eq(schema.chapters.novelId, data.novelId),
-                isNull(schema.chapters.deletedAt)
-              )
-            )
-            .orderBy(schema.chapters.chapterNumber)
-
-          const characters = await (db as any)
-            .select()
-            .from(schema.characters)
-            .where(eq(schema.characters.novelId, data.novelId))
-
-          const plotPoints = await (db as any)
-            .select()
-            .from(schema.plotPoints)
-            .where(eq(schema.plotPoints.novelId, data.novelId))
-
-          const storyArcs = await (db as any)
-            .select()
-            .from(schema.storyArcs)
-            .where(eq(schema.storyArcs.novelId, data.novelId))
-
-          const outlines = await (db as any)
-            .select()
-            .from(schema.novelOutlines)
-            .where(eq(schema.novelOutlines.novelId, data.novelId))
-            .orderBy(schema.novelOutlines.sortOrder)
+          const chapters = await em.find('Chapter', { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
+          const characters = await em.find('Character', { novel: data.novelId })
+          const plotPoints = await em.find('PlotPoint', { novel: data.novelId })
+          const storyArcs = await em.find('StoryArc', { novel: data.novelId })
+          const outlines = await em.find('NovelOutline', { novel: data.novelId }, { orderBy: { sortOrder: 'ASC' } })
 
           const chapterOutline = outlines.find(
             (o: any) => o.chapterNumber === chapterNum
@@ -119,7 +73,7 @@ export default defineEventHandler(async (event) => {
             characters,
             plotPoints,
             storyArcs,
-            currentChapterOutline: chapterOutline?.description,
+            currentChapterOutline: (chapterOutline as any)?.description,
             userDirection: data.direction
           })
 
@@ -129,7 +83,7 @@ export default defineEventHandler(async (event) => {
             apiKey: aiConfig.apiKey,
             model: aiConfig.model,
             temperature:
-              novel.aiTemperature || parseFloat(aiConfig.temperature) || 0.7,
+              (novel as any).aiTemperature || parseFloat(aiConfig.temperature) || 0.7,
             maxTokens: aiConfig.maxTokens || 4096,
             messages: prompt
           })) {
@@ -143,32 +97,26 @@ export default defineEventHandler(async (event) => {
             }
           }
 
-          let existingChapter = chapters.find(
+          const existingChapter = chapters.find(
             (c: any) => c.chapterNumber === chapterNum
           )
           if (existingChapter) {
-            await (db as any)
-              .update(schema.chapters)
-              .set({
-                content: generatedContent,
-                wordCount: generatedContent.replace(/\s/g, '').length,
-                status: 'generated',
-                updatedAt: new Date()
-              })
-              .where(eq(schema.chapters.id, existingChapter.id))
+            await em.nativeUpdate('Chapter', { id: (existingChapter as any).id }, {
+              content: generatedContent,
+              wordCount: generatedContent.replace(/\s/g, '').length,
+              status: 'generated',
+              updatedAt: new Date()
+            })
           } else {
-            const result = await (db as any)
-              .insert(schema.chapters)
-              .values({
-                novelId: data.novelId,
-                chapterNumber: chapterNum,
-                title: `第${chapterNum}章`,
-                content: generatedContent,
-                wordCount: generatedContent.replace(/\s/g, '').length,
-                status: 'generated'
-              })
-              .returning()
-            existingChapter = result[0]
+            em.create('Chapter', {
+              novel: data.novelId,
+              chapterNumber: chapterNum,
+              title: `第${chapterNum}章`,
+              content: generatedContent,
+              wordCount: generatedContent.replace(/\s/g, '').length,
+              status: 'generated',
+            })
+            await em.flush()
           }
 
           controller.enqueue(
@@ -178,19 +126,19 @@ export default defineEventHandler(async (event) => {
           )
         }
 
-        await (db as any)
-          .update(schema.generationTasks)
-          .set({ status: 'completed', completedAt: new Date() })
-          .where(eq(schema.generationTasks.id, task[0].id))
+        await em.nativeUpdate('GenerationTask', { id: taskId }, {
+          status: 'completed',
+          completedAt: new Date()
+        })
 
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
         )
       } catch (e: any) {
-        await (db as any)
-          .update(schema.generationTasks)
-          .set({ status: 'failed', error: e.message })
-          .where(eq(schema.generationTasks.id, task[0].id))
+        await em.nativeUpdate('GenerationTask', { id: taskId }, {
+          status: 'failed',
+          error: e.message
+        })
 
         controller.enqueue(
           encoder.encode(

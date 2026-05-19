@@ -1,0 +1,444 @@
+import { EntitySchema } from '@mikro-orm/core'
+import { UnixTimestampType } from '../types/UnixTimestampType'
+
+// ─── Interfaces ───
+
+export interface User {
+  id: number
+  username: string
+  passwordHash: string
+  role: 'admin' | 'user'
+  createdAt: Date
+}
+
+export interface SiteConfig {
+  key: string
+  value: string
+}
+
+export interface AiConfig {
+  id: number
+  user: User
+  name: string
+  purpose: 'generation' | 'extraction' | 'consistency_check' | 'style_analysis'
+  apiUrl: string
+  apiKey: string
+  model: string
+  temperature: string | null
+  maxTokens: number | null
+  isDefault: boolean
+  enabled: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Novel {
+  id: number
+  user: User
+  title: string
+  description: string | null
+  genre: string | null
+  status: 'draft' | 'in_progress' | 'completed'
+  styleGuide: string | null
+  worldSetting: string | null
+  aiTemperature: string | null
+  aiExtraPrompt: string | null
+  deletedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface NovelOutline {
+  id: number
+  novel: Novel
+  chapterNumber: number
+  description: string
+  sortOrder: number
+}
+
+export interface NovelTemplate {
+  id: number
+  name: string
+  genre: string
+  defaultStyleGuide: string | null
+  defaultAiPrompt: string | null
+  defaultTemperature: string | null
+}
+
+export interface Chapter {
+  id: number
+  novel: Novel
+  chapterNumber: number
+  title: string
+  content: string | null
+  summary: string | null
+  status: 'draft' | 'generated' | 'edited' | 'final'
+  wordCount: number | null
+  deletedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ChapterVersion {
+  id: number
+  chapter: Chapter
+  versionNumber: number
+  content: string
+  source: 'ai_generated' | 'user_edited'
+  createdAt: Date
+}
+
+export interface ChapterNote {
+  id: number
+  chapter: Chapter
+  content: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Character {
+  id: number
+  novel: Novel
+  name: string
+  description: string | null
+  traits: string | null
+  relationships: string | null
+  currentState: string | null
+  firstAppearanceChapter: number | null
+  lastAppearanceChapter: number | null
+  createdAt: Date
+}
+
+export interface PlotPoint {
+  id: number
+  novel: Novel
+  chapter: Chapter | null
+  description: string
+  type: 'setup' | 'conflict' | 'resolution' | 'twist'
+  status: 'introduced' | 'developing' | 'resolved'
+  createdAt: Date
+}
+
+export interface StoryArc {
+  id: number
+  novel: Novel
+  title: string
+  summary: string | null
+  startChapter: number
+  endChapter: number | null
+}
+
+export interface GenerationTask {
+  id: number
+  novel: Novel
+  chapter: Chapter | null
+  type: string
+  status: 'pending' | 'running' | 'completed' | 'failed'
+  result: string | null
+  error: string | null
+  retryCount: number | null
+  tokensUsed: number | null
+  createdAt: Date
+  completedAt: Date | null
+}
+
+export interface TokenUsage {
+  id: number
+  user: User
+  aiConfig: AiConfig | null
+  tokensInput: number
+  tokensOutput: number
+  estimatedCost: string | null
+  createdAt: Date
+}
+
+export interface PromptTemplate {
+  id: number
+  user: User | null
+  name: string
+  content: string
+  category: 'generation' | 'rewrite' | 'expand' | 'custom'
+  isSystem: boolean | null
+  createdAt: Date
+}
+
+export interface WritingStat {
+  id: number
+  user: User
+  date: string
+  wordsWritten: number | null
+  chaptersCompleted: number | null
+  aiGenerations: number | null
+}
+
+export interface UserPreference {
+  id: number
+  user: User
+  key: string
+  value: string
+}
+
+// ─── Entity Schemas ───
+
+export const UserSchema = new EntitySchema<User>({
+  name: 'User',
+  tableName: 'users',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    username: { type: 'string', unique: true },
+    passwordHash: { type: 'string', fieldName: 'password_hash' },
+    role: { type: 'string', default: 'user' },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+  },
+})
+
+export const SiteConfigSchema = new EntitySchema<SiteConfig>({
+  name: 'SiteConfig',
+  tableName: 'site_config',
+  properties: {
+    key: { type: 'string', primary: true, fieldName: 'key' },
+    value: { type: 'string' },
+  },
+})
+
+export const AiConfigSchema = new EntitySchema<AiConfig>({
+  name: 'AiConfig',
+  tableName: 'ai_configs',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    name: { type: 'string', default: '默认模型' },
+    purpose: { type: 'string' },
+    apiUrl: { type: 'string', fieldName: 'api_url' },
+    apiKey: { type: 'string', fieldName: 'api_key' },
+    model: { type: 'string' },
+    temperature: { type: 'string', nullable: true, default: '0.7' },
+    maxTokens: { type: 'number', fieldName: 'max_tokens', nullable: true, default: 4096 },
+    isDefault: { type: 'boolean', fieldName: 'is_default', default: false },
+    enabled: { type: 'boolean', default: true },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+    updatedAt: { type: UnixTimestampType, fieldName: 'updated_at', onCreate: () => new Date(), onUpdate: () => new Date() },
+  },
+})
+
+export const NovelSchema = new EntitySchema<Novel>({
+  name: 'Novel',
+  tableName: 'novels',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    title: { type: 'string' },
+    description: { type: 'string', nullable: true },
+    genre: { type: 'string', nullable: true },
+    status: { type: 'string', default: 'draft' },
+    styleGuide: { type: 'string', nullable: true, fieldName: 'style_guide' },
+    worldSetting: { type: 'string', nullable: true, fieldName: 'world_setting' },
+    aiTemperature: { type: 'string', nullable: true, fieldName: 'ai_temperature' },
+    aiExtraPrompt: { type: 'string', nullable: true, fieldName: 'ai_extra_prompt' },
+    deletedAt: { type: UnixTimestampType, nullable: true, fieldName: 'deleted_at' },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+    updatedAt: { type: UnixTimestampType, fieldName: 'updated_at', onCreate: () => new Date(), onUpdate: () => new Date() },
+  },
+})
+
+export const NovelOutlineSchema = new EntitySchema<NovelOutline>({
+  name: 'NovelOutline',
+  tableName: 'novel_outlines',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+    chapterNumber: { type: 'number', fieldName: 'chapter_number' },
+    description: { type: 'string' },
+    sortOrder: { type: 'number', fieldName: 'sort_order' },
+  },
+})
+
+export const NovelTemplateSchema = new EntitySchema<NovelTemplate>({
+  name: 'NovelTemplate',
+  tableName: 'novel_templates',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    name: { type: 'string' },
+    genre: { type: 'string' },
+    defaultStyleGuide: { type: 'string', nullable: true, fieldName: 'default_style_guide' },
+    defaultAiPrompt: { type: 'string', nullable: true, fieldName: 'default_ai_prompt' },
+    defaultTemperature: { type: 'string', nullable: true, fieldName: 'default_temperature', default: '0.7' },
+  },
+})
+
+export const ChapterSchema = new EntitySchema<Chapter>({
+  name: 'Chapter',
+  tableName: 'chapters',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+    chapterNumber: { type: 'number', fieldName: 'chapter_number' },
+    title: { type: 'string' },
+    content: { type: 'string', nullable: true, lazy: true },
+    summary: { type: 'string', nullable: true },
+    status: { type: 'string', default: 'draft' },
+    wordCount: { type: 'number', fieldName: 'word_count', nullable: true, default: 0 },
+    deletedAt: { type: UnixTimestampType, nullable: true, fieldName: 'deleted_at' },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+    updatedAt: { type: UnixTimestampType, fieldName: 'updated_at', onCreate: () => new Date(), onUpdate: () => new Date() },
+  },
+})
+
+export const ChapterVersionSchema = new EntitySchema<ChapterVersion>({
+  name: 'ChapterVersion',
+  tableName: 'chapter_versions',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    chapter: { kind: 'm:1', entity: () => 'Chapter', fieldName: 'chapter_id' },
+    versionNumber: { type: 'number', fieldName: 'version_number' },
+    content: { type: 'string' },
+    source: { type: 'string' },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+  },
+})
+
+export const ChapterNoteSchema = new EntitySchema<ChapterNote>({
+  name: 'ChapterNote',
+  tableName: 'chapter_notes',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    chapter: { kind: 'm:1', entity: () => 'Chapter', fieldName: 'chapter_id' },
+    content: { type: 'string' },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+    updatedAt: { type: UnixTimestampType, fieldName: 'updated_at', onCreate: () => new Date(), onUpdate: () => new Date() },
+  },
+})
+
+export const CharacterSchema = new EntitySchema<Character>({
+  name: 'Character',
+  tableName: 'characters',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+    name: { type: 'string' },
+    description: { type: 'string', nullable: true },
+    traits: { type: 'string', nullable: true },
+    relationships: { type: 'string', nullable: true },
+    currentState: { type: 'string', nullable: true, fieldName: 'current_state' },
+    firstAppearanceChapter: { type: 'number', nullable: true, fieldName: 'first_appearance_chapter' },
+    lastAppearanceChapter: { type: 'number', nullable: true, fieldName: 'last_appearance_chapter' },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+  },
+})
+
+export const PlotPointSchema = new EntitySchema<PlotPoint>({
+  name: 'PlotPoint',
+  tableName: 'plot_points',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+    chapter: { kind: 'm:1', entity: () => 'Chapter', fieldName: 'chapter_id', nullable: true },
+    description: { type: 'string' },
+    type: { type: 'string' },
+    status: { type: 'string', default: 'introduced' },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+  },
+})
+
+export const StoryArcSchema = new EntitySchema<StoryArc>({
+  name: 'StoryArc',
+  tableName: 'story_arcs',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+    title: { type: 'string' },
+    summary: { type: 'string', nullable: true },
+    startChapter: { type: 'number', fieldName: 'start_chapter' },
+    endChapter: { type: 'number', nullable: true, fieldName: 'end_chapter' },
+  },
+})
+
+export const GenerationTaskSchema = new EntitySchema<GenerationTask>({
+  name: 'GenerationTask',
+  tableName: 'generation_tasks',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+    chapter: { kind: 'm:1', entity: () => 'Chapter', fieldName: 'chapter_id', nullable: true },
+    type: { type: 'string' },
+    status: { type: 'string', default: 'pending' },
+    result: { type: 'string', nullable: true },
+    error: { type: 'string', nullable: true },
+    retryCount: { type: 'number', fieldName: 'retry_count', nullable: true, default: 0 },
+    tokensUsed: { type: 'number', fieldName: 'tokens_used', nullable: true },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+    completedAt: { type: UnixTimestampType, fieldName: 'completed_at', nullable: true },
+  },
+})
+
+export const TokenUsageSchema = new EntitySchema<TokenUsage>({
+  name: 'TokenUsage',
+  tableName: 'token_usage',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    aiConfig: { kind: 'm:1', entity: () => 'AiConfig', fieldName: 'ai_config_id', nullable: true },
+    tokensInput: { type: 'number', fieldName: 'tokens_input' },
+    tokensOutput: { type: 'number', fieldName: 'tokens_output' },
+    estimatedCost: { type: 'string', nullable: true, fieldName: 'estimated_cost' },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+  },
+})
+
+export const PromptTemplateSchema = new EntitySchema<PromptTemplate>({
+  name: 'PromptTemplate',
+  tableName: 'prompt_templates',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id', nullable: true },
+    name: { type: 'string' },
+    content: { type: 'string' },
+    category: { type: 'string' },
+    isSystem: { type: 'boolean', fieldName: 'is_system', nullable: true, default: false },
+    createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+  },
+})
+
+export const WritingStatSchema = new EntitySchema<WritingStat>({
+  name: 'WritingStat',
+  tableName: 'writing_stats',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    date: { type: 'string' },
+    wordsWritten: { type: 'number', fieldName: 'words_written', nullable: true, default: 0 },
+    chaptersCompleted: { type: 'number', fieldName: 'chapters_completed', nullable: true, default: 0 },
+    aiGenerations: { type: 'number', fieldName: 'ai_generations', nullable: true, default: 0 },
+  },
+})
+
+export const UserPreferenceSchema = new EntitySchema<UserPreference>({
+  name: 'UserPreference',
+  tableName: 'user_preferences',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    key: { type: 'string', fieldName: 'key' },
+    value: { type: 'string' },
+  },
+})
+
+export const allEntities = [
+  UserSchema,
+  SiteConfigSchema,
+  AiConfigSchema,
+  NovelSchema,
+  NovelOutlineSchema,
+  NovelTemplateSchema,
+  ChapterSchema,
+  ChapterVersionSchema,
+  ChapterNoteSchema,
+  CharacterSchema,
+  PlotPointSchema,
+  StoryArcSchema,
+  GenerationTaskSchema,
+  TokenUsageSchema,
+  PromptTemplateSchema,
+  WritingStatSchema,
+  UserPreferenceSchema,
+]

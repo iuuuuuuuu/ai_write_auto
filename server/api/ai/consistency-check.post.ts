@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and, isNull } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 import { callAi } from '../../utils/ai-client'
 
 const checkSchema = z.object({
@@ -12,47 +10,31 @@ export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const body = await readBody(event)
   const data = checkSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const aiConfigs = await (db as any)
-    .select()
-    .from(schema.aiConfigs)
-    .where(and(eq(schema.aiConfigs.userId, auth.userId), eq(schema.aiConfigs.purpose, 'consistency_check')))
-    .limit(1)
-
-  if (!aiConfigs.length) {
-    const fallback = await (db as any)
-      .select()
-      .from(schema.aiConfigs)
-      .where(and(eq(schema.aiConfigs.userId, auth.userId), eq(schema.aiConfigs.purpose, 'extraction')))
-      .limit(1)
-    if (!fallback.length) {
+  let aiConfig = await em.findOne('AiConfig', { user: auth.userId, purpose: 'consistency_check' })
+  if (!aiConfig) {
+    aiConfig = await em.findOne('AiConfig', { user: auth.userId, purpose: 'extraction' })
+    if (!aiConfig) {
       throw createError({ statusCode: 400, message: 'No AI config found for consistency check' })
     }
-    aiConfigs.push(fallback[0])
   }
-  const aiConfig = aiConfigs[0]
 
-  const chapters = await (db as any)
-    .select()
-    .from(schema.chapters)
-    .where(and(eq(schema.chapters.novelId, data.novelId), isNull(schema.chapters.deletedAt)))
-    .orderBy(schema.chapters.chapterNumber)
+  const chapters = await em.find('Chapter', {
+    novel: data.novelId,
+    deletedAt: null,
+  }, { orderBy: { chapterNumber: 'ASC' } })
 
   const targetChapter = chapters.find((c: any) => c.id === data.chapterId)
   if (!targetChapter) {
     throw createError({ statusCode: 404, message: 'Chapter not found' })
   }
 
-  const characters = await (db as any)
-    .select()
-    .from(schema.characters)
-    .where(eq(schema.characters.novelId, data.novelId))
+  const characters = await em.find('Character', { novel: data.novelId })
 
   const charInfo = characters.map((c: any) => `${c.name}: ${c.description || ''} (${c.traits || ''})`).join('\n')
   const recentSummaries = chapters
-    .filter((c: any) => c.chapterNumber < targetChapter.chapterNumber && c.summary)
+    .filter((c: any) => c.chapterNumber < (targetChapter as any).chapterNumber && c.summary)
     .slice(-5)
     .map((c: any) => `第${c.chapterNumber}章: ${c.summary}`)
     .join('\n')
@@ -73,14 +55,14 @@ export default defineEventHandler(async (event) => {
     },
     {
       role: 'user' as const,
-      content: `角色档案：\n${charInfo}\n\n前情摘要：\n${recentSummaries}\n\n当前章节（第${targetChapter.chapterNumber}章）：\n${targetChapter.content || ''}`,
+      content: `角色档案：\n${charInfo}\n\n前情摘要：\n${recentSummaries}\n\n当前章节（第${(targetChapter as any).chapterNumber}章）：\n${(targetChapter as any).content || ''}`,
     },
   ]
 
   const result = await callAi({
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
+    apiUrl: (aiConfig as any).apiUrl,
+    apiKey: (aiConfig as any).apiKey,
+    model: (aiConfig as any).model,
     messages,
     temperature: 0.2,
     maxTokens: 2000,

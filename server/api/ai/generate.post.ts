@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and, isNull } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 import { streamAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
@@ -28,57 +26,19 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const data = generateSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(
-      and(
-        eq(schema.novels.id, data.novelId),
-        eq(schema.novels.userId, auth.userId)
-      )
-    )
-    .limit(1)
-
-  if (!novels.length) {
+  const novel = await em.findOne('Novel', { id: data.novelId, user: auth.userId })
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
-  const novel = novels[0]
 
-  const aiConfig = await resolveUserAiConfig(
-    db,
-    auth.userId,
-    'generation',
-    data.aiConfigId
-  )
+  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
 
-  const chapters = await (db as any)
-    .select()
-    .from(schema.chapters)
-    .where(
-      and(
-        eq(schema.chapters.novelId, data.novelId),
-        isNull(schema.chapters.deletedAt)
-      )
-    )
-    .orderBy(schema.chapters.chapterNumber)
-
-  const characters = await (db as any)
-    .select()
-    .from(schema.characters)
-    .where(eq(schema.characters.novelId, data.novelId))
-
-  const plotPoints = await (db as any)
-    .select()
-    .from(schema.plotPoints)
-    .where(eq(schema.plotPoints.novelId, data.novelId))
-
-  const storyArcs = await (db as any)
-    .select()
-    .from(schema.storyArcs)
-    .where(eq(schema.storyArcs.novelId, data.novelId))
+  const chapters = await em.find('Chapter', { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
+  const characters = await em.find('Character', { novel: data.novelId })
+  const plotPoints = await em.find('PlotPoint', { novel: data.novelId })
+  const storyArcs = await em.find('StoryArc', { novel: data.novelId })
 
   const messages = buildGenerationPrompt({
     novel,
@@ -89,21 +49,18 @@ export default defineEventHandler(async (event) => {
     currentChapterOutline: data.chapterOutline,
     userDirection: data.direction
   })
-
-  const taskResult = await (db as any)
-    .insert(schema.generationTasks)
-    .values({
-      novelId: data.novelId,
-      chapterId: data.chapterId || null,
-      type: 'generate',
-      status: 'running'
-    })
-    .returning()
-  const taskId = taskResult[0].id
+  const task = em.create('GenerationTask', {
+    novel: data.novelId,
+    chapter: data.chapterId || null,
+    type: 'generate',
+    status: 'running',
+  })
+  await em.flush()
+  const taskId = (task as any).id
 
   const temperature =
     data.temperature ? parseFloat(String(data.temperature))
-    : novel.aiTemperature ? parseFloat(novel.aiTemperature)
+    : (novel as any).aiTemperature ? parseFloat((novel as any).aiTemperature)
     : parseFloat(aiConfig.temperature || '0.7')
 
   setResponseHeaders(event, {
@@ -142,23 +99,21 @@ export default defineEventHandler(async (event) => {
               (chunk.usage.completion_tokens || 0)
           }
           if (chunk.done) {
-            await (db as any)
-              .update(schema.generationTasks)
-              .set({
-                status: 'completed',
-                result: fullContent,
-                tokensUsed: totalTokens,
-                completedAt: new Date()
-              })
-              .where(eq(schema.generationTasks.id, taskId))
+            await em.nativeUpdate('GenerationTask', { id: taskId }, {
+              status: 'completed',
+              result: fullContent,
+              tokensUsed: totalTokens,
+              completedAt: new Date()
+            })
 
             if (totalTokens > 0) {
-              await (db as any).insert(schema.tokenUsage).values({
-                userId: auth.userId,
-                aiConfigId: aiConfig.id,
+              em.create('TokenUsage', {
+                user: auth.userId,
+                aiConfig: aiConfig.id,
                 tokensInput: chunk.usage?.prompt_tokens || 0,
-                tokensOutput: chunk.usage?.completion_tokens || 0
+                tokensOutput: chunk.usage?.completion_tokens || 0,
               })
+              await em.flush()
             }
 
             controller.enqueue(
@@ -171,10 +126,10 @@ export default defineEventHandler(async (event) => {
           }
         }
       } catch (err: any) {
-        await (db as any)
-          .update(schema.generationTasks)
-          .set({ status: 'failed', error: err.message })
-          .where(eq(schema.generationTasks.id, taskId))
+        await em.nativeUpdate('GenerationTask', { id: taskId }, {
+          status: 'failed',
+          error: err.message
+        })
 
         controller.enqueue(
           encoder.encode(

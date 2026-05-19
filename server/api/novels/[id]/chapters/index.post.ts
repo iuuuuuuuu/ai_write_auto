@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../../../database'
 
 const createChapterSchema = z.object({
   title: z.string().min(1).max(200),
@@ -10,42 +8,31 @@ const createChapterSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = parseInt(getRouterParam(event, 'id')!)
+  const novelId = Number(getRouterParam(event, 'id'))
   const body = await readBody(event)
   const data = createChapterSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.id, novelId), eq(schema.novels.userId, auth.userId)))
-    .limit(1)
-
-  if (!novels.length) {
-    throw createError({ statusCode: 404, message: 'Novel not found' })
-  }
+  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId, deletedAt: null })
+  if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
 
   let chapterNumber = data.chapterNumber
   if (!chapterNumber) {
-    const existing = await (db as any)
-      .select()
-      .from(schema.chapters)
-      .where(eq(schema.chapters.novelId, novelId))
-      .orderBy(schema.chapters.chapterNumber)
+    const existing = await em.find('Chapter', { novel: novelId }, { orderBy: { chapterNumber: 'ASC' } })
     chapterNumber = existing.length + 1
   }
 
   const wordCount = data.content ? data.content.replace(/\s/g, '').length : 0
 
-  const result = await (db as any).insert(schema.chapters).values({
-    novelId,
+  const chapter = em.create('Chapter', {
+    novel: novelId,
     chapterNumber,
     title: data.title,
     content: data.content || null,
     status: 'draft',
     wordCount,
-  }).returning()
+  })
+  await em.flush()
 
-  return result[0]
+  return chapter
 })

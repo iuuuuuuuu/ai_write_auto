@@ -104,7 +104,7 @@ async function submitSetup() {
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary-500/10 border border-primary-500/20 mb-5">
         <Icon icon="lucide:pen-tool" class="w-7 h-7 text-primary-400" />
       </div>
-      <h1 class="text-2xl font-semibold text-white">
+      <h1 class="text-2xl font-semibold text-(--ui-text-highlighted)">
         {{ t('setup.title') }}
       </h1>
       <p class="mt-2 text-sm text-(--ui-text-muted)">
@@ -122,7 +122,7 @@ async function submitSetup() {
               step > i
                 ? 'bg-primary-500 border-primary-500 text-white'
                 : step === i
-                  ? 'bg-primary-500/15 border-primary-500/50 text-primary-300'
+                  ? 'bg-primary-500/15 border-primary-500/50 text-primary-600 dark:text-primary-300'
                   : 'bg-(--ui-bg-elevated) border-(--ui-border) text-(--ui-text-dimmed)'
             ]"
           >
@@ -140,7 +140,7 @@ async function submitSetup() {
 
     <!-- Error -->
     <Transition name="slide-fade">
-      <div v-if="error" class="mb-6 flex items-start gap-2.5 p-3.5 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+      <div v-if="error" class="mb-6 flex items-start gap-2.5 p-3.5 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-600 dark:text-red-300">
         <Icon icon="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
         <span>{{ error }}</span>
       </div>
@@ -170,8 +170,8 @@ async function submitSetup() {
                 :class="form.database.type === opt.value ? 'text-primary-400' : 'text-(--ui-text-dimmed)'"
               />
               <div>
-                <p class="text-sm font-medium" :class="form.database.type === opt.value ? 'text-white' : 'text-(--ui-text)'">{{ opt.label }}</p>
-                <p class="text-xs mt-0.5" :class="form.database.type === opt.value ? 'text-primary-300/70' : 'text-(--ui-text-dimmed)'">{{ opt.desc }}</p>
+                <p class="text-sm font-medium" :class="form.database.type === opt.value ? 'text-(--ui-text-highlighted)' : 'text-(--ui-text)'">{{ opt.label }}</p>
+                <p class="text-xs mt-0.5" :class="form.database.type === opt.value ? 'text-primary-600 dark:text-primary-300/70' : 'text-(--ui-text-dimmed)'">{{ opt.desc }}</p>
               </div>
               <div v-if="form.database.type === opt.value" class="absolute top-3 right-3 w-4 h-4 rounded-full bg-primary-500 flex items-center justify-center">
                 <Icon icon="lucide:check" class="w-2.5 h-2.5 text-white" />
@@ -270,7 +270,7 @@ async function submitSetup() {
               <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-500/10 border border-green-500/25 mb-4">
                 <Icon icon="lucide:check" class="w-7 h-7 text-green-400" />
               </div>
-              <h2 class="text-lg font-semibold text-white">{{ t('setup.setupComplete') }}</h2>
+              <h2 class="text-lg font-semibold text-(--ui-text-highlighted)">{{ t('setup.setupComplete') }}</h2>
               <p class="mt-1.5 text-sm text-(--ui-text-muted)">{{ t('setup.redirecting') }}</p>
               <div class="mt-5 mx-auto w-40 h-1 rounded-full bg-(--ui-bg-elevated) overflow-hidden">
                 <div class="h-full bg-primary-500/70 rounded-full animate-[progress_2.5s_ease-in-out_forwards]" />
@@ -286,7 +286,7 @@ async function submitSetup() {
       <NButton
         v-if="step > 1"
         quaternary
-        @click="step--"
+        @click="error = ''; step--"
       >
         <template #icon>
           <Icon icon="lucide:arrow-left" />

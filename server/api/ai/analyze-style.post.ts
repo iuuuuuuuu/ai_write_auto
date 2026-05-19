@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and, isNull } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 import { callAi } from '../../utils/ai-client'
 
 const styleSchema = z.object({
@@ -11,44 +9,25 @@ export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const body = await readBody(event)
   const data = styleSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.id, data.novelId), eq(schema.novels.userId, auth.userId)))
-    .limit(1)
-
-  if (!novels.length) {
+  const novel = await em.findOne('Novel', { id: data.novelId, user: auth.userId })
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const aiConfigs = await (db as any)
-    .select()
-    .from(schema.aiConfigs)
-    .where(and(eq(schema.aiConfigs.userId, auth.userId), eq(schema.aiConfigs.purpose, 'style_analysis')))
-    .limit(1)
-
-  if (!aiConfigs.length) {
-    const fallback = await (db as any)
-      .select()
-      .from(schema.aiConfigs)
-      .where(and(eq(schema.aiConfigs.userId, auth.userId), eq(schema.aiConfigs.purpose, 'extraction')))
-      .limit(1)
-    if (!fallback.length) {
+  let aiConfig = await em.findOne('AiConfig', { user: auth.userId, purpose: 'style_analysis' })
+  if (!aiConfig) {
+    aiConfig = await em.findOne('AiConfig', { user: auth.userId, purpose: 'extraction' })
+    if (!aiConfig) {
       throw createError({ statusCode: 400, message: 'No AI config found' })
     }
-    aiConfigs.push(fallback[0])
   }
-  const aiConfig = aiConfigs[0]
 
-  const chapters = await (db as any)
-    .select()
-    .from(schema.chapters)
-    .where(and(eq(schema.chapters.novelId, data.novelId), isNull(schema.chapters.deletedAt)))
-    .orderBy(schema.chapters.chapterNumber)
-    .limit(5)
+  const chapters = await em.find('Chapter', {
+    novel: data.novelId,
+    deletedAt: null,
+  }, { orderBy: { chapterNumber: 'ASC' }, limit: 5 })
 
   const sampleText = chapters
     .filter((c: any) => c.content)
@@ -79,18 +58,15 @@ export default defineEventHandler(async (event) => {
   ]
 
   const styleGuide = await callAi({
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
+    apiUrl: (aiConfig as any).apiUrl,
+    apiKey: (aiConfig as any).apiKey,
+    model: (aiConfig as any).model,
     messages,
     temperature: 0.3,
     maxTokens: 1000,
   })
 
-  await (db as any)
-    .update(schema.novels)
-    .set({ styleGuide, updatedAt: new Date() })
-    .where(eq(schema.novels.id, data.novelId))
+  await em.nativeUpdate('Novel', { id: data.novelId }, { styleGuide, updatedAt: new Date() })
 
   return { styleGuide }
 })

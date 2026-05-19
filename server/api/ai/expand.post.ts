@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 import { streamAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { checkRateLimit } from '../../utils/rate-limit'
@@ -26,29 +24,17 @@ export default defineEventHandler(async (event) => {
 
   const body = await readBody(event)
   const data = expandSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
+  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
 
-  const aiConfig = await resolveUserAiConfig(
-    db,
-    auth.userId,
-    'generation',
-    data.aiConfigId
-  )
+  const chapter = await em.findOne('Chapter', {
+    id: data.chapterId,
+    novel: { user: auth.userId },
+    deletedAt: null,
+  })
 
-  const chapters = await (db as any)
-    .select()
-    .from(schema.chapters)
-    .innerJoin(schema.novels, eq(schema.chapters.novelId, schema.novels.id))
-    .where(
-      and(
-        eq(schema.chapters.id, data.chapterId),
-        eq(schema.novels.userId, auth.userId)
-      )
-    )
-    .limit(1)
-
-  const chapterContent = chapters[0]?.chapters?.content || ''
+  const chapterContent = (chapter as any)?.content || ''
 
   const messages = [
     {

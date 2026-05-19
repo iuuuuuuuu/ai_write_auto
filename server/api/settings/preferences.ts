@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
 
 const prefSchema = z.object({
   key: z.string().min(1),
@@ -10,17 +8,13 @@ const prefSchema = z.object({
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const method = getMethod(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
   if (method === 'GET') {
-    const prefs = await (db as any)
-      .select()
-      .from(schema.userPreferences)
-      .where(eq(schema.userPreferences.userId, auth.userId))
-
+    const prefs = await em.find('UserPreference', { user: auth.userId })
     const result: Record<string, string> = {}
     for (const p of prefs) {
-      result[p.key] = p.value
+      result[(p as any).key] = (p as any).value
     }
     return result
   }
@@ -29,23 +23,16 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     const data = prefSchema.parse(body)
 
-    const existing = await (db as any)
-      .select()
-      .from(schema.userPreferences)
-      .where(and(eq(schema.userPreferences.userId, auth.userId), eq(schema.userPreferences.key, data.key)))
-      .limit(1)
-
-    if (existing.length) {
-      await (db as any)
-        .update(schema.userPreferences)
-        .set({ value: data.value })
-        .where(eq(schema.userPreferences.id, existing[0].id))
+    const existing = await em.findOne('UserPreference', { user: auth.userId, key: data.key })
+    if (existing) {
+      await em.nativeUpdate('UserPreference', { user: auth.userId, key: data.key }, { value: data.value })
     } else {
-      await (db as any).insert(schema.userPreferences).values({
-        userId: auth.userId,
+      em.create('UserPreference', {
+        user: auth.userId,
         key: data.key,
         value: data.value,
       })
+      await em.flush()
     }
 
     return { success: true }

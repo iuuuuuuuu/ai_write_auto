@@ -1,101 +1,77 @@
-import { drizzle as drizzleSqlite } from 'drizzle-orm/libsql'
-import { createClient } from '@libsql/client'
-import { drizzle as drizzleMysql } from 'drizzle-orm/mysql2'
-import mysql from 'mysql2/promise'
+import { MikroORM, type Options } from '@mikro-orm/core'
+import { LibSqlDriver } from '@mikro-orm/libsql'
+import { MySqlDriver } from '@mikro-orm/mysql'
 import { existsSync, mkdirSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
-import { getEffectiveDbConfig, type DbConfig } from './db-config'
-import * as schema from './schema'
+import { getEffectiveDbConfig, readDbConfig, type DbConfig } from './db-config'
+import { allEntities } from './entities'
 
-export type Database = any
+let _orm: MikroORM | null = null
 
-let _db: Database | null = null
-let _currentConfig: DbConfig | null = null
+export function buildOrmConfig(dbConfig?: DbConfig): Options {
+  const config = dbConfig || getEffectiveDbConfig()
 
-function createSqliteConnection(config: DbConfig) {
-  const dbPath = resolve(
-    process.cwd(),
-    config.sqlite?.path || './data/novel.db'
-  )
+  if (config.type === 'mysql') {
+    const mysql = config.mysql!
+    return {
+      driver: MySqlDriver,
+      host: mysql.host,
+      port: mysql.port,
+      user: mysql.user,
+      password: mysql.password,
+      dbName: mysql.database,
+      entities: allEntities,
+      discovery: { disableDynamicFileAccess: true },
+      allowGlobalContext: true,
+    }
+  }
+
+  const dbPath = resolve(process.cwd(), config.sqlite?.path || './data/novel.db')
   const dir = dirname(dbPath)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
 
-  const client = createClient({
-    url: `file:${dbPath}`
-  })
-
-  return drizzleSqlite(client, { schema })
-}
-
-async function createMysqlConnection(config: DbConfig) {
-  const mysqlConfig = config.mysql!
-  const pool = mysql.createPool({
-    host: mysqlConfig.host,
-    port: mysqlConfig.port,
-    user: mysqlConfig.user,
-    password: mysqlConfig.password,
-    database: mysqlConfig.database,
-    waitForConnections: true,
-    connectionLimit: 10
-  })
-
-  return drizzleMysql(pool, { schema, mode: 'default' })
-}
-
-export async function getDatabase(): Promise<Database> {
-  const config = getEffectiveDbConfig()
-  const configKey = JSON.stringify(config)
-
-  if (_db && _currentConfig && JSON.stringify(_currentConfig) === configKey) {
-    return _db
+  return {
+    driver: LibSqlDriver,
+    dbName: dbPath,
+    entities: allEntities,
+    discovery: { disableDynamicFileAccess: true },
+    allowGlobalContext: true,
   }
-
-  if (config.type === 'mysql') {
-    _db = await createMysqlConnection(config)
-  } else {
-    _db = createSqliteConnection(config)
-  }
-  _currentConfig = config
-  return _db
 }
 
-export async function testConnection(
-  config: DbConfig
-): Promise<{ success: boolean; error?: string }> {
+export async function initOrm(dbConfig?: DbConfig): Promise<MikroORM> {
+  if (_orm) return _orm
+  const config = buildOrmConfig(dbConfig)
+  _orm = await MikroORM.init(config)
+  return _orm
+}
+
+export function getOrm(): MikroORM {
+  if (!_orm) throw new Error('ORM not initialized')
+  return _orm
+}
+
+export async function closeOrm(): Promise<void> {
+  if (_orm) {
+    await _orm.close()
+    _orm = null
+  }
+}
+
+export function resetOrm(): void {
+  _orm = null
+}
+
+export async function testConnection(config: DbConfig): Promise<{ success: boolean; error?: string }> {
   try {
-    if (config.type === 'mysql') {
-      const connection = await mysql.createConnection({
-        host: config.mysql!.host,
-        port: config.mysql!.port,
-        user: config.mysql!.user,
-        password: config.mysql!.password,
-        database: config.mysql!.database
-      })
-      await connection.ping()
-      await connection.end()
-    } else {
-      const dbPath = resolve(
-        process.cwd(),
-        config.sqlite?.path || './data/novel.db'
-      )
-      const dir = dirname(dbPath)
-      if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true })
-      }
-      const client = createClient({ url: `file:${dbPath}` })
-      await client.execute('SELECT 1')
-    }
+    const orm = await MikroORM.init(buildOrmConfig(config))
+    const conn = orm.em.getConnection()
+    await conn.execute('SELECT 1')
+    await orm.close()
     return { success: true }
   } catch (e: any) {
     return { success: false, error: e.message || 'Connection failed' }
   }
 }
-
-export function resetConnection(): void {
-  _db = null
-  _currentConfig = null
-}
-
-export { schema }

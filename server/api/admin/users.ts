@@ -1,23 +1,19 @@
-import { eq } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
-import { hashPassword } from '../../utils/auth'
 import { z } from 'zod'
+import { hashPassword } from '../../utils/auth'
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const method = getMethod(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
   if (method === 'GET') {
-    const users = await (db as any)
-      .select({
-        id: schema.users.id,
-        username: schema.users.username,
-        role: schema.users.role,
-        createdAt: schema.users.createdAt,
-      })
-      .from(schema.users)
-    return users
+    const users = await em.find('User', {})
+    return users.map((u: any) => ({
+      id: u.id,
+      username: u.username,
+      role: u.role,
+      createdAt: u.createdAt,
+    }))
   }
 
   if (method === 'POST') {
@@ -28,23 +24,19 @@ export default defineEventHandler(async (event) => {
       role: z.enum(['admin', 'user']).default('user'),
     }).parse(body)
 
-    const existing = await (db as any)
-      .select()
-      .from(schema.users)
-      .where(eq(schema.users.username, data.username))
-      .limit(1)
-
-    if (existing.length) {
+    const existing = await em.findOne('User', { username: data.username })
+    if (existing) {
       throw createError({ statusCode: 409, message: 'Username already exists' })
     }
 
-    const result = await (db as any).insert(schema.users).values({
+    const user = em.create('User', {
       username: data.username,
       passwordHash: hashPassword(data.password),
       role: data.role,
-    }).returning()
+    })
+    await em.flush()
 
-    return { id: result[0].id, username: result[0].username, role: result[0].role }
+    return { id: (user as any).id, username: (user as any).username, role: (user as any).role }
   }
 
   if (method === 'DELETE') {
@@ -55,7 +47,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: 'Cannot delete the primary admin' })
     }
 
-    await (db as any).delete(schema.users).where(eq(schema.users.id, id))
+    await em.nativeDelete('User', { id })
     return { success: true }
   }
 })

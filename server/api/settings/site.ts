@@ -1,16 +1,13 @@
-import { eq } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
-
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const method = getMethod(event)
-  const db = await getDatabase()
+  const em = useEm(event)
 
   if (method === 'GET') {
-    const configs = await (db as any).select().from(schema.siteConfig)
+    const configs = await em.find('SiteConfig', {})
     const result: Record<string, string> = {}
     for (const c of configs) {
-      result[c.key] = c.value
+      result[(c as any).key] = (c as any).value
     }
     return result
   }
@@ -20,19 +17,12 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
 
     for (const [key, value] of Object.entries(body)) {
-      const existing = await (db as any)
-        .select()
-        .from(schema.siteConfig)
-        .where(eq(schema.siteConfig.key, key))
-        .limit(1)
-
-      if (existing.length) {
-        await (db as any)
-          .update(schema.siteConfig)
-          .set({ value: String(value) })
-          .where(eq(schema.siteConfig.key, key))
+      const existing = await em.findOne('SiteConfig', { key })
+      if (existing) {
+        await em.nativeUpdate('SiteConfig', { key }, { value: String(value) })
       } else {
-        await (db as any).insert(schema.siteConfig).values({ key, value: String(value) })
+        em.create('SiteConfig', { key, value: String(value) })
+        await em.flush()
       }
     }
 

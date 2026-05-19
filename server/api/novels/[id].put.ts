@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
+import { wrap } from '@mikro-orm/core'
 
 const updateNovelSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -18,17 +17,20 @@ export default defineEventHandler(async (event) => {
   const id = parseInt(getRouterParam(event, 'id')!)
   const body = await readBody(event)
   const data = updateNovelSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-  const result = await (db as any)
-    .update(schema.novels)
-    .set({ ...data, updatedAt: new Date() })
-    .where(and(eq(schema.novels.id, id), eq(schema.novels.userId, auth.userId)))
-    .returning()
+  const novel = await em.findOne('Novel', {
+    id,
+    user: auth.userId,
+    deletedAt: null,
+  })
 
-  if (!result.length) {
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  return result[0]
+  wrap(novel).assign({ ...data, updatedAt: new Date() })
+  await em.flush()
+
+  return novel
 })

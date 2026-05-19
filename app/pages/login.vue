@@ -34,7 +34,7 @@ async function handleLogin() {
       <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-500/10 border border-primary-500/20 mb-4">
         <Icon icon="lucide:pen-tool" class="w-6 h-6 text-primary-400" />
       </div>
-      <h1 class="text-xl font-semibold text-white">
+      <h1 class="text-xl font-semibold text-(--ui-text-highlighted)">
         {{ t('auth.loginTitle') }}
       </h1>
       <p class="mt-1.5 text-sm text-(--ui-text-muted)">
@@ -44,7 +44,7 @@ async function handleLogin() {
 
     <!-- Error -->
     <Transition name="slide-fade">
-      <div v-if="error" class="mb-5 flex items-start gap-2.5 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+      <div v-if="error" class="mb-5 flex items-start gap-2.5 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-600 dark:text-red-300">
         <Icon icon="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
         <span>{{ error }}</span>
       </div>

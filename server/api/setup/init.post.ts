@@ -1,9 +1,7 @@
 import { z } from 'zod'
 import { writeDbConfig, type DbConfig } from '../../database/db-config'
-import { testConnection } from '../../database'
-import { runMigrations } from '../../database/migrate'
+import { initOrm, getOrm, testConnection, resetOrm } from '../../database'
 import { hashPassword, signToken } from '../../utils/auth'
-import { getDatabase, schema } from '../../database'
 
 const setupSchema = z.object({
   database: z.object({
@@ -48,24 +46,29 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: `Database connection failed: ${connTest.error}` })
   }
 
-  await runMigrations(dbConfig)
+  resetOrm()
+  await initOrm(dbConfig)
+
+  const generator = getOrm().getSchemaGenerator()
+  await generator.updateSchema({ safe: true, dropTables: false })
+
   writeDbConfig(dbConfig)
 
-  const db = await getDatabase()
+  const em = getOrm().em.fork()
 
   const passwordHash = hashPassword(data.admin.password)
-  await (db as any).insert(schema.users).values({
+  em.create('User', {
     username: data.admin.username,
     passwordHash,
     role: 'admin',
   })
 
-  await (db as any).insert(schema.siteConfig).values([
-    { key: 'site_name', value: data.site.name },
-    { key: 'site_description', value: data.site.description || '' },
-    { key: 'allow_registration', value: 'false' },
-    { key: 'initialized', value: 'true' },
-  ])
+  em.create('SiteConfig', { key: 'site_name', value: data.site.name })
+  em.create('SiteConfig', { key: 'site_description', value: data.site.description || '' })
+  em.create('SiteConfig', { key: 'allow_registration', value: 'false' })
+  em.create('SiteConfig', { key: 'initialized', value: 'true' })
+
+  await em.flush()
 
   const token = signToken({
     userId: 1,

@@ -1,6 +1,4 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
-import { getDatabase, schema } from '../../../database'
 
 const outlineSchema = z.object({
   outlines: z.array(z.object({
@@ -15,32 +13,25 @@ export default defineEventHandler(async (event) => {
   const novelId = parseInt(getRouterParam(event, 'id')!)
   const body = await readBody(event)
   const data = outlineSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.id, novelId), eq(schema.novels.userId, auth.userId)))
-    .limit(1)
-
-  if (!novels.length) {
+  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId })
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  await (db as any)
-    .delete(schema.novelOutlines)
-    .where(eq(schema.novelOutlines.novelId, novelId))
+  await em.nativeDelete('NovelOutline', { novel: novelId })
 
   if (data.outlines.length > 0) {
-    await (db as any).insert(schema.novelOutlines).values(
-      data.outlines.map(o => ({
-        novelId,
+    for (const o of data.outlines) {
+      em.create('NovelOutline', {
+        novel: novelId,
         chapterNumber: o.chapterNumber,
         description: o.description,
         sortOrder: o.sortOrder,
-      }))
-    )
+      })
+    }
+    await em.flush()
   }
 
   return { success: true }

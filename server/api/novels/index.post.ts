@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { getDatabase, schema } from '../../database'
 
 const createNovelSchema = z.object({
   title: z.string().min(1).max(200),
@@ -15,10 +14,10 @@ export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const body = await readBody(event)
   const data = createNovelSchema.parse(body)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-  const result = await (db as any).insert(schema.novels).values({
-    userId: auth.userId,
+  const novel = em.create('Novel', {
+    user: auth.userId,
     title: data.title,
     description: data.description || null,
     genre: data.genre || null,
@@ -27,7 +26,8 @@ export default defineEventHandler(async (event) => {
     aiTemperature: data.aiTemperature || null,
     aiExtraPrompt: data.aiExtraPrompt || null,
     status: 'draft',
-  }).returning()
+  })
 
-  return result[0]
+  await em.flush()
+  return novel
 })

@@ -1,20 +1,17 @@
-import { eq, and, isNull } from 'drizzle-orm'
-import { getDatabase, schema } from '../../database'
-
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const id = parseInt(getRouterParam(event, 'id')!)
+  const em = useEm(event)
 
-  const db = await getDatabase()
-  const novels = await (db as any)
-    .select()
-    .from(schema.novels)
-    .where(and(eq(schema.novels.id, id), eq(schema.novels.userId, auth.userId), isNull(schema.novels.deletedAt)))
-    .limit(1)
+  const novel = await em.findOne('Novel', {
+    id,
+    user: auth.userId,
+    deletedAt: null,
+  })
 
-  if (!novels.length) {
+  if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  return novels[0]
+  return novel
 })

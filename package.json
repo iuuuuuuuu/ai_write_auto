@@ -7,14 +7,13 @@
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
-    "postinstall": "nuxt prepare",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push"
+    "postinstall": "nuxt prepare"
   },
   "dependencies": {
     "@iconify/vue": "^5.0.1",
-    "@libsql/client": "^0.17.3",
+    "@mikro-orm/core": "^6.4.3",
+    "@mikro-orm/libsql": "^6.4.3",
+    "@mikro-orm/mysql": "^6.4.3",
     "@milkdown/core": "^7.21.1",
     "@milkdown/ctx": "^7.21.1",
     "@milkdown/kit": "^7.21.1",
@@ -25,7 +24,6 @@
     "@tailwindcss/vite": "^4.1.8",
     "@nuxtjs/i18n": "^10.3.0",
     "bcryptjs": "^3.0.3",
-    "drizzle-orm": "^0.45.2",
     "epub-gen-memory": "^1.1.2",
     "jsonwebtoken": "^9.0.3",
     "mysql2": "^3.22.3",
@@ -40,7 +38,6 @@
     "@bg-dev/nuxt-naiveui": "^2.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
-    "drizzle-kit": "^0.31.10",
     "typescript": "^6.0.3"
   }
 }
