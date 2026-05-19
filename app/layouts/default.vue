@@ -13,9 +13,9 @@ const navItems = computed(() => [
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-950">
+  <div class="min-h-screen bg-(--ui-bg)">
     <!-- Mobile Header -->
-    <div class="lg:hidden flex items-center justify-between px-4 py-3 border-b border-gray-800/60 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-40">
+    <div class="lg:hidden flex items-center justify-between px-4 py-3 border-b border-(--ui-border) bg-(--ui-bg-muted) sticky top-0 z-40">
       <UButton variant="ghost" color="neutral" icon="i-lucide-menu" @click="sidebarOpen = true" />
       <div class="flex items-center gap-2">
         <UIcon name="i-lucide-pen-tool" class="w-4 h-4 text-primary-400" />
@@ -25,79 +25,76 @@ const navItems = computed(() => [
     </div>
 
     <div class="flex">
-      <!-- Sidebar (Desktop) -->
-      <aside class="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 border-r border-gray-800/60 bg-gray-900/50">
-        <div class="flex items-center gap-2.5 px-6 py-5">
-          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center shadow-lg shadow-primary-500/15">
-            <UIcon name="i-lucide-pen-tool" class="w-4 h-4 text-white" />
+      <!-- Sidebar -->
+      <aside class="hidden lg:flex lg:flex-col lg:w-60 lg:fixed lg:inset-y-0 border-r border-(--ui-border) bg-(--ui-bg-muted)">
+        <div class="flex items-center gap-2.5 px-5 py-5">
+          <div class="w-7 h-7 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center justify-center">
+            <UIcon name="i-lucide-pen-tool" class="w-3.5 h-3.5 text-primary-400" />
           </div>
-          <span class="font-semibold text-white">{{ t('common.appName') }}</span>
+          <span class="text-sm font-semibold text-white">{{ t('common.appName') }}</span>
         </div>
 
-        <nav class="flex-1 px-3 space-y-1 mt-2">
+        <nav class="flex-1 px-3 space-y-0.5 mt-2">
           <NuxtLink
             v-for="item in navItems"
             :key="item.to"
             :to="item.to"
-            class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150"
+            class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
             :class="route.path.startsWith(item.to)
-              ? 'bg-primary-500/10 text-primary-400 border border-primary-500/20'
-              : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 border border-transparent'"
+              ? 'bg-primary-500/10 text-primary-300'
+              : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)'"
           >
-            <UIcon :name="item.icon" class="w-5 h-5" />
+            <UIcon :name="item.icon" class="w-4 h-4" />
             {{ item.label }}
           </NuxtLink>
         </nav>
 
-        <div class="px-3 py-4 border-t border-gray-800/60">
-          <div class="flex items-center gap-3 px-3">
-            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500/20 to-primary-600/20 border border-primary-500/30 flex items-center justify-center">
-              <span class="text-xs font-medium text-primary-300">
+        <div class="px-3 py-4 border-t border-(--ui-border)">
+          <div class="flex items-center gap-2.5 px-3">
+            <div class="w-7 h-7 rounded-full bg-(--ui-bg-elevated) flex items-center justify-center">
+              <span class="text-xs font-medium text-(--ui-text-muted)">
                 {{ user?.username?.charAt(0).toUpperCase() }}
               </span>
             </div>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-white truncate">{{ user?.username }}</p>
-              <p class="text-xs text-gray-500">{{ user?.role }}</p>
+              <p class="text-sm font-medium text-(--ui-text) truncate">{{ user?.username }}</p>
             </div>
             <UButton variant="ghost" color="neutral" icon="i-lucide-log-out" size="xs" @click="logout" />
           </div>
         </div>
       </aside>
 
-      <!-- Main Content -->
-      <main class="flex-1 lg:pl-64">
+      <!-- Main -->
+      <main class="flex-1 lg:pl-60">
         <slot />
       </main>
     </div>
 
-    <!-- Mobile Sidebar Overlay -->
+    <!-- Mobile Sidebar -->
     <Teleport to="body">
       <Transition name="fade">
         <div v-if="sidebarOpen" class="lg:hidden fixed inset-0 z-50">
-          <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="sidebarOpen = false" />
-          <aside class="absolute left-0 top-0 bottom-0 w-64 bg-gray-900 border-r border-gray-800/60 shadow-2xl">
-            <div class="flex items-center justify-between px-6 py-5">
+          <div class="absolute inset-0 bg-black/60" @click="sidebarOpen = false" />
+          <aside class="absolute left-0 top-0 bottom-0 w-60 bg-(--ui-bg-muted) border-r border-(--ui-border)">
+            <div class="flex items-center justify-between px-5 py-5">
               <div class="flex items-center gap-2.5">
-                <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center">
-                  <UIcon name="i-lucide-pen-tool" class="w-3.5 h-3.5 text-white" />
-                </div>
-                <span class="font-semibold text-white">{{ t('common.appName') }}</span>
+                <UIcon name="i-lucide-pen-tool" class="w-4 h-4 text-primary-400" />
+                <span class="text-sm font-semibold text-white">{{ t('common.appName') }}</span>
               </div>
               <UButton variant="ghost" color="neutral" icon="i-lucide-x" size="sm" @click="sidebarOpen = false" />
             </div>
-            <nav class="px-3 space-y-1">
+            <nav class="px-3 space-y-0.5">
               <NuxtLink
                 v-for="item in navItems"
                 :key="item.to"
                 :to="item.to"
-                class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors"
+                class="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors"
                 :class="route.path.startsWith(item.to)
-                  ? 'bg-primary-500/10 text-primary-400'
-                  : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'"
+                  ? 'bg-primary-500/10 text-primary-300'
+                  : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)'"
                 @click="sidebarOpen = false"
               >
-                <UIcon :name="item.icon" class="w-5 h-5" />
+                <UIcon :name="item.icon" class="w-4 h-4" />
                 {{ item.label }}
               </NuxtLink>
             </nav>

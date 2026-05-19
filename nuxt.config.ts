@@ -10,6 +10,21 @@ export default defineNuxtConfig({
 
   modules: ['@nuxt/ui', '@nuxtjs/i18n'],
 
+  colorMode: {
+    preference: 'dark',
+    fallback: 'dark'
+  },
+
+  fonts: {
+    defaults: {
+      weights: [400, 500, 600, 700]
+    },
+    providers: {
+      google: false,
+      googleicons: false
+    }
+  },
+
   i18n: {
     locales: [
       { code: 'zh-CN', name: '中文', file: 'zh-CN.json' },
