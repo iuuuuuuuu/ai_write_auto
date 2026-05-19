@@ -1,5 +1,43 @@
 <script setup lang="ts">
+import NovelChapterEditor from '~/components/novel/NovelChapterEditor.vue'
+import NovelQuickActions from '~/components/novel/NovelQuickActions.vue'
+import NovelResourceTabs from '~/components/novel/NovelResourceTabs.vue'
+
 definePageMeta({ layout: 'default' })
+
+type NovelPanelTab = 'chapters' | 'characters' | 'outline'
+
+interface NovelDetail {
+  id: number
+  title: string
+  description: string | null
+}
+
+interface ChapterItem {
+  id: number
+  chapterNumber: number
+  title: string
+  content: string | null
+  summary: string | null
+  status: 'draft' | 'generated' | 'edited' | 'final'
+  wordCount: number | null
+  updatedAt: string | Date
+}
+
+interface CharacterItem {
+  id: number
+  name: string
+  description: string | null
+  traits: string | null
+  relationships: string | null
+  currentState: string | null
+}
+
+interface OutlineItem {
+  id: number
+  chapterNumber: number
+  description: string
+}
 
 const { t } = useI18n()
 const toast = useToast()
@@ -7,23 +45,35 @@ const route = useRoute()
 const novelId = computed(() => Number(route.params.id))
 const isNestedRoute = computed(() => route.path !== `/novels/${novelId.value}`)
 
-const { data: novel, refresh: refreshNovel } = await useFetch(
-  `/api/novels/${novelId.value}`
+const { data: novel } = await useFetch<NovelDetail>(
+  `/api/novels/${novelId.value}`,
+  { key: `novel-detail-${novelId.value}` }
 )
-const { data: chapters, refresh: refreshChapters } = await useFetch(
-  `/api/novels/${novelId.value}/chapters`
-)
-const { data: characters, refresh: refreshCharacters } = await useFetch(
-  `/api/novels/${novelId.value}/characters`
-)
-const { data: outlines } = await useFetch(
-  `/api/novels/${novelId.value}/outlines`
+const { data: chapters, refresh: refreshChapters } = await useFetch<
+  ChapterItem[]
+>(`/api/novels/${novelId.value}/chapters`, {
+  key: `novel-detail-${novelId.value}-chapters`,
+  default: () => []
+})
+const { data: characters, refresh: refreshCharacters } = await useFetch<
+  CharacterItem[]
+>(`/api/novels/${novelId.value}/characters`, {
+  key: `novel-detail-${novelId.value}-characters`,
+  default: () => []
+})
+const { data: outlines } = await useFetch<OutlineItem[]>(
+  `/api/novels/${novelId.value}/outlines`,
+  {
+    key: `novel-detail-${novelId.value}-outlines`,
+    default: () => []
+  }
 )
 
-const activeTab = ref('chapters')
-const showCreateChapter = ref(false)
-const showCreateCharacter = ref(false)
-const newChapterTitle = ref('')
+const activeTab = shallowRef<NovelPanelTab>('chapters')
+const selectedChapterId = shallowRef<number | null>(null)
+const showCreateChapter = shallowRef(false)
+const showCreateCharacter = shallowRef(false)
+const newChapterTitle = shallowRef('')
 const newCharacter = reactive({
   name: '',
   description: '',
@@ -31,33 +81,117 @@ const newCharacter = reactive({
   relationships: '',
   currentState: ''
 })
-const creating = ref(false)
-const creatingCharacter = ref(false)
+const creating = shallowRef(false)
+const creatingCharacter = shallowRef(false)
+const savingContent = shallowRef(false)
+const showGenerateDialog = shallowRef(false)
+const generateDirection = shallowRef('')
+const { data: aiConfigs } = await useFetch<
+  Array<{
+    id: number
+    name: string
+    purpose: string
+    model: string
+    isDefault: boolean
+    enabled: boolean
+  }>
+>('/api/ai/config', { default: () => [] })
 
-function getChapterTo(chapterId: number) {
-  return {
-    path: `/novels/${novelId.value}/chapters/${chapterId}`
-  }
-}
+const generationModelOptions = computed(() =>
+  aiConfigs.value
+    .filter((config) => config.purpose === 'generation' && config.enabled)
+    .map((config) => ({
+      label: config.isDefault ? `${config.name} · 默认` : config.name,
+      value: config.id,
+      description: config.model
+    }))
+)
 
-function getReadTo() {
-  return {
-    path: `/novels/${novelId.value}/read`
-  }
-}
+const selectedAiConfigId = ref<number | undefined>()
+
+watch(
+  generationModelOptions,
+  (options) => {
+    if (!options.length) {
+      selectedAiConfigId.value = undefined
+      return
+    }
+    if (
+      !selectedAiConfigId.value ||
+      !options.some((option) => option.value === selectedAiConfigId.value)
+    ) {
+      selectedAiConfigId.value = options[0].value
+    }
+  },
+  { immediate: true }
+)
+
+const selectedChapter = computed(() => {
+  if (!chapters.value.length) return null
+  return (
+    chapters.value.find((chapter) => chapter.id === selectedChapterId.value) ||
+    chapters.value[0] ||
+    null
+  )
+})
+
+const readTo = computed(() => `/novels/${novelId.value}/read`)
+
+const chapterCharacters = computed(() => {
+  const chapter = selectedChapter.value
+  if (!chapter || !chapter.content) return []
+  return (characters.value || []).filter((char) =>
+    chapter.content!.includes(char.name)
+  )
+})
+
+const hasDuplicateCharacterName = computed(() => {
+  const name = newCharacter.name.trim()
+  if (!name) return false
+  return (characters.value || []).some(
+    (char) => char.name.toLowerCase() === name.toLowerCase()
+  )
+})
+
+watch(
+  chapters,
+  (chapterList) => {
+    if (!chapterList.length) {
+      selectedChapterId.value = null
+      return
+    }
+
+    if (
+      !chapterList.some((chapter) => chapter.id === selectedChapterId.value)
+    ) {
+      selectedChapterId.value = chapterList[0].id
+    }
+  },
+  { immediate: true }
+)
 
 async function createChapter() {
-  if (!newChapterTitle.value.trim()) return
+  const title = newChapterTitle.value.trim()
+  if (!title) {
+    toast.add({ title: '请输入章节标题', color: 'warning' })
+    return
+  }
+
   creating.value = true
   try {
-    await $fetch(`/api/novels/${novelId.value}/chapters`, {
-      method: 'POST',
-      body: { title: newChapterTitle.value }
-    })
+    const createdChapter = await $fetch<ChapterItem>(
+      `/api/novels/${novelId.value}/chapters`,
+      {
+        method: 'POST',
+        body: { title }
+      }
+    )
     toast.add({ title: '章节已创建', color: 'success' })
     newChapterTitle.value = ''
     showCreateChapter.value = false
     await refreshChapters()
+    selectedChapterId.value = createdChapter.id
+    activeTab.value = 'chapters'
   } catch {
     toast.add({ title: '创建章节失败', color: 'error' })
   } finally {
@@ -73,9 +207,33 @@ function resetNewCharacter() {
   newCharacter.currentState = ''
 }
 
+async function saveChapterContent(chapterContent: string) {
+  if (!selectedChapter.value) return
+  savingContent.value = true
+  try {
+    await $fetch(
+      `/api/novels/${novelId.value}/chapters/${selectedChapter.value.id}`,
+      {
+        method: 'PUT',
+        body: { content: chapterContent }
+      }
+    )
+    await refreshChapters()
+    toast.add({ title: '已保存', color: 'success' })
+  } catch {
+    toast.add({ title: '保存失败', color: 'error' })
+  } finally {
+    savingContent.value = false
+  }
+}
+
 async function createCharacter() {
   if (!newCharacter.name.trim()) {
     toast.add({ title: '请输入角色名称', color: 'warning' })
+    return
+  }
+  if (hasDuplicateCharacterName.value) {
+    toast.add({ title: '该角色名称已存在', color: 'warning' })
     return
   }
 
@@ -95,10 +253,32 @@ async function createCharacter() {
     resetNewCharacter()
     showCreateCharacter.value = false
     await refreshCharacters()
+    activeTab.value = 'characters'
   } catch {
     toast.add({ title: '创建角色失败', color: 'error' })
   } finally {
     creatingCharacter.value = false
+  }
+}
+
+async function generateChapter() {
+  if (!selectedAiConfigId.value || !selectedChapter.value) return
+  try {
+    await $fetch('/api/ai/generate', {
+      method: 'POST',
+      body: {
+        novelId: novelId.value,
+        chapterId: selectedChapter.value.id,
+        direction: generateDirection.value || undefined,
+        aiConfigId: selectedAiConfigId.value
+      }
+    })
+    toast.add({ title: '生成完成', color: 'success' })
+    showGenerateDialog.value = false
+    generateDirection.value = ''
+    await refreshChapters()
+  } catch {
+    toast.add({ title: '生成失败', color: 'error' })
   }
 }
 
@@ -108,11 +288,11 @@ async function exportNovel(format: string) {
   )
   const blob = await response.blob()
   const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
+  const anchor = document.createElement('a')
+  anchor.href = url
   const extMap: Record<string, string> = { txt: 'txt', md: 'md', epub: 'epub' }
-  a.download = `${novel.value?.title || 'novel'}.${extMap[format] || format}`
-  a.click()
+  anchor.download = `${novel.value?.title || 'novel'}.${extMap[format] || format}`
+  anchor.click()
   URL.revokeObjectURL(url)
 }
 </script>
@@ -123,314 +303,81 @@ async function exportNovel(format: string) {
   </div>
   <div
     v-else
-    class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+    class="mx-auto flex h-[calc(100dvh-3.5rem)] max-w-[1680px] flex-col gap-4 px-4 pb-4 pt-5 sm:px-6 lg:px-8"
   >
     <!-- Header -->
-    <div class="flex items-center gap-4 mb-8">
+    <div class="flex shrink-0 items-center gap-3">
       <UButton
         variant="ghost"
         color="neutral"
         icon="i-lucide-arrow-left"
+        size="sm"
         to="/dashboard"
+        class="shrink-0"
       />
-      <div class="flex-1 min-w-0">
-        <h1 class="text-2xl font-bold text-white tracking-tight truncate">
+      <div class="min-w-0 flex-1">
+        <h1
+          class="truncate text-xl font-semibold tracking-tight text-(--ui-text-highlighted)"
+        >
           {{ novel?.title }}
         </h1>
         <p
           v-if="novel?.description"
-          class="mt-1 text-sm text-gray-400 truncate"
+          class="mt-0.5 truncate text-sm text-(--ui-text-dimmed)"
         >
           {{ novel.description }}
         </p>
       </div>
-      <UButton
-        variant="ghost"
-        color="neutral"
-        icon="i-lucide-book-open"
-        :to="getReadTo()"
+    </div>
+
+    <!-- Three-column layout -->
+    <div
+      class="grid min-h-0 flex-1 gap-4 xl:grid-cols-[340px_minmax(0,1fr)_280px]"
+    >
+      <NovelResourceTabs
+        v-model:active-tab="activeTab"
+        v-model:selected-chapter-id="selectedChapterId"
+        :chapters="chapters"
+        :characters="characters"
+        :outlines="outlines"
+        class="h-full"
+        @create-chapter="showCreateChapter = true"
+        @create-character="showCreateCharacter = true"
       />
-      <UDropdownMenu
-        :items="[
-          [
-            {
-              label: '导出 TXT',
-              icon: 'i-lucide-file-text',
-              click: () => exportNovel('txt')
-            }
-          ],
-          [
-            {
-              label: '导出 Markdown',
-              icon: 'i-lucide-file-code',
-              click: () => exportNovel('md')
-            }
-          ],
-          [
-            {
-              label: '导出 EPUB',
-              icon: 'i-lucide-book-open',
-              click: () => exportNovel('epub')
-            }
-          ]
-        ]"
-      >
-        <UButton
-          variant="ghost"
-          color="neutral"
-          icon="i-lucide-download"
-        />
-      </UDropdownMenu>
+
+      <NovelChapterEditor
+        :chapter="selectedChapter"
+        class="h-full"
+        @save="saveChapterContent"
+        @generate="showGenerateDialog = true"
+      />
+
+      <NovelQuickActions
+        :read-to="readTo"
+        :selected-chapter="selectedChapter"
+        :chapter-characters="chapterCharacters"
+        :chapter-count="chapters.length"
+        :character-count="characters.length"
+        :outline-count="outlines.length"
+        class="h-full overflow-y-auto"
+        @create-chapter="showCreateChapter = true"
+        @create-character="showCreateCharacter = true"
+        @export-novel="exportNovel"
+        @generate="showGenerateDialog = true"
+        @expand="showGenerateDialog = true"
+      />
     </div>
 
-    <!-- Tabs -->
-    <div class="flex gap-1 mb-8">
-      <button
-        v-for="tab in [
-          {
-            key: 'chapters',
-            label: t('chapter.title'),
-            icon: 'i-lucide-file-text'
-          },
-          {
-            key: 'characters',
-            label: t('chapter.characters'),
-            icon: 'i-lucide-users'
-          },
-          { key: 'outline', label: t('chapter.outline'), icon: 'i-lucide-list' }
-        ]"
-        :key="tab.key"
-        class="flex items-center gap-1.5 px-4 py-2 text-sm rounded-lg transition-all duration-150"
-        :class="
-          activeTab === tab.key ?
-            'bg-primary-500/10 text-primary-400 border border-primary-500/20'
-          : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 border border-transparent'
-        "
-        @click="activeTab = tab.key"
-      >
-        <UIcon
-          :name="tab.icon"
-          class="w-4 h-4"
-        />
-        {{ tab.label }}
-      </button>
-    </div>
-
-    <!-- Chapters Tab -->
-    <div
-      v-if="activeTab === 'chapters'"
-      class="space-y-4"
-    >
-      <div class="flex items-center justify-between">
-        <p class="text-sm text-gray-500">
-          {{ (chapters as any[])?.length || 0 }} 章
-        </p>
-        <UButton
-          icon="i-lucide-plus"
-          size="sm"
-          @click="showCreateChapter = true"
-        >
-          {{ t('chapter.create') }}
-        </UButton>
-      </div>
-
-      <div
-        v-if="(chapters as any[])?.length"
-        class="space-y-2"
-      >
-        <NuxtLink
-          v-for="chapter in chapters as any[]"
-          :key="chapter.id"
-          :to="getChapterTo(chapter.id)"
-          class="flex items-center gap-4 p-4 rounded-xl bg-gray-900/60 border border-gray-800/50 hover:border-primary-500/30 hover:bg-gray-900/80 transition-all duration-200 group"
-        >
-          <span
-            class="text-sm font-mono text-gray-500 w-8 text-center shrink-0"
-          >
-            {{ chapter.chapterNumber }}
-          </span>
-          <div class="flex-1 min-w-0">
-            <p
-              class="font-medium text-white group-hover:text-primary-400 transition-colors truncate"
-            >
-              {{ chapter.title }}
-            </p>
-            <p
-              v-if="chapter.summary"
-              class="text-sm text-gray-500 truncate mt-0.5"
-            >
-              {{ chapter.summary }}
-            </p>
-          </div>
-          <div class="flex items-center gap-3 text-xs text-gray-500 shrink-0">
-            <span>{{ chapter.wordCount || 0 }} 字</span>
-            <UBadge
-              :color="
-                chapter.status === 'final' ? 'success'
-                : chapter.status === 'generated' ? 'info'
-                : 'neutral'
-              "
-              variant="subtle"
-              size="xs"
-            >
-              {{ chapter.status }}
-            </UBadge>
-          </div>
-        </NuxtLink>
-      </div>
-
-      <div
-        v-else
-        class="text-center py-16"
-      >
-        <div
-          class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gray-800/60 border border-gray-700/50 mb-4"
-        >
-          <UIcon
-            name="i-lucide-file-text"
-            class="w-6 h-6 text-gray-500"
-          />
-        </div>
-        <p class="text-gray-400">{{ t('common.noData') }}</p>
-        <UButton
-          class="mt-4"
-          size="sm"
-          icon="i-lucide-plus"
-          @click="showCreateChapter = true"
-        >
-          {{ t('chapter.create') }}
-        </UButton>
-      </div>
-    </div>
-
-    <!-- Characters Tab -->
-    <div
-      v-if="activeTab === 'characters'"
-      class="space-y-4"
-    >
-      <div class="flex items-center justify-between">
-        <p class="text-sm text-gray-500">
-          {{ (characters as any[])?.length || 0 }} 个角色
-        </p>
-        <UButton
-          icon="i-lucide-plus"
-          size="sm"
-          @click="showCreateCharacter = true"
-        >
-          新建角色
-        </UButton>
-      </div>
-
-      <div
-        v-if="(characters as any[])?.length"
-        class="grid grid-cols-1 md:grid-cols-2 gap-4"
-      >
-        <div
-          v-for="char in characters as any[]"
-          :key="char.id"
-          class="p-4 rounded-xl bg-gray-900/60 border border-gray-800/50"
-        >
-          <p class="font-medium text-white">{{ char.name }}</p>
-          <p
-            v-if="char.description"
-            class="mt-1.5 text-sm text-gray-400 leading-relaxed"
-          >
-            {{ char.description }}
-          </p>
-          <p
-            v-if="char.traits"
-            class="mt-2 text-xs text-gray-500"
-          >
-            性格：{{ char.traits }}
-          </p>
-          <p
-            v-if="char.relationships"
-            class="mt-2 text-xs text-gray-500"
-          >
-            关系：{{ char.relationships }}
-          </p>
-          <p
-            v-if="char.currentState"
-            class="mt-2 text-xs text-gray-500"
-          >
-            状态：{{ char.currentState }}
-          </p>
-        </div>
-      </div>
-      <div
-        v-else
-        class="text-center py-16"
-      >
-        <div
-          class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gray-800/60 border border-gray-700/50 mb-4"
-        >
-          <UIcon
-            name="i-lucide-users"
-            class="w-6 h-6 text-gray-500"
-          />
-        </div>
-        <p class="text-gray-400">暂无角色信息，可手动创建或由 AI 自动提取</p>
-        <UButton
-          class="mt-4"
-          size="sm"
-          icon="i-lucide-plus"
-          @click="showCreateCharacter = true"
-        >
-          新建角色
-        </UButton>
-      </div>
-    </div>
-
-    <!-- Outline Tab -->
-    <div
-      v-if="activeTab === 'outline'"
-      class="space-y-3"
-    >
-      <div
-        v-if="(outlines as any[])?.length"
-        class="space-y-2"
-      >
-        <div
-          v-for="outline in outlines as any[]"
-          :key="outline.id"
-          class="flex gap-3 p-4 rounded-xl bg-gray-900/60 border border-gray-800/50"
-        >
-          <span
-            class="text-sm font-mono text-gray-500 w-8 text-center shrink-0"
-            >{{ outline.chapterNumber }}</span
-          >
-          <p class="text-sm text-gray-300 leading-relaxed">
-            {{ outline.description }}
-          </p>
-        </div>
-      </div>
-      <div
-        v-else
-        class="text-center py-16"
-      >
-        <div
-          class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gray-800/60 border border-gray-700/50 mb-4"
-        >
-          <UIcon
-            name="i-lucide-list"
-            class="w-6 h-6 text-gray-500"
-          />
-        </div>
-        <p class="text-gray-400">暂无大纲，可在设置中使用 AI 生成</p>
-      </div>
-    </div>
-
-    <!-- Create Chapter Modal -->
     <UModal v-model:open="showCreateChapter">
       <template #content>
-        <div class="p-6 space-y-5">
-          <h3 class="text-lg font-semibold text-white">
+        <div class="space-y-5 p-6">
+          <h3 class="text-lg font-semibold text-(--ui-text-highlighted)">
             {{ t('chapter.create') }}
           </h3>
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium text-gray-300">{{
-              t('chapter.title')
-            }}</label>
+          <UFormField
+            :label="t('chapter.title')"
+            required
+          >
             <UInput
               v-model="newChapterTitle"
               :placeholder="t('chapter.title')"
@@ -438,32 +385,40 @@ async function exportNovel(format: string) {
               autofocus
               @keyup.enter="createChapter"
             />
-          </div>
+          </UFormField>
           <div class="flex justify-end gap-2 pt-2">
             <UButton
               variant="ghost"
               color="neutral"
               @click="showCreateChapter = false"
-              >{{ t('common.cancel') }}</UButton
             >
+              {{ t('common.cancel') }}
+            </UButton>
             <UButton
               :loading="creating"
               @click="createChapter"
-              >{{ t('common.create') }}</UButton
             >
+              {{ t('common.create') }}
+            </UButton>
           </div>
         </div>
       </template>
     </UModal>
 
-    <!-- Create Character Modal -->
     <UModal v-model:open="showCreateCharacter">
       <template #content>
-        <div class="p-6 space-y-5">
-          <h3 class="text-lg font-semibold text-white">新建角色</h3>
+        <div class="space-y-5 p-6">
+          <h3 class="text-lg font-semibold text-(--ui-text-highlighted)">
+            新建角色
+          </h3>
           <div class="space-y-4">
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-gray-300">角色名称</label>
+            <UFormField
+              label="角色名称"
+              required
+              :error="
+                hasDuplicateCharacterName ? '该角色名称已存在' : undefined
+              "
+            >
               <UInput
                 v-model="newCharacter.name"
                 placeholder="例如：林晚舟"
@@ -471,56 +426,103 @@ async function exportNovel(format: string) {
                 autofocus
                 @keyup.enter="createCharacter"
               />
-            </div>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-gray-300">角色简介</label>
+            </UFormField>
+            <UFormField label="角色简介">
               <UTextarea
                 v-model="newCharacter.description"
                 placeholder="身份、背景或人物定位"
                 :rows="3"
               />
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-300"
-                  >性格特征</label
-                >
+            </UFormField>
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <UFormField label="性格特征">
                 <UInput
                   v-model="newCharacter.traits"
                   placeholder="冷静、敏锐、慢热"
                 />
-              </div>
-              <div class="space-y-1.5">
-                <label class="text-sm font-medium text-gray-300"
-                  >当前状态</label
-                >
+              </UFormField>
+              <UFormField label="当前状态">
                 <UInput
                   v-model="newCharacter.currentState"
                   placeholder="正在调查主线事件"
                 />
-              </div>
+              </UFormField>
             </div>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-gray-300">人物关系</label>
+            <UFormField label="人物关系">
               <UTextarea
                 v-model="newCharacter.relationships"
                 placeholder="与其他角色的关系、冲突或羁绊"
                 :rows="3"
               />
-            </div>
+            </UFormField>
           </div>
           <div class="flex justify-end gap-2 pt-2">
             <UButton
               variant="ghost"
               color="neutral"
               @click="showCreateCharacter = false"
-              >{{ t('common.cancel') }}</UButton
             >
+              {{ t('common.cancel') }}
+            </UButton>
             <UButton
               :loading="creatingCharacter"
+              :disabled="hasDuplicateCharacterName"
               @click="createCharacter"
-              >{{ t('common.create') }}</UButton
             >
+              {{ t('common.create') }}
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- Generate Dialog -->
+    <UModal v-model:open="showGenerateDialog">
+      <template #content>
+        <div class="space-y-4 p-6">
+          <h3 class="text-lg font-semibold text-(--ui-text-highlighted)">
+            AI 生成章节
+          </h3>
+          <UFormField label="生成方向（可选）">
+            <UTextarea
+              v-model="generateDirection"
+              placeholder="描述你希望 AI 如何生成这章内容..."
+              :rows="3"
+            />
+          </UFormField>
+          <UFormField
+            label="生成模型"
+            required
+          >
+            <USelectMenu
+              v-model="selectedAiConfigId"
+              :items="generationModelOptions"
+              value-key="value"
+              placeholder="选择用于生成的模型"
+            />
+          </UFormField>
+          <UAlert
+            v-if="!generationModelOptions.length"
+            color="warning"
+            variant="soft"
+            icon="i-lucide-circle-alert"
+            title="还没有可用的内容生成模型"
+            description="请先到设置页创建并启用一个内容生成模型。"
+          />
+          <div class="flex justify-end gap-2">
+            <UButton
+              variant="ghost"
+              @click="showGenerateDialog = false"
+            >
+              {{ t('common.cancel') }}
+            </UButton>
+            <UButton
+              icon="i-lucide-sparkles"
+              :disabled="!selectedAiConfigId || !selectedChapter"
+              @click="generateChapter"
+            >
+              生成
+            </UButton>
           </div>
         </div>
       </template>
