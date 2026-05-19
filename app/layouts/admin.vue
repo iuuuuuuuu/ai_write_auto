@@ -6,10 +6,10 @@ const { user, logout } = useAuth()
 const sidebarOpen = ref(false)
 
 const adminNavItems = computed(() => [
-  { label: '概览', icon: 'i-lucide-layout-dashboard', to: '/admin' },
-  { label: '用户', icon: 'i-lucide-users', to: '/admin/users' },
-  { label: '小说', icon: 'i-lucide-library', to: '/admin/novels' },
-  { label: '模型配置', icon: 'i-lucide-cpu', to: '/admin/ai-configs' }
+  { label: '概览', icon: 'lucide:layout-dashboard', to: '/admin' },
+  { label: '用户', icon: 'lucide:users', to: '/admin/users' },
+  { label: '小说', icon: 'lucide:library', to: '/admin/novels' },
+  { label: '模型配置', icon: 'lucide:cpu', to: '/admin/ai-configs' }
 ])
 
 function isActiveNav(to: string) {
@@ -26,19 +26,21 @@ function isActiveNav(to: string) {
         class="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8"
       >
         <div class="flex items-center gap-3">
-          <UButton
+          <NButton
             class="lg:hidden"
-            variant="ghost"
-            color="neutral"
-            icon="i-lucide-menu"
+            quaternary
             @click="sidebarOpen = true"
-          />
+          >
+            <template #icon>
+              <Icon icon="lucide:menu" />
+            </template>
+          </NButton>
           <NuxtLink
             to="/dashboard"
             class="flex items-center gap-2 text-sm text-(--ui-text-muted) hover:text-(--ui-text)"
           >
-            <UIcon
-              name="i-lucide-arrow-left"
+            <Icon
+              icon="lucide:arrow-left"
               class="size-4"
             />
             <span>用户端</span>
@@ -49,12 +51,14 @@ function isActiveNav(to: string) {
           <span class="hidden text-sm text-(--ui-text-muted) sm:inline">{{
             user?.username
           }}</span>
-          <UButton
-            variant="ghost"
-            color="neutral"
-            icon="i-lucide-log-out"
+          <NButton
+            quaternary
             @click="logout"
-          />
+          >
+            <template #icon>
+              <Icon icon="lucide:log-out" />
+            </template>
+          </NButton>
         </div>
       </div>
     </header>
@@ -81,8 +85,8 @@ function isActiveNav(to: string) {
               : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)'
             "
           >
-            <UIcon
-              :name="item.icon"
+            <Icon
+              :icon="item.icon"
               class="size-4"
             />
             {{ item.label }}
@@ -112,12 +116,14 @@ function isActiveNav(to: string) {
               <span class="text-sm font-medium text-(--ui-text-highlighted)"
                 >管理端</span
               >
-              <UButton
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-x"
+              <NButton
+                quaternary
                 @click="sidebarOpen = false"
-              />
+              >
+                <template #icon>
+                  <Icon icon="lucide:x" />
+                </template>
+              </NButton>
             </div>
             <nav class="space-y-1 px-4 py-3">
               <NuxtLink
@@ -132,8 +138,8 @@ function isActiveNav(to: string) {
                 "
                 @click="sidebarOpen = false"
               >
-                <UIcon
-                  :name="item.icon"
+                <Icon
+                  :icon="item.icon"
                   class="size-4"
                 />
                 {{ item.label }}

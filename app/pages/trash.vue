@@ -29,7 +29,11 @@ function formatDate(date: string) {
 <template>
   <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
     <div class="flex items-center gap-4 mb-8">
-      <UButton variant="ghost" icon="i-lucide-arrow-left" to="/dashboard" />
+      <NButton quaternary @click="navigateTo('/dashboard')">
+        <template #icon>
+          <Icon icon="lucide:arrow-left" />
+        </template>
+      </NButton>
       <h1 class="text-2xl font-bold text-gray-900 dark:text-white">回收站</h1>
     </div>
 
@@ -52,15 +56,17 @@ function formatDate(date: string) {
             <p class="font-medium text-gray-900 dark:text-white">{{ novel.title }}</p>
             <p class="text-xs text-gray-400 mt-0.5">删除于 {{ formatDate(novel.deletedAt) }}</p>
           </div>
-          <UButton
-            size="sm"
-            variant="soft"
-            icon="i-lucide-undo-2"
+          <NButton
+            size="small"
+            secondary
             :loading="restoring === novel.id"
             @click="restore('novel', novel.id)"
           >
+            <template #icon>
+              <Icon icon="lucide:undo-2" />
+            </template>
             恢复
-          </UButton>
+          </NButton>
         </div>
       </div>
     </div>
@@ -82,15 +88,17 @@ function formatDate(date: string) {
               {{ chapter.wordCount || 0 }} 字 · 删除于 {{ formatDate(chapter.deletedAt) }}
             </p>
           </div>
-          <UButton
-            size="sm"
-            variant="soft"
-            icon="i-lucide-undo-2"
+          <NButton
+            size="small"
+            secondary
             :loading="restoring === chapter.id"
             @click="restore('chapter', chapter.id)"
           >
+            <template #icon>
+              <Icon icon="lucide:undo-2" />
+            </template>
             恢复
-          </UButton>
+          </NButton>
         </div>
       </div>
     </div>

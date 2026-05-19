@@ -102,7 +102,7 @@ async function submitSetup() {
     <!-- Header -->
     <div class="text-center mb-10">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary-500/10 border border-primary-500/20 mb-5">
-        <UIcon name="i-lucide-pen-tool" class="w-7 h-7 text-primary-400" />
+        <Icon icon="lucide:pen-tool" class="w-7 h-7 text-primary-400" />
       </div>
       <h1 class="text-2xl font-semibold text-white">
         {{ t('setup.title') }}
@@ -126,7 +126,7 @@ async function submitSetup() {
                   : 'bg-(--ui-bg-elevated) border-(--ui-border) text-(--ui-text-dimmed)'
             ]"
           >
-            <UIcon v-if="step > i" name="i-lucide-check" class="w-3.5 h-3.5" />
+            <Icon v-if="step > i" icon="lucide:check" class="w-3.5 h-3.5" />
             <span v-else>{{ i }}</span>
           </div>
         </div>
@@ -141,7 +141,7 @@ async function submitSetup() {
     <!-- Error -->
     <Transition name="slide-fade">
       <div v-if="error" class="mb-6 flex items-start gap-2.5 p-3.5 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
-        <UIcon name="i-lucide-alert-circle" class="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+        <Icon icon="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
         <span>{{ error }}</span>
       </div>
     </Transition>
@@ -154,8 +154,8 @@ async function submitSetup() {
           <div class="grid grid-cols-2 gap-3">
             <button
               v-for="opt in [
-                { value: 'sqlite', label: 'SQLite', desc: t('setup.recommended'), icon: 'i-lucide-hard-drive' },
-                { value: 'mysql', label: 'MySQL', desc: t('setup.production') || 'Production', icon: 'i-lucide-database' },
+                { value: 'sqlite', label: 'SQLite', desc: t('setup.recommended'), icon: 'lucide:hard-drive' },
+                { value: 'mysql', label: 'MySQL', desc: t('setup.production') || 'Production', icon: 'lucide:database' },
               ]"
               :key="opt.value"
               class="relative flex flex-col gap-3 p-4 rounded-xl border transition-all duration-150 text-left cursor-pointer"
@@ -164,8 +164,8 @@ async function submitSetup() {
                 : 'bg-(--ui-bg-elevated) border-(--ui-border) hover:border-(--ui-border-accented)'"
               @click="form.database.type = opt.value as 'sqlite' | 'mysql'"
             >
-              <UIcon
-                :name="opt.icon"
+              <Icon
+                :icon="opt.icon"
                 class="w-5 h-5"
                 :class="form.database.type === opt.value ? 'text-primary-400' : 'text-(--ui-text-dimmed)'"
               />
@@ -174,7 +174,7 @@ async function submitSetup() {
                 <p class="text-xs mt-0.5" :class="form.database.type === opt.value ? 'text-primary-300/70' : 'text-(--ui-text-dimmed)'">{{ opt.desc }}</p>
               </div>
               <div v-if="form.database.type === opt.value" class="absolute top-3 right-3 w-4 h-4 rounded-full bg-primary-500 flex items-center justify-center">
-                <UIcon name="i-lucide-check" class="w-2.5 h-2.5 text-white" />
+                <Icon icon="lucide:check" class="w-2.5 h-2.5 text-white" />
               </div>
             </button>
           </div>
@@ -182,33 +182,37 @@ async function submitSetup() {
           <Transition name="slide-fade" mode="out-in">
             <div v-if="form.database.type === 'sqlite'" key="sqlite" class="space-y-2">
               <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.sqlitePath') }}</label>
-              <UInput v-model="form.database.sqlite.path" placeholder="./data/novel.db" size="lg" icon="i-lucide-folder" />
+              <NInput v-model:value="form.database.sqlite.path" placeholder="./data/novel.db" size="large">
+                <template #prefix>
+                  <Icon icon="lucide:folder" class="text-(--ui-text-dimmed)" />
+                </template>
+              </NInput>
               <p class="text-xs text-(--ui-text-dimmed)">{{ t('setup.sqlitePathHint') }}</p>
             </div>
             <div v-else key="mysql" class="space-y-4">
               <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-1.5">
                   <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.mysqlHost') }}</label>
-                  <UInput v-model="form.database.mysql.host" placeholder="localhost" size="lg" />
+                  <NInput v-model:value="form.database.mysql.host" placeholder="localhost" size="large" />
                 </div>
                 <div class="space-y-1.5">
                   <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.mysqlPort') }}</label>
-                  <UInput v-model.number="form.database.mysql.port" type="number" placeholder="3306" size="lg" />
+                  <NInputNumber v-model:value="form.database.mysql.port" placeholder="3306" size="large" :show-button="false" />
                 </div>
               </div>
               <div class="grid grid-cols-2 gap-3">
                 <div class="space-y-1.5">
                   <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.mysqlUser') }}</label>
-                  <UInput v-model="form.database.mysql.user" placeholder="root" size="lg" />
+                  <NInput v-model:value="form.database.mysql.user" placeholder="root" size="large" />
                 </div>
                 <div class="space-y-1.5">
                   <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.mysqlPassword') }}</label>
-                  <UInput v-model="form.database.mysql.password" type="password" size="lg" />
+                  <NInput v-model:value="form.database.mysql.password" type="password" show-password-on="click" size="large" />
                 </div>
               </div>
               <div class="space-y-1.5">
                 <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.mysqlDatabase') }}</label>
-                <UInput v-model="form.database.mysql.database" placeholder="ai_novel" size="lg" />
+                <NInput v-model:value="form.database.mysql.database" placeholder="ai_novel" size="large" />
               </div>
             </div>
           </Transition>
@@ -218,15 +222,27 @@ async function submitSetup() {
         <div v-else-if="step === 2" key="s2" class="space-y-5">
           <div class="space-y-1.5">
             <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.adminUsername') }}</label>
-            <UInput v-model="form.admin.username" :placeholder="t('setup.usernamePlaceholder')" size="lg" icon="i-lucide-user" autocomplete="username" />
+            <NInput v-model:value="form.admin.username" :placeholder="t('setup.usernamePlaceholder')" size="large" autofocus>
+              <template #prefix>
+                <Icon icon="lucide:user" class="text-(--ui-text-dimmed)" />
+              </template>
+            </NInput>
           </div>
           <div class="space-y-1.5">
             <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.adminPassword') }}</label>
-            <UInput v-model="form.admin.password" type="password" :placeholder="t('setup.passwordPlaceholder')" size="lg" icon="i-lucide-lock" autocomplete="new-password" />
+            <NInput v-model:value="form.admin.password" type="password" show-password-on="click" :placeholder="t('setup.passwordPlaceholder')" size="large">
+              <template #prefix>
+                <Icon icon="lucide:lock" class="text-(--ui-text-dimmed)" />
+              </template>
+            </NInput>
           </div>
           <div class="space-y-1.5">
             <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.confirmPassword') }}</label>
-            <UInput v-model="form.admin.confirmPassword" type="password" :placeholder="t('setup.confirmPasswordPlaceholder')" size="lg" icon="i-lucide-lock" autocomplete="new-password" />
+            <NInput v-model:value="form.admin.confirmPassword" type="password" show-password-on="click" :placeholder="t('setup.confirmPasswordPlaceholder')" size="large">
+              <template #prefix>
+                <Icon icon="lucide:lock" class="text-(--ui-text-dimmed)" />
+              </template>
+            </NInput>
           </div>
           <p class="text-xs text-(--ui-text-dimmed) pt-1">{{ t('setup.passwordHint') }}</p>
         </div>
@@ -235,11 +251,15 @@ async function submitSetup() {
         <div v-else-if="step === 3" key="s3" class="space-y-5">
           <div class="space-y-1.5">
             <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.siteName') }}</label>
-            <UInput v-model="form.site.name" :placeholder="t('setup.siteNamePlaceholder')" size="lg" icon="i-lucide-type" />
+            <NInput v-model:value="form.site.name" :placeholder="t('setup.siteNamePlaceholder')" size="large">
+              <template #prefix>
+                <Icon icon="lucide:type" class="text-(--ui-text-dimmed)" />
+              </template>
+            </NInput>
           </div>
           <div class="space-y-1.5">
             <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('setup.siteDescription') }}</label>
-            <UTextarea v-model="form.site.description" :placeholder="t('setup.siteDescPlaceholder')" :rows="3" size="lg" />
+            <NInput v-model:value="form.site.description" type="textarea" :placeholder="t('setup.siteDescPlaceholder')" :rows="3" size="large" />
           </div>
         </div>
 
@@ -248,7 +268,7 @@ async function submitSetup() {
           <Transition name="scale-in" appear>
             <div>
               <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-green-500/10 border border-green-500/25 mb-4">
-                <UIcon name="i-lucide-check" class="w-7 h-7 text-green-400" />
+                <Icon icon="lucide:check" class="w-7 h-7 text-green-400" />
               </div>
               <h2 class="text-lg font-semibold text-white">{{ t('setup.setupComplete') }}</h2>
               <p class="mt-1.5 text-sm text-(--ui-text-muted)">{{ t('setup.redirecting') }}</p>
@@ -263,24 +283,27 @@ async function submitSetup() {
 
     <!-- Footer Actions -->
     <div v-if="step < 4" class="flex items-center justify-between mt-8 pt-6 border-t border-(--ui-border)">
-      <UButton
+      <NButton
         v-if="step > 1"
-        variant="ghost"
-        color="neutral"
-        icon="i-lucide-arrow-left"
+        quaternary
         @click="step--"
       >
+        <template #icon>
+          <Icon icon="lucide:arrow-left" />
+        </template>
         {{ t('common.back') }}
-      </UButton>
+      </NButton>
       <div v-else />
-      <UButton
+      <NButton
+        type="primary"
         :loading="loading"
-        trailing-icon="i-lucide-arrow-right"
         @click="nextStep"
       >
         {{ step === 3 ? t('setup.finish') : t('common.next') }}
-      </UButton>
+        <template #icon>
+          <Icon icon="lucide:arrow-right" />
+        </template>
+      </NButton>
     </div>
   </div>
 </template>
-

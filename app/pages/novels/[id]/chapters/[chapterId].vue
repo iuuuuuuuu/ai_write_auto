@@ -38,7 +38,6 @@ const zenMode = ref(false)
 const conflictDetected = ref(false)
 const serverUpdatedAt = ref(chapter.value?.updatedAt || null)
 
-// Floating toolbar state
 const showFloatingToolbar = ref(false)
 const floatingToolbarPos = reactive({ x: 0, y: 0 })
 const selectedText = ref('')
@@ -254,12 +253,11 @@ onBeforeUnmount(() => {
       v-if="!zenMode"
       class="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
     >
-      <UButton
-        variant="ghost"
-        icon="i-lucide-arrow-left"
-        size="sm"
-        :to="getNovelTo()"
-      />
+      <NButton quaternary size="small" @click="navigateTo(getNovelTo())">
+        <template #icon>
+          <Icon icon="lucide:arrow-left" />
+        </template>
+      </NButton>
       <div class="flex-1 min-w-0">
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
           {{ chapter?.title }}
@@ -273,28 +271,20 @@ onBeforeUnmount(() => {
         <span class="text-xs text-gray-400">
           {{ content.replace(/\s/g, '').length }} {{ t('chapter.wordCount') }}
         </span>
-        <UButton
-          size="sm"
-          variant="ghost"
-          icon="i-lucide-maximize"
-          @click="zenMode = true"
-        />
-        <UButton
-          size="sm"
-          variant="soft"
-          icon="i-lucide-sparkles"
-          :loading="generating"
-          @click="showGenerateDialog = true"
-        >
+        <NButton size="small" quaternary @click="zenMode = true">
+          <template #icon>
+            <Icon icon="lucide:maximize" />
+          </template>
+        </NButton>
+        <NButton size="small" secondary :loading="generating" @click="showGenerateDialog = true">
+          <template #icon>
+            <Icon icon="lucide:sparkles" />
+          </template>
           {{ t('chapter.generate') }}
-        </UButton>
-        <UButton
-          size="sm"
-          :loading="saving"
-          @click="saveContent"
-        >
+        </NButton>
+        <NButton size="small" type="primary" :loading="saving" @click="saveContent">
           {{ t('common.save') }}
-        </UButton>
+        </NButton>
       </div>
     </div>
 
@@ -303,12 +293,11 @@ onBeforeUnmount(() => {
       v-if="zenMode"
       class="absolute top-4 right-4 z-10 opacity-0 hover:opacity-100 transition-opacity"
     >
-      <UButton
-        size="sm"
-        variant="ghost"
-        icon="i-lucide-minimize"
-        @click="zenMode = false"
-      />
+      <NButton size="small" quaternary @click="zenMode = false">
+        <template #icon>
+          <Icon icon="lucide:minimize" />
+        </template>
+      </NButton>
     </div>
 
     <!-- Conflict Warning -->
@@ -320,21 +309,12 @@ onBeforeUnmount(() => {
         此章节已在其他标签页中被修改，保存可能覆盖更改。
       </p>
       <div class="flex gap-2">
-        <UButton
-          size="xs"
-          variant="soft"
-          color="warning"
-          @click="loadLatestChapter"
-        >
+        <NButton size="tiny" secondary type="warning" @click="loadLatestChapter">
           加载最新版本
-        </UButton>
-        <UButton
-          size="xs"
-          variant="ghost"
-          @click="forceSaveContent"
-        >
+        </NButton>
+        <NButton size="tiny" quaternary @click="forceSaveContent">
           强制保存
-        </UButton>
+        </NButton>
       </div>
     </div>
 
@@ -367,19 +347,8 @@ onBeforeUnmount(() => {
               }}
             </p>
             <div class="flex gap-1">
-              <UButton
-                size="xs"
-                variant="soft"
-                color="success"
-                @click="applyAiResult"
-                >应用</UButton
-              >
-              <UButton
-                size="xs"
-                variant="ghost"
-                @click="discardAiResult"
-                >放弃</UButton
-              >
+              <NButton size="tiny" secondary type="success" @click="applyAiResult">应用</NButton>
+              <NButton size="tiny" quaternary @click="discardAiResult">放弃</NButton>
             </div>
           </div>
           <div
@@ -415,77 +384,64 @@ onBeforeUnmount(() => {
           transform: 'translate(-50%, -100%)'
         }"
       >
-        <UButton
-          size="xs"
-          variant="ghost"
-          icon="i-lucide-expand"
-          :loading="expandingOrRewriting"
-          @click="doAiAction('expand')"
-        >
+        <NButton size="tiny" quaternary :loading="expandingOrRewriting" @click="doAiAction('expand')">
+          <template #icon>
+            <Icon icon="lucide:expand" />
+          </template>
           {{ t('chapter.expand') }}
-        </UButton>
-        <UButton
-          size="xs"
-          variant="ghost"
-          icon="i-lucide-refresh-cw"
-          :loading="expandingOrRewriting"
-          @click="doAiAction('rewrite')"
-        >
+        </NButton>
+        <NButton size="tiny" quaternary :loading="expandingOrRewriting" @click="doAiAction('rewrite')">
+          <template #icon>
+            <Icon icon="lucide:refresh-cw" />
+          </template>
           {{ t('chapter.rewrite') }}
-        </UButton>
+        </NButton>
       </div>
     </Teleport>
 
     <!-- Generate Dialog -->
-    <UModal v-model:open="showGenerateDialog">
-      <template #content>
-        <div class="p-6 space-y-4">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('chapter.generateDialog.title') }}
-          </h3>
-          <UFormField :label="t('chapter.generateDialog.direction')">
-            <UTextarea
-              v-model="generateDirection"
-              :placeholder="t('chapter.generateDialog.directionPlaceholder')"
-              :rows="3"
-            />
-          </UFormField>
-          <UFormField
-            :label="t('chapter.generateDialog.model')"
-            required
-          >
-            <USelectMenu
-              v-model="selectedAiConfigId"
-              :items="generationModelOptions"
-              value-key="value"
-              placeholder="选择用于生成的模型"
-            />
-          </UFormField>
-          <UAlert
-            v-if="!generationModelOptions.length"
-            color="warning"
-            variant="soft"
-            icon="i-lucide-circle-alert"
-            title="还没有可用的内容生成模型"
-            description="请先到设置页创建并启用一个内容生成模型。"
+    <NModal v-model:show="showGenerateDialog" preset="card" :title="t('chapter.generateDialog.title')" style="max-width: 500px;">
+      <div class="space-y-4">
+        <NFormItem :label="t('chapter.generateDialog.direction')">
+          <NInput
+            v-model:value="generateDirection"
+            type="textarea"
+            :placeholder="t('chapter.generateDialog.directionPlaceholder')"
+            :rows="3"
           />
-          <div class="flex justify-end gap-2">
-            <UButton
-              variant="ghost"
-              @click="showGenerateDialog = false"
-            >
-              {{ t('common.cancel') }}
-            </UButton>
-            <UButton
-              icon="i-lucide-sparkles"
-              :disabled="!selectedAiConfigId"
-              @click="generateChapter"
-            >
-              {{ t('chapter.generate') }}
-            </UButton>
-          </div>
+        </NFormItem>
+        <NFormItem :label="t('chapter.generateDialog.model')" required>
+          <NSelect
+            v-model:value="selectedAiConfigId"
+            :options="generationModelOptions"
+            placeholder="选择用于生成的模型"
+          />
+        </NFormItem>
+        <NAlert
+          v-if="!generationModelOptions.length"
+          type="warning"
+          title="还没有可用的内容生成模型"
+        >
+          请先到设置页创建并启用一个内容生成模型。
+        </NAlert>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showGenerateDialog = false">
+            {{ t('common.cancel') }}
+          </NButton>
+          <NButton
+            type="primary"
+            :disabled="!selectedAiConfigId"
+            @click="generateChapter"
+          >
+            <template #icon>
+              <Icon icon="lucide:sparkles" />
+            </template>
+            {{ t('chapter.generate') }}
+          </NButton>
         </div>
       </template>
-    </UModal>
+    </NModal>
   </div>
 </template>

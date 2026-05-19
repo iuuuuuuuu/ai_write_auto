@@ -1,5 +1,5 @@
 @import "tailwindcss";
-@import "@nuxt/ui";
+@source "../../app/**/*.{vue,ts}";
 
 /* Design tokens */
 :root {
@@ -76,11 +76,6 @@ body {
 @keyframes progress {
   from { width: 0%; }
   to { width: 100%; }
-}
-
-/* Make all Nuxt UI inputs full-width by default */
-[data-slot="root"].relative {
-  width: 100%;
 }
 
 /* Smooth page transitions */

@@ -25,9 +25,9 @@ watch(days, () => refresh())
     <div class="flex items-center justify-between">
       <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('ai.tokenUsage') }}</p>
       <div class="flex gap-2">
-        <UButton size="xs" :variant="days === 7 ? 'solid' : 'ghost'" @click="days = 7">7天</UButton>
-        <UButton size="xs" :variant="days === 30 ? 'solid' : 'ghost'" @click="days = 30">30天</UButton>
-        <UButton size="xs" :variant="days === 90 ? 'solid' : 'ghost'" @click="days = 90">90天</UButton>
+        <NButton size="tiny" :type="days === 7 ? 'primary' : 'default'" :quaternary="days !== 7" @click="days = 7">7天</NButton>
+        <NButton size="tiny" :type="days === 30 ? 'primary' : 'default'" :quaternary="days !== 30" @click="days = 30">30天</NButton>
+        <NButton size="tiny" :type="days === 90 ? 'primary' : 'default'" :quaternary="days !== 90" @click="days = 90">90天</NButton>
       </div>
     </div>
 

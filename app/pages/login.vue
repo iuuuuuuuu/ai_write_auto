@@ -32,7 +32,7 @@ async function handleLogin() {
     <!-- Header -->
     <div class="text-center mb-8">
       <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-500/10 border border-primary-500/20 mb-4">
-        <UIcon name="i-lucide-pen-tool" class="w-6 h-6 text-primary-400" />
+        <Icon icon="lucide:pen-tool" class="w-6 h-6 text-primary-400" />
       </div>
       <h1 class="text-xl font-semibold text-white">
         {{ t('auth.loginTitle') }}
@@ -45,7 +45,7 @@ async function handleLogin() {
     <!-- Error -->
     <Transition name="slide-fade">
       <div v-if="error" class="mb-5 flex items-start gap-2.5 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
-        <UIcon name="i-lucide-alert-circle" class="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+        <Icon icon="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
         <span>{{ error }}</span>
       </div>
     </Transition>
@@ -54,29 +54,34 @@ async function handleLogin() {
     <form class="space-y-5" @submit.prevent="handleLogin">
       <div class="space-y-1.5">
         <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('auth.username') }}</label>
-        <UInput
-          v-model="form.username"
+        <NInput
+          v-model:value="form.username"
           :placeholder="t('auth.usernamePlaceholder')"
-          size="lg"
-          icon="i-lucide-user"
+          size="large"
           autofocus
-          autocomplete="username"
-        />
+        >
+          <template #prefix>
+            <Icon icon="lucide:user" class="text-(--ui-text-dimmed)" />
+          </template>
+        </NInput>
       </div>
       <div class="space-y-1.5">
         <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('auth.password') }}</label>
-        <UInput
-          v-model="form.password"
+        <NInput
+          v-model:value="form.password"
           type="password"
+          show-password-on="click"
           :placeholder="t('auth.passwordPlaceholder')"
-          size="lg"
-          icon="i-lucide-lock"
-          autocomplete="current-password"
-        />
+          size="large"
+        >
+          <template #prefix>
+            <Icon icon="lucide:lock" class="text-(--ui-text-dimmed)" />
+          </template>
+        </NInput>
       </div>
-      <UButton type="submit" block size="lg" :loading="loading" class="mt-2">
+      <NButton type="primary" attr-type="submit" block size="large" :loading="loading" class="mt-2">
         {{ t('auth.loginButton') }}
-      </UButton>
+      </NButton>
     </form>
   </div>
 </template>

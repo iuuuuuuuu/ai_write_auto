@@ -58,19 +58,16 @@ const {
 
 <template>
   <div class="mx-auto max-w-6xl space-y-6">
-    <UButton
-      to="/admin/novels"
-      variant="ghost"
-      color="neutral"
-      icon="i-lucide-arrow-left"
-    >
+    <NButton quaternary @click="navigateTo('/admin/novels')">
+      <template #icon>
+        <Icon icon="lucide:arrow-left" />
+      </template>
       返回小说列表
-    </UButton>
+    </NButton>
 
-    <UAlert
+    <NAlert
       v-if="error"
-      color="error"
-      variant="subtle"
+      type="error"
       title="小说详情加载失败"
     />
 
@@ -78,8 +75,8 @@ const {
       v-else-if="pending"
       class="space-y-4"
     >
-      <USkeleton class="h-32 rounded-lg" />
-      <USkeleton class="h-72 rounded-lg" />
+      <NSkeleton class="h-32 rounded-lg" text />
+      <NSkeleton class="h-72 rounded-lg" text />
     </div>
 
     <template v-else-if="detail">

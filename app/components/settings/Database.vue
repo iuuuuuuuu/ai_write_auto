@@ -26,9 +26,12 @@ async function exportDatabase() {
       <h3 class="font-medium text-gray-900 dark:text-white">{{ t('settings.database') }}</h3>
 
       <div class="flex gap-3">
-        <UButton variant="soft" icon="i-lucide-download" :loading="exporting" @click="exportDatabase">
+        <NButton secondary :loading="exporting" @click="exportDatabase">
+          <template #icon>
+            <Icon icon="lucide:download" />
+          </template>
           {{ t('settings.exportDb') }}
-        </UButton>
+        </NButton>
       </div>
     </div>
   </div>

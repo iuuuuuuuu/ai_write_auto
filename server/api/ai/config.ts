@@ -1,8 +1,6 @@
 import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
 import { getDatabase, schema } from '../../database'
-import { getEffectiveDbConfig } from '../../database/db-config'
-import { runMigrations } from '../../database/migrate'
 import { maskApiKey } from '../../utils/ai-configs'
 
 const aiConfigSchema = z.object({
@@ -51,32 +49,14 @@ async function clearDefaultForPurpose(
     )
 }
 
-function isMissingAiConfigColumnError(error: unknown) {
-  return (
-    error instanceof Error &&
-    (error.message.includes('no such column') ||
-      error.message.includes('Unknown column'))
-  )
-}
-
 async function getUserConfigs(
   db: Awaited<ReturnType<typeof getDatabase>>,
   userId: number
 ) {
-  try {
-    return await db
-      .select()
-      .from(schema.aiConfigs)
-      .where(eq(schema.aiConfigs.userId, userId))
-  } catch (error) {
-    if (!isMissingAiConfigColumnError(error)) throw error
-
-    await runMigrations(getEffectiveDbConfig())
-    return await db
-      .select()
-      .from(schema.aiConfigs)
-      .where(eq(schema.aiConfigs.userId, userId))
-  }
+  return await db
+    .select()
+    .from(schema.aiConfigs)
+    .where(eq(schema.aiConfigs.userId, userId))
 }
 
 export default defineEventHandler(async (event) => {

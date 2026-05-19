@@ -8,11 +8,11 @@ const sidebarOpen = ref(false)
 const navItems = computed(() => [
   {
     label: t('dashboard.title'),
-    icon: 'i-lucide-layout-dashboard',
+    icon: 'lucide:layout-dashboard',
     to: '/dashboard'
   },
-  { label: '回收站', icon: 'i-lucide-trash-2', to: '/trash' },
-  { label: t('common.settings'), icon: 'i-lucide-settings', to: '/settings' }
+  { label: '回收站', icon: 'lucide:trash-2', to: '/trash' },
+  { label: t('common.settings'), icon: 'lucide:settings', to: '/settings' }
 ])
 </script>
 
@@ -22,27 +22,31 @@ const navItems = computed(() => [
     <div
       class="lg:hidden flex items-center justify-between px-4 py-3 border-b border-(--ui-border) bg-(--ui-bg-muted) sticky top-0 z-40"
     >
-      <UButton
-        variant="ghost"
-        color="neutral"
-        icon="i-lucide-menu"
+      <NButton
+        quaternary
         @click="sidebarOpen = true"
-      />
+      >
+        <template #icon>
+          <Icon icon="lucide:menu" />
+        </template>
+      </NButton>
       <div class="flex items-center gap-2">
-        <UIcon
-          name="i-lucide-pen-tool"
+        <Icon
+          icon="lucide:pen-tool"
           class="w-4 h-4 text-primary-400"
         />
         <span class="text-sm font-medium text-(--ui-text)">{{
           t('common.appName')
         }}</span>
       </div>
-      <UButton
-        variant="ghost"
-        color="neutral"
-        icon="i-lucide-user"
-        size="sm"
-      />
+      <NButton
+        quaternary
+        size="small"
+      >
+        <template #icon>
+          <Icon icon="lucide:user" />
+        </template>
+      </NButton>
     </div>
 
     <div class="flex">
@@ -54,8 +58,8 @@ const navItems = computed(() => [
           <div
             class="w-7 h-7 rounded-lg bg-primary-500/10 border border-primary-500/20 flex items-center justify-center"
           >
-            <UIcon
-              name="i-lucide-pen-tool"
+            <Icon
+              icon="lucide:pen-tool"
               class="w-3.5 h-3.5 text-primary-400"
             />
           </div>
@@ -76,8 +80,8 @@ const navItems = computed(() => [
               : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)'
             "
           >
-            <UIcon
-              :name="item.icon"
+            <Icon
+              :icon="item.icon"
               class="w-4 h-4"
             />
             {{ item.label }}
@@ -92,8 +96,8 @@ const navItems = computed(() => [
               to="/admin"
               class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-elevated) hover:text-(--ui-text)"
             >
-              <UIcon
-                name="i-lucide-shield-check"
+              <Icon
+                icon="lucide:shield-check"
                 class="w-4 h-4"
               />
               {{ t('common.admin') }}
@@ -115,13 +119,15 @@ const navItems = computed(() => [
                 {{ user?.username }}
               </p>
             </div>
-            <UButton
-              variant="ghost"
-              color="neutral"
-              icon="i-lucide-log-out"
-              size="xs"
+            <NButton
+              quaternary
+              size="tiny"
               @click="logout"
-            />
+            >
+              <template #icon>
+                <Icon icon="lucide:log-out" />
+              </template>
+            </NButton>
           </div>
         </div>
       </aside>
@@ -148,21 +154,23 @@ const navItems = computed(() => [
           >
             <div class="flex items-center justify-between px-5 py-5">
               <div class="flex items-center gap-2.5">
-                <UIcon
-                  name="i-lucide-pen-tool"
+                <Icon
+                  icon="lucide:pen-tool"
                   class="w-4 h-4 text-primary-400"
                 />
                 <span class="text-sm font-semibold text-(--ui-text)">{{
                   t('common.appName')
                 }}</span>
               </div>
-              <UButton
-                variant="ghost"
-                color="neutral"
-                icon="i-lucide-x"
-                size="sm"
+              <NButton
+                quaternary
+                size="small"
                 @click="sidebarOpen = false"
-              />
+              >
+                <template #icon>
+                  <Icon icon="lucide:x" />
+                </template>
+              </NButton>
             </div>
             <nav class="px-3 space-y-1">
               <NuxtLink
@@ -177,8 +185,8 @@ const navItems = computed(() => [
                 "
                 @click="sidebarOpen = false"
               >
-                <UIcon
-                  :name="item.icon"
+                <Icon
+                  :icon="item.icon"
                   class="w-4 h-4"
                 />
                 {{ item.label }}
@@ -189,8 +197,8 @@ const navItems = computed(() => [
                 class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 text-sm text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-elevated) hover:text-(--ui-text)"
                 @click="sidebarOpen = false"
               >
-                <UIcon
-                  name="i-lucide-shield-check"
+                <Icon
+                  icon="lucide:shield-check"
                   class="w-4 h-4"
                 />
                 {{ t('common.admin') }}

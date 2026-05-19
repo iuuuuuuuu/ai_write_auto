@@ -43,18 +43,18 @@ async function handleRegister() {
     </div>
 
     <form class="space-y-4" @submit.prevent="handleRegister">
-      <UFormField :label="t('auth.username')">
-        <UInput v-model="form.username" :placeholder="t('auth.usernamePlaceholder')" autofocus />
-      </UFormField>
-      <UFormField :label="t('auth.password')">
-        <UInput v-model="form.password" type="password" :placeholder="t('auth.passwordPlaceholder')" />
-      </UFormField>
-      <UFormField :label="t('auth.confirmPassword')">
-        <UInput v-model="form.confirmPassword" type="password" />
-      </UFormField>
-      <UButton type="submit" block :loading="loading">
+      <NFormItem :label="t('auth.username')">
+        <NInput v-model:value="form.username" :placeholder="t('auth.usernamePlaceholder')" autofocus />
+      </NFormItem>
+      <NFormItem :label="t('auth.password')">
+        <NInput v-model:value="form.password" type="password" show-password-on="click" :placeholder="t('auth.passwordPlaceholder')" />
+      </NFormItem>
+      <NFormItem :label="t('auth.confirmPassword')">
+        <NInput v-model:value="form.confirmPassword" type="password" show-password-on="click" />
+      </NFormItem>
+      <NButton type="primary" attr-type="submit" block :loading="loading">
         {{ t('auth.registerButton') }}
-      </UButton>
+      </NButton>
     </form>
 
     <p class="text-center text-sm text-gray-500">

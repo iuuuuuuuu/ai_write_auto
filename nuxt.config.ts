@@ -1,26 +1,6 @@
+import tailwindcss from '@tailwindcss/vite'
+
 export default defineNuxtConfig({
-  hooks: {
-    'app:templates'(app) {
-      const uiCssTemplate = app.templates.find(
-        (template) => template.filename === 'ui.css'
-      )
-
-      if (!uiCssTemplate?.getContents) return
-
-      const getContents = uiCssTemplate.getContents
-
-      uiCssTemplate.getContents = async (data) => {
-        const contents = await getContents(data)
-
-        return contents.replace(
-          /^@source "([A-Z]):\/([^"\n]+)";/gim,
-          (_, drive: string, sourcePath: string) =>
-            `@source "/${drive.toLowerCase()}/${sourcePath}";`
-        )
-      }
-    }
-  },
-
   devServer: {
     port: 4530
   },
@@ -34,20 +14,12 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
 
-  modules: ['@nuxt/ui', '@nuxtjs/i18n'],
+  modules: ['@bg-dev/nuxt-naiveui', '@nuxtjs/i18n'],
 
-  colorMode: {
-    preference: 'system',
-    fallback: 'dark'
-  },
-
-  fonts: {
-    defaults: {
-      weights: [400, 500, 600, 700]
-    },
-    providers: {
-      google: false,
-      googleicons: false
+  vite: {
+    plugins: [tailwindcss()],
+    optimizeDeps: {
+      include: ['@iconify/vue']
     }
   },
 

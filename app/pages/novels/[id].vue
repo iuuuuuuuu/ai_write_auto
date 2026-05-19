@@ -40,7 +40,7 @@ interface OutlineItem {
 }
 
 const { t } = useI18n()
-const toast = useToast()
+const message = useMessage()
 const route = useRoute()
 const novelId = computed(() => Number(route.params.id))
 const isNestedRoute = computed(() => route.path !== `/novels/${novelId.value}`)
@@ -173,7 +173,7 @@ watch(
 async function createChapter() {
   const title = newChapterTitle.value.trim()
   if (!title) {
-    toast.add({ title: '请输入章节标题', color: 'warning' })
+    message.warning('请输入章节标题')
     return
   }
 
@@ -186,14 +186,14 @@ async function createChapter() {
         body: { title }
       }
     )
-    toast.add({ title: '章节已创建', color: 'success' })
+    message.success('章节已创建')
     newChapterTitle.value = ''
     showCreateChapter.value = false
     await refreshChapters()
     selectedChapterId.value = createdChapter.id
     activeTab.value = 'chapters'
   } catch {
-    toast.add({ title: '创建章节失败', color: 'error' })
+    message.error('创建章节失败')
   } finally {
     creating.value = false
   }
@@ -219,9 +219,9 @@ async function saveChapterContent(chapterContent: string) {
       }
     )
     await refreshChapters()
-    toast.add({ title: '已保存', color: 'success' })
+    message.success('已保存')
   } catch {
-    toast.add({ title: '保存失败', color: 'error' })
+    message.error('保存失败')
   } finally {
     savingContent.value = false
   }
@@ -229,11 +229,11 @@ async function saveChapterContent(chapterContent: string) {
 
 async function createCharacter() {
   if (!newCharacter.name.trim()) {
-    toast.add({ title: '请输入角色名称', color: 'warning' })
+    message.warning('请输入角色名称')
     return
   }
   if (hasDuplicateCharacterName.value) {
-    toast.add({ title: '该角色名称已存在', color: 'warning' })
+    message.warning('该角色名称已存在')
     return
   }
 
@@ -249,13 +249,13 @@ async function createCharacter() {
         currentState: newCharacter.currentState.trim() || undefined
       }
     })
-    toast.add({ title: '角色已创建', color: 'success' })
+    message.success('角色已创建')
     resetNewCharacter()
     showCreateCharacter.value = false
     await refreshCharacters()
     activeTab.value = 'characters'
   } catch {
-    toast.add({ title: '创建角色失败', color: 'error' })
+    message.error('创建角色失败')
   } finally {
     creatingCharacter.value = false
   }
@@ -273,12 +273,12 @@ async function generateChapter() {
         aiConfigId: selectedAiConfigId.value
       }
     })
-    toast.add({ title: '生成完成', color: 'success' })
+    message.success('生成完成')
     showGenerateDialog.value = false
     generateDirection.value = ''
     await refreshChapters()
   } catch {
-    toast.add({ title: '生成失败', color: 'error' })
+    message.error('生成失败')
   }
 }
 
@@ -307,14 +307,15 @@ async function exportNovel(format: string) {
   >
     <!-- Header -->
     <div class="flex shrink-0 items-center gap-3">
-      <UButton
-        variant="ghost"
-        color="neutral"
-        icon="i-lucide-arrow-left"
-        size="sm"
-        to="/dashboard"
-        class="shrink-0"
-      />
+      <NButton
+        quaternary
+        size="small"
+        @click="navigateTo('/dashboard')"
+      >
+        <template #icon>
+          <Icon icon="lucide:arrow-left" />
+        </template>
+      </NButton>
       <div class="min-w-0 flex-1">
         <h1
           class="truncate text-xl font-semibold tracking-tight text-(--ui-text-highlighted)"
@@ -368,164 +369,141 @@ async function exportNovel(format: string) {
       />
     </div>
 
-    <UModal v-model:open="showCreateChapter">
-      <template #content>
-        <div class="space-y-5 p-6">
-          <h3 class="text-lg font-semibold text-(--ui-text-highlighted)">
-            {{ t('chapter.create') }}
-          </h3>
-          <UFormField
-            :label="t('chapter.title')"
-            required
+    <!-- Create Chapter Modal -->
+    <NModal v-model:show="showCreateChapter" preset="card" :title="t('chapter.create')" style="max-width: 480px;">
+      <NFormItem :label="t('chapter.title')" required>
+        <NInput
+          v-model:value="newChapterTitle"
+          :placeholder="t('chapter.title')"
+          size="large"
+          autofocus
+          @keyup.enter="createChapter"
+        />
+      </NFormItem>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showCreateChapter = false">
+            {{ t('common.cancel') }}
+          </NButton>
+          <NButton
+            type="primary"
+            :loading="creating"
+            @click="createChapter"
           >
-            <UInput
-              v-model="newChapterTitle"
-              :placeholder="t('chapter.title')"
-              size="lg"
-              autofocus
-              @keyup.enter="createChapter"
-            />
-          </UFormField>
-          <div class="flex justify-end gap-2 pt-2">
-            <UButton
-              variant="ghost"
-              color="neutral"
-              @click="showCreateChapter = false"
-            >
-              {{ t('common.cancel') }}
-            </UButton>
-            <UButton
-              :loading="creating"
-              @click="createChapter"
-            >
-              {{ t('common.create') }}
-            </UButton>
-          </div>
+            {{ t('common.create') }}
+          </NButton>
         </div>
       </template>
-    </UModal>
+    </NModal>
 
-    <UModal v-model:open="showCreateCharacter">
-      <template #content>
-        <div class="space-y-5 p-6">
-          <h3 class="text-lg font-semibold text-(--ui-text-highlighted)">
-            新建角色
-          </h3>
-          <div class="space-y-4">
-            <UFormField
-              label="角色名称"
-              required
-              :error="
-                hasDuplicateCharacterName ? '该角色名称已存在' : undefined
-              "
-            >
-              <UInput
-                v-model="newCharacter.name"
-                placeholder="例如：林晚舟"
-                size="lg"
-                autofocus
-                @keyup.enter="createCharacter"
-              />
-            </UFormField>
-            <UFormField label="角色简介">
-              <UTextarea
-                v-model="newCharacter.description"
-                placeholder="身份、背景或人物定位"
-                :rows="3"
-              />
-            </UFormField>
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <UFormField label="性格特征">
-                <UInput
-                  v-model="newCharacter.traits"
-                  placeholder="冷静、敏锐、慢热"
-                />
-              </UFormField>
-              <UFormField label="当前状态">
-                <UInput
-                  v-model="newCharacter.currentState"
-                  placeholder="正在调查主线事件"
-                />
-              </UFormField>
-            </div>
-            <UFormField label="人物关系">
-              <UTextarea
-                v-model="newCharacter.relationships"
-                placeholder="与其他角色的关系、冲突或羁绊"
-                :rows="3"
-              />
-            </UFormField>
-          </div>
-          <div class="flex justify-end gap-2 pt-2">
-            <UButton
-              variant="ghost"
-              color="neutral"
-              @click="showCreateCharacter = false"
-            >
-              {{ t('common.cancel') }}
-            </UButton>
-            <UButton
-              :loading="creatingCharacter"
-              :disabled="hasDuplicateCharacterName"
-              @click="createCharacter"
-            >
-              {{ t('common.create') }}
-            </UButton>
-          </div>
+    <!-- Create Character Modal -->
+    <NModal v-model:show="showCreateCharacter" preset="card" title="新建角色" style="max-width: 560px;">
+      <div class="space-y-4">
+        <NFormItem
+          label="角色名称"
+          required
+          :validation-status="hasDuplicateCharacterName ? 'error' : undefined"
+          :feedback="hasDuplicateCharacterName ? '该角色名称已存在' : undefined"
+        >
+          <NInput
+            v-model:value="newCharacter.name"
+            placeholder="例如：林晚舟"
+            size="large"
+            autofocus
+            @keyup.enter="createCharacter"
+          />
+        </NFormItem>
+        <NFormItem label="角色简介">
+          <NInput
+            v-model:value="newCharacter.description"
+            type="textarea"
+            placeholder="身份、背景或人物定位"
+            :rows="3"
+          />
+        </NFormItem>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <NFormItem label="性格特征">
+            <NInput
+              v-model:value="newCharacter.traits"
+              placeholder="冷静、敏锐、慢热"
+            />
+          </NFormItem>
+          <NFormItem label="当前状态">
+            <NInput
+              v-model:value="newCharacter.currentState"
+              placeholder="正在调查主线事件"
+            />
+          </NFormItem>
+        </div>
+        <NFormItem label="人物关系">
+          <NInput
+            v-model:value="newCharacter.relationships"
+            type="textarea"
+            placeholder="与其他角色的关系、冲突或羁绊"
+            :rows="3"
+          />
+        </NFormItem>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showCreateCharacter = false">
+            {{ t('common.cancel') }}
+          </NButton>
+          <NButton
+            type="primary"
+            :loading="creatingCharacter"
+            :disabled="hasDuplicateCharacterName"
+            @click="createCharacter"
+          >
+            {{ t('common.create') }}
+          </NButton>
         </div>
       </template>
-    </UModal>
+    </NModal>
 
     <!-- Generate Dialog -->
-    <UModal v-model:open="showGenerateDialog">
-      <template #content>
-        <div class="space-y-4 p-6">
-          <h3 class="text-lg font-semibold text-(--ui-text-highlighted)">
-            AI 生成章节
-          </h3>
-          <UFormField label="生成方向（可选）">
-            <UTextarea
-              v-model="generateDirection"
-              placeholder="描述你希望 AI 如何生成这章内容..."
-              :rows="3"
-            />
-          </UFormField>
-          <UFormField
-            label="生成模型"
-            required
-          >
-            <USelectMenu
-              v-model="selectedAiConfigId"
-              :items="generationModelOptions"
-              value-key="value"
-              placeholder="选择用于生成的模型"
-            />
-          </UFormField>
-          <UAlert
-            v-if="!generationModelOptions.length"
-            color="warning"
-            variant="soft"
-            icon="i-lucide-circle-alert"
-            title="还没有可用的内容生成模型"
-            description="请先到设置页创建并启用一个内容生成模型。"
+    <NModal v-model:show="showGenerateDialog" preset="card" title="AI 生成章节" style="max-width: 500px;">
+      <div class="space-y-4">
+        <NFormItem label="生成方向（可选）">
+          <NInput
+            v-model:value="generateDirection"
+            type="textarea"
+            placeholder="描述你希望 AI 如何生成这章内容..."
+            :rows="3"
           />
-          <div class="flex justify-end gap-2">
-            <UButton
-              variant="ghost"
-              @click="showGenerateDialog = false"
-            >
-              {{ t('common.cancel') }}
-            </UButton>
-            <UButton
-              icon="i-lucide-sparkles"
-              :disabled="!selectedAiConfigId || !selectedChapter"
-              @click="generateChapter"
-            >
-              生成
-            </UButton>
-          </div>
+        </NFormItem>
+        <NFormItem label="生成模型" required>
+          <NSelect
+            v-model:value="selectedAiConfigId"
+            :options="generationModelOptions"
+            placeholder="选择用于生成的模型"
+          />
+        </NFormItem>
+        <NAlert
+          v-if="!generationModelOptions.length"
+          type="warning"
+          title="还没有可用的内容生成模型"
+        >
+          请先到设置页创建并启用一个内容生成模型。
+        </NAlert>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showGenerateDialog = false">
+            {{ t('common.cancel') }}
+          </NButton>
+          <NButton
+            type="primary"
+            :disabled="!selectedAiConfigId || !selectedChapter"
+            @click="generateChapter"
+          >
+            <template #icon>
+              <Icon icon="lucide:sparkles" />
+            </template>
+            生成
+          </NButton>
         </div>
       </template>
-    </UModal>
+    </NModal>
   </div>
 </template>

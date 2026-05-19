@@ -42,9 +42,9 @@ const emit = defineEmits<{
 }>()
 
 const tabs = [
-  { key: 'chapters', label: '章节', icon: 'i-lucide-file-text' },
-  { key: 'characters', label: '角色', icon: 'i-lucide-users' },
-  { key: 'outline', label: '大纲', icon: 'i-lucide-list' }
+  { key: 'chapters', label: '章节', icon: 'lucide:file-text' },
+  { key: 'characters', label: '角色', icon: 'lucide:users' },
+  { key: 'outline', label: '大纲', icon: 'lucide:list' }
 ] satisfies Array<{ key: NovelPanelTab; label: string; icon: string }>
 
 const searchQuery = shallowRef('')
@@ -89,8 +89,8 @@ function selectChapter(chapterId: number) {
         "
         @click="activeTab = tab.key"
       >
-        <UIcon
-          :name="tab.icon"
+        <Icon
+          :icon="tab.icon"
           class="h-4 w-4"
         />
         <span>{{ tab.label }}</span>
@@ -114,22 +114,26 @@ function selectChapter(chapterId: number) {
           >
             {{ filteredChapters.length }} 章
           </p>
-          <UButton
-            icon="i-lucide-plus"
-            size="xs"
-            variant="ghost"
-            color="neutral"
+          <NButton
+            size="tiny"
+            quaternary
             @click="emit('createChapter')"
-          />
+          >
+            <template #icon>
+              <Icon icon="lucide:plus" />
+            </template>
+          </NButton>
         </div>
 
-        <UInput
-          v-model="searchQuery"
-          icon="i-lucide-search"
-          size="xs"
+        <NInput
+          v-model:value="searchQuery"
+          size="small"
           placeholder="搜索章节..."
-          color="neutral"
-        />
+        >
+          <template #prefix>
+            <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+          </template>
+        </NInput>
 
         <div
           v-if="filteredChapters.length"
@@ -178,14 +182,13 @@ function selectChapter(chapterId: number) {
               <span class="text-[11px] tabular-nums text-(--ui-text-dimmed)">
                 {{ chapter.wordCount || 0 }} 字
               </span>
-              <UBadge
-                :color="getStatusColor(chapter.status)"
-                variant="subtle"
-                size="xs"
+              <NTag
+                :type="getStatusColor(chapter.status)"
+                size="small"
                 class="text-[10px]"
               >
                 {{ chapter.status }}
-              </UBadge>
+              </NTag>
             </div>
           </button>
         </div>
@@ -197,28 +200,30 @@ function selectChapter(chapterId: number) {
           <div
             class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--ui-bg-accented)"
           >
-            <UIcon
-              name="i-lucide-file-text"
+            <Icon
+              icon="lucide:file-text"
               class="h-5 w-5 text-(--ui-text-dimmed)"
             />
           </div>
           <p class="mt-3 text-sm text-(--ui-text-muted)">暂无章节</p>
-          <UButton
+          <NButton
             class="mt-3"
-            size="sm"
-            icon="i-lucide-plus"
-            variant="soft"
+            size="small"
+            secondary
             @click="emit('createChapter')"
           >
+            <template #icon>
+              <Icon icon="lucide:plus" />
+            </template>
             新建章节
-          </UButton>
+          </NButton>
         </div>
         <div
           v-else
           class="py-8 text-center"
         >
-          <UIcon
-            name="i-lucide-search-x"
+          <Icon
+            icon="lucide:search-x"
             class="mx-auto h-6 w-6 text-(--ui-text-dimmed)"
           />
           <p class="mt-2 text-sm text-(--ui-text-muted)">未找到匹配章节</p>
@@ -236,13 +241,15 @@ function selectChapter(chapterId: number) {
           >
             {{ props.characters.length }} 个角色
           </p>
-          <UButton
-            icon="i-lucide-plus"
-            size="xs"
-            variant="ghost"
-            color="neutral"
+          <NButton
+            size="tiny"
+            quaternary
             @click="emit('createCharacter')"
-          />
+          >
+            <template #icon>
+              <Icon icon="lucide:plus" />
+            </template>
+          </NButton>
         </div>
 
         <div
@@ -289,21 +296,23 @@ function selectChapter(chapterId: number) {
           <div
             class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--ui-bg-accented)"
           >
-            <UIcon
-              name="i-lucide-users"
+            <Icon
+              icon="lucide:users"
               class="h-5 w-5 text-(--ui-text-dimmed)"
             />
           </div>
           <p class="mt-3 text-sm text-(--ui-text-muted)">暂无角色信息</p>
-          <UButton
+          <NButton
             class="mt-3"
-            size="sm"
-            icon="i-lucide-plus"
-            variant="soft"
+            size="small"
+            secondary
             @click="emit('createCharacter')"
           >
+            <template #icon>
+              <Icon icon="lucide:plus" />
+            </template>
             新建角色
-          </UButton>
+          </NButton>
         </div>
       </div>
 
@@ -339,8 +348,8 @@ function selectChapter(chapterId: number) {
           <div
             class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--ui-bg-accented)"
           >
-            <UIcon
-              name="i-lucide-list"
+            <Icon
+              icon="lucide:list"
               class="h-5 w-5 text-(--ui-text-dimmed)"
             />
           </div>

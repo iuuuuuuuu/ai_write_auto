@@ -64,23 +64,24 @@ const filteredNovels = computed(() => {
         </p>
       </div>
       <div class="grid gap-2 sm:grid-cols-[220px_220px]">
-        <UInput
-          v-model="search"
-          icon="i-lucide-search"
+        <NInput
+          v-model:value="search"
           placeholder="搜索小说或用户"
-        />
-        <USelectMenu
-          v-model="statusFilter"
-          :items="statusItems"
-          value-key="value"
+        >
+          <template #prefix>
+            <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+          </template>
+        </NInput>
+        <NSelect
+          v-model:value="statusFilter"
+          :options="statusItems"
         />
       </div>
     </div>
 
-    <UAlert
+    <NAlert
       v-if="error"
-      color="error"
-      variant="subtle"
+      type="error"
       title="小说列表加载失败"
     />
 
@@ -88,10 +89,11 @@ const filteredNovels = computed(() => {
       v-if="pending"
       class="space-y-3"
     >
-      <USkeleton
+      <NSkeleton
         v-for="item in 6"
         :key="item"
         class="h-24 rounded-lg"
+        text
       />
     </div>
     <div
@@ -118,14 +120,14 @@ const filteredNovels = computed(() => {
               <h2 class="font-semibold text-(--ui-text-highlighted)">
                 {{ novel.title }}
               </h2>
-              <UBadge variant="subtle">{{ novel.status }}</UBadge>
-              <UBadge
+              <NTag size="small">{{ novel.status }}</NTag>
+              <NTag
                 v-if="novel.deletedAt"
-                color="warning"
-                variant="subtle"
+                type="warning"
+                size="small"
               >
                 回收站
-              </UBadge>
+              </NTag>
             </div>
             <p class="mt-2 line-clamp-2 text-sm text-(--ui-text-muted)">
               {{ novel.description || '暂无简介' }}

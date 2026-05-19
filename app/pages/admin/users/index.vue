@@ -54,18 +54,20 @@ async function deleteUser(user: AdminUser) {
           查阅用户的模型配置、小说和基础权限。
         </p>
       </div>
-      <UInput
-        v-model="search"
+      <NInput
+        v-model:value="search"
         class="sm:w-72"
-        icon="i-lucide-search"
         placeholder="搜索用户名"
-      />
+      >
+        <template #prefix>
+          <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+        </template>
+      </NInput>
     </div>
 
-    <UAlert
+    <NAlert
       v-if="error"
-      color="error"
-      variant="subtle"
+      type="error"
       title="用户列表加载失败"
     />
 
@@ -76,10 +78,11 @@ async function deleteUser(user: AdminUser) {
         v-if="pending"
         class="space-y-2 p-4"
       >
-        <USkeleton
+        <NSkeleton
           v-for="item in 6"
           :key="item"
           class="h-12 rounded-md"
+          text
         />
       </div>
       <div
@@ -106,35 +109,38 @@ async function deleteUser(user: AdminUser) {
             </NuxtLink>
             <p class="mt-1 text-xs text-(--ui-text-dimmed)">ID {{ item.id }}</p>
           </div>
-          <UBadge
-            :color="item.role === 'admin' ? 'primary' : 'neutral'"
-            variant="subtle"
+          <NTag
+            :type="item.role === 'admin' ? 'info' : 'default'"
           >
             {{ item.role === 'admin' ? '管理员' : '用户' }}
-          </UBadge>
+          </NTag>
           <p class="text-sm text-(--ui-text-muted)">
             {{ new Date(item.createdAt).toLocaleString() }}
           </p>
           <div class="flex flex-wrap gap-2 md:justify-end">
-            <UButton
-              :to="`/admin/users/${item.id}`"
-              size="sm"
-              variant="outline"
-              icon="i-lucide-eye"
+            <NButton
+              size="small"
+              secondary
+              @click="navigateTo(`/admin/users/${item.id}`)"
             >
+              <template #icon>
+                <Icon icon="lucide:eye" />
+              </template>
               查阅
-            </UButton>
-            <UButton
-              size="sm"
-              color="error"
-              variant="ghost"
-              icon="i-lucide-trash-2"
+            </NButton>
+            <NButton
+              size="small"
+              quaternary
+              type="error"
               :disabled="item.id === 1"
               :loading="deletingId === item.id"
               @click="deleteUser(item)"
             >
+              <template #icon>
+                <Icon icon="lucide:trash-2" />
+              </template>
               删除
-            </UButton>
+            </NButton>
           </div>
         </div>
       </div>

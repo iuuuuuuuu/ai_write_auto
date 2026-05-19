@@ -56,12 +56,11 @@ function prevChapter() {
         class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between"
       >
         <div class="flex items-center gap-3">
-          <UButton
-            variant="ghost"
-            icon="i-lucide-arrow-left"
-            size="sm"
-            :to="getNovelTo()"
-          />
+          <NButton quaternary size="small" @click="navigateTo(getNovelTo())">
+            <template #icon>
+              <Icon icon="lucide:arrow-left" />
+            </template>
+          </NButton>
           <div class="min-w-0">
             <p
               class="text-sm font-medium text-gray-900 dark:text-white truncate"
@@ -72,33 +71,39 @@ function prevChapter() {
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <UButton
-            size="xs"
-            variant="ghost"
-            icon="i-lucide-minus"
-            @click="fontSize = Math.max(14, fontSize - 2)"
-          />
+          <NButton size="tiny" quaternary @click="fontSize = Math.max(14, fontSize - 2)">
+            <template #icon>
+              <Icon icon="lucide:minus" />
+            </template>
+          </NButton>
           <span class="text-xs text-gray-400 w-8 text-center">{{
             fontSize
           }}</span>
-          <UButton
-            size="xs"
-            variant="ghost"
-            icon="i-lucide-plus"
-            @click="fontSize = Math.min(28, fontSize + 2)"
-          />
-          <UButton
-            size="xs"
-            :variant="readingMode === 'scroll' ? 'solid' : 'ghost'"
-            icon="i-lucide-scroll-text"
+          <NButton size="tiny" quaternary @click="fontSize = Math.min(28, fontSize + 2)">
+            <template #icon>
+              <Icon icon="lucide:plus" />
+            </template>
+          </NButton>
+          <NButton
+            size="tiny"
+            :type="readingMode === 'scroll' ? 'primary' : 'default'"
+            :quaternary="readingMode !== 'scroll'"
             @click="readingMode = 'scroll'"
-          />
-          <UButton
-            size="xs"
-            :variant="readingMode === 'page' ? 'solid' : 'ghost'"
-            icon="i-lucide-book-open"
+          >
+            <template #icon>
+              <Icon icon="lucide:scroll-text" />
+            </template>
+          </NButton>
+          <NButton
+            size="tiny"
+            :type="readingMode === 'page' ? 'primary' : 'default'"
+            :quaternary="readingMode !== 'page'"
             @click="readingMode = 'page'"
-          />
+          >
+            <template #icon>
+              <Icon icon="lucide:book-open" />
+            </template>
+          </NButton>
         </div>
       </div>
     </div>
@@ -144,26 +149,21 @@ function prevChapter() {
       <div
         class="flex items-center justify-between mt-10 pt-6 border-t border-gray-200 dark:border-gray-800"
       >
-        <UButton
-          variant="ghost"
-          icon="i-lucide-chevron-left"
-          :disabled="currentChapterIndex === 0"
-          @click="prevChapter"
-        >
+        <NButton quaternary :disabled="currentChapterIndex === 0" @click="prevChapter">
+          <template #icon>
+            <Icon icon="lucide:chevron-left" />
+          </template>
           上一章
-        </UButton>
+        </NButton>
         <span class="text-sm text-gray-400">
           {{ currentChapterIndex + 1 }} / {{ sortedChapters.length }}
         </span>
-        <UButton
-          variant="ghost"
-          icon="i-lucide-chevron-right"
-          trailing
-          :disabled="currentChapterIndex >= sortedChapters.length - 1"
-          @click="nextChapter"
-        >
+        <NButton quaternary :disabled="currentChapterIndex >= sortedChapters.length - 1" @click="nextChapter">
           下一章
-        </UButton>
+          <template #icon>
+            <Icon icon="lucide:chevron-right" />
+          </template>
+        </NButton>
       </div>
     </div>
   </div>

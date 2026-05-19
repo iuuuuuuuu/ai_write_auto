@@ -49,8 +49,8 @@ const hasSelectedChapterContent = computed(() =>
         <div
           class="flex h-6 w-6 items-center justify-center rounded-md bg-(--ui-bg-accented)"
         >
-          <UIcon
-            name="i-lucide-bolt"
+          <Icon
+            icon="lucide:bolt"
             class="h-3.5 w-3.5 text-(--ui-primary)"
           />
         </div>
@@ -62,36 +62,32 @@ const hasSelectedChapterContent = computed(() =>
       </div>
 
       <div class="mt-3 grid grid-cols-2 gap-2">
-        <UButton
-          block
-          icon="i-lucide-plus"
-          size="sm"
-          @click="emit('createChapter')"
-        >
+        <NButton block size="small" type="primary" @click="emit('createChapter')">
+          <template #icon>
+            <Icon icon="lucide:plus" />
+          </template>
           新章节
-        </UButton>
-        <UButton
-          block
-          icon="i-lucide-user-plus"
-          size="sm"
-          variant="soft"
-          @click="emit('createCharacter')"
-        >
+        </NButton>
+        <NButton block size="small" secondary @click="emit('createCharacter')">
+          <template #icon>
+            <Icon icon="lucide:user-plus" />
+          </template>
           新角色
-        </UButton>
+        </NButton>
       </div>
 
-      <UButton
+      <NButton
         class="mt-2"
         block
-        icon="i-lucide-book-open"
-        size="sm"
-        variant="outline"
-        color="neutral"
-        :to="props.readTo"
+        size="small"
+        secondary
+        @click="navigateTo(props.readTo)"
       >
+        <template #icon>
+          <Icon icon="lucide:book-open" />
+        </template>
         阅读全文
-      </UButton>
+      </NButton>
     </section>
 
     <!-- Chapter Characters -->
@@ -103,8 +99,8 @@ const hasSelectedChapterContent = computed(() =>
         <div
           class="flex h-6 w-6 items-center justify-center rounded-md bg-(--ui-bg-accented)"
         >
-          <UIcon
-            name="i-lucide-users"
+          <Icon
+            icon="lucide:users"
             class="h-3.5 w-3.5 text-(--ui-primary)"
           />
         </div>
@@ -123,20 +119,17 @@ const hasSelectedChapterContent = computed(() =>
           v-if="props.chapterCharacters.length"
           class="flex flex-wrap gap-1.5"
         >
-          <UTooltip
+          <NTooltip
             v-for="char in props.chapterCharacters"
             :key="char.id"
-            :text="char.description || char.name"
           >
-            <UBadge
-              variant="soft"
-              color="primary"
-              size="sm"
-              class="cursor-default"
-            >
-              {{ char.name }}
-            </UBadge>
-          </UTooltip>
+            <template #trigger>
+              <NTag type="info" size="small" class="cursor-default">
+                {{ char.name }}
+              </NTag>
+            </template>
+            {{ char.description || char.name }}
+          </NTooltip>
         </div>
         <p
           v-else
@@ -156,8 +149,8 @@ const hasSelectedChapterContent = computed(() =>
         <div
           class="flex h-6 w-6 items-center justify-center rounded-md bg-(--ui-bg-accented)"
         >
-          <UIcon
-            name="i-lucide-sparkles"
+          <Icon
+            icon="lucide:sparkles"
             class="h-3.5 w-3.5 text-(--ui-primary)"
           />
         </div>
@@ -169,24 +162,18 @@ const hasSelectedChapterContent = computed(() =>
       </div>
 
       <div class="mt-3 space-y-2">
-        <UButton
-          block
-          icon="i-lucide-wand-sparkles"
-          size="sm"
-          @click="emit('generate')"
-        >
+        <NButton block size="small" type="primary" @click="emit('generate')">
+          <template #icon>
+            <Icon icon="lucide:wand-sparkles" />
+          </template>
           生成章节
-        </UButton>
-        <UButton
-          block
-          icon="i-lucide-expand"
-          size="sm"
-          variant="soft"
-          :disabled="!hasSelectedChapterContent"
-          @click="emit('expand')"
-        >
+        </NButton>
+        <NButton block size="small" secondary :disabled="!hasSelectedChapterContent" @click="emit('expand')">
+          <template #icon>
+            <Icon icon="lucide:expand" />
+          </template>
           扩写/改写
-        </UButton>
+        </NButton>
       </div>
 
       <div class="mt-3 rounded-lg bg-(--ui-bg-muted) px-3 py-2">
@@ -254,8 +241,8 @@ const hasSelectedChapterContent = computed(() =>
         <div
           class="flex h-6 w-6 items-center justify-center rounded-md bg-(--ui-bg-accented)"
         >
-          <UIcon
-            name="i-lucide-download"
+          <Icon
+            icon="lucide:download"
             class="h-3.5 w-3.5 text-(--ui-primary)"
           />
         </div>
@@ -266,33 +253,15 @@ const hasSelectedChapterContent = computed(() =>
         </span>
       </div>
       <div class="mt-3 grid grid-cols-3 gap-2">
-        <UButton
-          size="sm"
-          variant="outline"
-          color="neutral"
-          class="text-xs"
-          @click="emit('exportNovel', 'txt')"
-        >
+        <NButton size="small" secondary class="text-xs" @click="emit('exportNovel', 'txt')">
           TXT
-        </UButton>
-        <UButton
-          size="sm"
-          variant="outline"
-          color="neutral"
-          class="text-xs"
-          @click="emit('exportNovel', 'md')"
-        >
+        </NButton>
+        <NButton size="small" secondary class="text-xs" @click="emit('exportNovel', 'md')">
           MD
-        </UButton>
-        <UButton
-          size="sm"
-          variant="outline"
-          color="neutral"
-          class="text-xs"
-          @click="emit('exportNovel', 'epub')"
-        >
+        </NButton>
+        <NButton size="small" secondary class="text-xs" @click="emit('exportNovel', 'epub')">
           EPUB
-        </UButton>
+        </NButton>
       </div>
     </section>
   </aside>

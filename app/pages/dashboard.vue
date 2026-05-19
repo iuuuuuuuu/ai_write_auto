@@ -12,7 +12,7 @@ const { data: stats } = await useFetch<{ todayWords: number; streak: number; tot
 const showCreateModal = ref(false)
 const newNovelTitle = ref('')
 const newNovelDescription = ref('')
-const newNovelGenre = ref('')
+const newNovelGenre = ref<string | null>(null)
 const creatingNovel = ref(false)
 
 const genreOptions = [
@@ -39,12 +39,18 @@ async function handleCreateNovel() {
     showCreateModal.value = false
     newNovelTitle.value = ''
     newNovelDescription.value = ''
-    newNovelGenre.value = ''
+    newNovelGenre.value = null
     await refreshNovels()
     router.push(`/novels/${novel.id}`)
   } finally {
     creatingNovel.value = false
   }
+}
+
+function getStatusType(status: string) {
+  if (status === 'completed') return 'success'
+  if (status === 'in_progress') return 'info'
+  return 'default'
 }
 </script>
 
@@ -56,9 +62,12 @@ async function handleCreateNovel() {
         <h1 class="text-xl font-semibold text-(--ui-text-highlighted)">{{ t('dashboard.title') }}</h1>
         <p class="mt-0.5 text-sm text-(--ui-text-dimmed)">{{ t('common.appName') }}</p>
       </div>
-      <UButton icon="i-lucide-plus" @click="showCreateModal = true">
+      <NButton type="primary" @click="showCreateModal = true">
+        <template #icon>
+          <Icon icon="lucide:plus" />
+        </template>
         {{ t('novel.create') }}
-      </UButton>
+      </NButton>
     </div>
 
     <!-- Stats -->
@@ -95,9 +104,9 @@ async function handleCreateNovel() {
             <h3 class="font-medium text-(--ui-text) group-hover:text-primary-300 transition-colors truncate">
               {{ novel.title }}
             </h3>
-            <UBadge :color="novel.status === 'completed' ? 'success' : novel.status === 'in_progress' ? 'info' : 'neutral'" variant="subtle" size="xs">
+            <NTag :type="getStatusType(novel.status)" size="small">
               {{ t(`novel.statuses.${novel.status === 'in_progress' ? 'inProgress' : novel.status}`) }}
-            </UBadge>
+            </NTag>
           </div>
           <p v-if="novel.description" class="mt-2 text-sm text-(--ui-text-dimmed) line-clamp-2">
             {{ novel.description }}
@@ -113,40 +122,40 @@ async function handleCreateNovel() {
     <!-- Empty -->
     <div v-else class="text-center py-20">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-(--ui-bg-muted) border border-(--ui-border) mb-5">
-        <UIcon name="i-lucide-book-open" class="w-7 h-7 text-(--ui-text-dimmed)" />
+        <Icon icon="lucide:book-open" class="w-7 h-7 text-(--ui-text-dimmed)" />
       </div>
       <h3 class="text-base font-medium text-(--ui-text-highlighted)">{{ t('dashboard.createFirst') }}</h3>
       <p class="mt-1.5 text-sm text-(--ui-text-dimmed)">{{ t('dashboard.createFirstDesc') }}</p>
-      <UButton class="mt-5" icon="i-lucide-plus" @click="showCreateModal = true">
+      <NButton class="mt-5" type="primary" @click="showCreateModal = true">
+        <template #icon>
+          <Icon icon="lucide:plus" />
+        </template>
         {{ t('novel.create') }}
-      </UButton>
+      </NButton>
     </div>
 
     <!-- Create Novel Modal -->
-    <UModal v-model:open="showCreateModal">
-      <template #content>
-        <div class="p-6 space-y-5">
-          <h3 class="text-lg font-semibold text-(--ui-text-highlighted)">{{ t('novel.create') }}</h3>
-          <div class="space-y-4">
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-(--ui-text)">{{ t('novel.novelTitle') }}</label>
-              <UInput v-model="newNovelTitle" :placeholder="t('novel.novelTitle')" size="lg" autofocus @keyup.enter="handleCreateNovel" />
-            </div>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-(--ui-text)">{{ t('novel.description') }}</label>
-              <UTextarea v-model="newNovelDescription" :placeholder="t('novel.description')" :rows="3" />
-            </div>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-(--ui-text)">{{ t('novel.genre') }}</label>
-              <USelectMenu v-model="newNovelGenre" :items="genreOptions" value-key="value" :placeholder="t('novel.genre')" />
-            </div>
-          </div>
-          <div class="flex justify-end gap-2 pt-2">
-            <UButton variant="ghost" color="neutral" @click="showCreateModal = false">{{ t('common.cancel') }}</UButton>
-            <UButton :loading="creatingNovel" :disabled="!newNovelTitle.trim()" @click="handleCreateNovel">{{ t('common.create') }}</UButton>
-          </div>
+    <NModal v-model:show="showCreateModal" preset="card" :title="t('novel.create')" style="max-width: 500px;">
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">{{ t('novel.novelTitle') }}</label>
+          <NInput v-model:value="newNovelTitle" :placeholder="t('novel.novelTitle')" size="large" autofocus @keyup.enter="handleCreateNovel" />
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">{{ t('novel.description') }}</label>
+          <NInput v-model:value="newNovelDescription" type="textarea" :placeholder="t('novel.description')" :rows="3" />
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">{{ t('novel.genre') }}</label>
+          <NSelect v-model:value="newNovelGenre" :options="genreOptions" :placeholder="t('novel.genre')" clearable />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showCreateModal = false">{{ t('common.cancel') }}</NButton>
+          <NButton type="primary" :loading="creatingNovel" :disabled="!newNovelTitle.trim()" @click="handleCreateNovel">{{ t('common.create') }}</NButton>
         </div>
       </template>
-    </UModal>
+    </NModal>
   </div>
 </template>

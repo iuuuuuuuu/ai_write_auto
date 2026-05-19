@@ -57,15 +57,17 @@ const updatedAtText = computed(() => {
               {{ updatedAtText }}
             </p>
           </div>
-          <UButton
+          <NButton
             v-if="props.editTo"
-            :to="props.editTo"
-            icon="i-lucide-pen-line"
-            size="sm"
-            variant="soft"
+            size="small"
+            secondary
+            @click="navigateTo(props.editTo)"
           >
+            <template #icon>
+              <Icon icon="lucide:pen-line" />
+            </template>
             编辑
-          </UButton>
+          </NButton>
         </div>
 
         <p
@@ -91,8 +93,8 @@ const updatedAtText = computed(() => {
           <div
             class="flex h-12 w-12 items-center justify-center rounded-2xl bg-(--ui-bg-accented)"
           >
-            <UIcon
-              name="i-lucide-pen-tool"
+            <Icon
+              icon="lucide:pen-tool"
               class="h-5 w-5 text-(--ui-text-dimmed)"
             />
           </div>
@@ -114,8 +116,8 @@ const updatedAtText = computed(() => {
       <div
         class="flex h-14 w-14 items-center justify-center rounded-2xl bg-(--ui-bg-accented)"
       >
-        <UIcon
-          name="i-lucide-book-open"
+        <Icon
+          icon="lucide:book-open"
           class="h-6 w-6 text-(--ui-text-dimmed)"
         />
       </div>

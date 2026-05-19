@@ -111,21 +111,24 @@ onBeforeUnmount(() => {
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <UButton
-              icon="i-lucide-sparkles"
-              size="sm"
-              variant="soft"
+            <NButton
+              size="small"
+              secondary
               @click="emit('generate')"
             >
+              <template #icon>
+                <Icon icon="lucide:sparkles" />
+              </template>
               AI 生成
-            </UButton>
-            <UButton
-              size="sm"
+            </NButton>
+            <NButton
+              size="small"
+              type="primary"
               :loading="saving"
               @click="doSave"
             >
               保存
-            </UButton>
+            </NButton>
           </div>
         </div>
 
@@ -156,8 +159,8 @@ onBeforeUnmount(() => {
       <div
         class="flex h-14 w-14 items-center justify-center rounded-2xl bg-(--ui-bg-accented)"
       >
-        <UIcon
-          name="i-lucide-book-open"
+        <Icon
+          icon="lucide:book-open"
           class="h-6 w-6 text-(--ui-text-dimmed)"
         />
       </div>

@@ -24,25 +24,25 @@ const metrics = computed(() => [
     label: '用户总数',
     value: overview.value?.users.total || 0,
     detail: `${overview.value?.users.admins || 0} 个管理员`,
-    icon: 'i-lucide-users'
+    icon: 'lucide:users'
   },
   {
     label: '小说总数',
     value: overview.value?.novels.total || 0,
     detail: `${overview.value?.novels.inProgress || 0} 本连载中`,
-    icon: 'i-lucide-library'
+    icon: 'lucide:library'
   },
   {
     label: '模型配置',
     value: overview.value?.aiConfigs.total || 0,
     detail: `${overview.value?.aiConfigs.enabled || 0} 个可用`,
-    icon: 'i-lucide-cpu'
+    icon: 'lucide:cpu'
   },
   {
     label: 'Token 用量',
     value: overview.value?.usage.totalTokens || 0,
     detail: `${overview.value?.usage.requests || 0} 次记录`,
-    icon: 'i-lucide-activity'
+    icon: 'lucide:activity'
   }
 ])
 </script>
@@ -62,19 +62,18 @@ const metrics = computed(() => [
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <UButton
-          to="/admin/users"
-          icon="i-lucide-users"
-        >
+        <NButton type="primary" @click="navigateTo('/admin/users')">
+          <template #icon>
+            <Icon icon="lucide:users" />
+          </template>
           用户管理
-        </UButton>
-        <UButton
-          to="/admin/novels"
-          variant="outline"
-          icon="i-lucide-library"
-        >
+        </NButton>
+        <NButton secondary @click="navigateTo('/admin/novels')">
+          <template #icon>
+            <Icon icon="lucide:library" />
+          </template>
           小说查阅
-        </UButton>
+        </NButton>
       </div>
     </div>
 
@@ -82,20 +81,21 @@ const metrics = computed(() => [
       v-if="pending"
       class="grid gap-3 md:grid-cols-4"
     >
-      <USkeleton
+      <NSkeleton
         v-for="item in 4"
         :key="item"
         class="h-28 rounded-lg"
+        text
       />
     </div>
 
-    <UAlert
+    <NAlert
       v-else-if="error"
-      color="error"
-      variant="subtle"
+      type="error"
       title="后台数据加载失败"
-      description="请稍后重试，或检查当前账号是否仍拥有管理员权限。"
-    />
+    >
+      请稍后重试，或检查当前账号是否仍拥有管理员权限。
+    </NAlert>
 
     <div
       v-else
@@ -108,8 +108,8 @@ const metrics = computed(() => [
       >
         <div class="flex items-center justify-between gap-3">
           <p class="text-sm text-(--ui-text-muted)">{{ metric.label }}</p>
-          <UIcon
-            :name="metric.icon"
+          <Icon
+            :icon="metric.icon"
             class="size-4 text-primary-400"
           />
         </div>
@@ -133,14 +133,12 @@ const metrics = computed(() => [
               当前小说状态分布，用于判断创作活跃度。
             </p>
           </div>
-          <UButton
-            to="/admin/novels"
-            size="sm"
-            variant="ghost"
-            icon="i-lucide-arrow-right"
-          >
+          <NButton quaternary size="small" @click="navigateTo('/admin/novels')">
+            <template #icon>
+              <Icon icon="lucide:arrow-right" />
+            </template>
             查看
-          </UButton>
+          </NButton>
         </div>
         <div class="mt-5 grid gap-3 sm:grid-cols-3">
           <div class="rounded-lg bg-(--ui-bg-elevated) p-4">
@@ -192,14 +190,12 @@ const metrics = computed(() => [
               overview?.aiConfigs.disabled || 0
             }}</span>
           </div>
-          <UButton
-            to="/admin/ai-configs"
-            block
-            variant="outline"
-            icon="i-lucide-cpu"
-          >
+          <NButton block secondary @click="navigateTo('/admin/ai-configs')">
+            <template #icon>
+              <Icon icon="lucide:cpu" />
+            </template>
             查看模型配置
-          </UButton>
+          </NButton>
         </div>
       </section>
     </div>

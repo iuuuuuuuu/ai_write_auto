@@ -4,14 +4,14 @@ definePageMeta({ layout: 'default' })
 const { t } = useI18n()
 
 const tabs = [
-  { label: t('settings.aiConfig'), value: 'ai', icon: 'i-lucide-brain' },
-  { label: t('settings.general'), value: 'general', icon: 'i-lucide-settings' },
+  { label: t('settings.aiConfig'), value: 'ai', icon: 'lucide:brain' },
+  { label: t('settings.general'), value: 'general', icon: 'lucide:settings' },
   {
     label: t('settings.database'),
     value: 'database',
-    icon: 'i-lucide-database'
+    icon: 'lucide:database'
   },
-  { label: t('settings.usage'), value: 'usage', icon: 'i-lucide-bar-chart-2' }
+  { label: t('settings.usage'), value: 'usage', icon: 'lucide:bar-chart-2' }
 ]
 
 const activeTab = ref('ai')
@@ -20,11 +20,14 @@ const activeTab = ref('ai')
 <template>
   <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
     <div class="mb-8 flex items-center gap-4">
-      <UButton
-        variant="ghost"
-        icon="i-lucide-arrow-left"
-        to="/dashboard"
-      />
+      <NButton
+        quaternary
+        @click="navigateTo('/dashboard')"
+      >
+        <template #icon>
+          <Icon icon="lucide:arrow-left" />
+        </template>
+      </NButton>
       <div>
         <p class="text-sm text-(--ui-text-muted)">{{ t('common.appName') }}</p>
         <h1 class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)">
@@ -34,16 +37,19 @@ const activeTab = ref('ai')
     </div>
 
     <div class="mb-6 flex flex-wrap gap-2">
-      <UButton
+      <NButton
         v-for="tab in tabs"
         :key="tab.value"
-        :variant="activeTab === tab.value ? 'solid' : 'ghost'"
-        :icon="tab.icon"
-        size="sm"
+        :type="activeTab === tab.value ? 'primary' : 'default'"
+        :quaternary="activeTab !== tab.value"
+        size="small"
         @click="activeTab = tab.value"
       >
+        <template #icon>
+          <Icon :icon="tab.icon" />
+        </template>
         {{ tab.label }}
-      </UButton>
+      </NButton>
     </div>
 
     <SettingsAi v-show="activeTab === 'ai'" />

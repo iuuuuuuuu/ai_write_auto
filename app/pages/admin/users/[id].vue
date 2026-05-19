@@ -78,19 +78,16 @@ async function updateRole(role: 'admin' | 'user') {
 
 <template>
   <div class="mx-auto max-w-6xl space-y-6">
-    <UButton
-      to="/admin/users"
-      variant="ghost"
-      color="neutral"
-      icon="i-lucide-arrow-left"
-    >
+    <NButton quaternary @click="navigateTo('/admin/users')">
+      <template #icon>
+        <Icon icon="lucide:arrow-left" />
+      </template>
       返回用户列表
-    </UButton>
+    </NButton>
 
-    <UAlert
+    <NAlert
       v-if="error"
-      color="error"
-      variant="subtle"
+      type="error"
       title="用户详情加载失败"
     />
 
@@ -98,8 +95,8 @@ async function updateRole(role: 'admin' | 'user') {
       v-else-if="pending"
       class="space-y-4"
     >
-      <USkeleton class="h-28 rounded-lg" />
-      <USkeleton class="h-64 rounded-lg" />
+      <NSkeleton class="h-28 rounded-lg" text />
+      <NSkeleton class="h-64 rounded-lg" text />
     </div>
 
     <template v-else-if="detail">
@@ -126,12 +123,11 @@ async function updateRole(role: 'admin' | 'user') {
             <label class="mb-1 block text-sm text-(--ui-text-muted)"
               >角色</label
             >
-            <USelectMenu
-              :model-value="detail.user.role"
-              :items="roleItems"
-              value-key="value"
+            <NSelect
+              :value="detail.user.role"
+              :options="roleItems"
               :disabled="detail.user.id === 1 || savingRole"
-              @update:model-value="updateRole"
+              @update:value="updateRole"
             />
           </div>
         </div>
@@ -175,7 +171,7 @@ async function updateRole(role: 'admin' | 'user') {
       >
         <div class="mb-4 flex items-center justify-between">
           <h2 class="font-semibold text-(--ui-text-highlighted)">模型配置</h2>
-          <UBadge variant="subtle">{{ detail.aiConfigs.length }}</UBadge>
+          <NTag size="small">{{ detail.aiConfigs.length }}</NTag>
         </div>
         <div
           v-if="!detail.aiConfigs.length"
@@ -197,20 +193,18 @@ async function updateRole(role: 'admin' | 'user') {
                 <p class="font-medium text-(--ui-text-highlighted)">
                   {{ config.name }}
                 </p>
-                <UBadge
+                <NTag
                   v-if="config.isDefault"
-                  size="xs"
-                  variant="subtle"
+                  size="small"
                 >
                   默认
-                </UBadge>
-                <UBadge
-                  :color="config.enabled ? 'success' : 'neutral'"
-                  size="xs"
-                  variant="subtle"
+                </NTag>
+                <NTag
+                  :type="config.enabled ? 'success' : 'default'"
+                  size="small"
                 >
                   {{ config.enabled ? '启用' : '停用' }}
-                </UBadge>
+                </NTag>
               </div>
               <p class="mt-1 truncate text-sm text-(--ui-text-muted)">
                 {{ config.apiUrl }}
@@ -230,7 +224,7 @@ async function updateRole(role: 'admin' | 'user') {
       >
         <div class="mb-4 flex items-center justify-between">
           <h2 class="font-semibold text-(--ui-text-highlighted)">小说</h2>
-          <UBadge variant="subtle">{{ detail.novels.length }}</UBadge>
+          <NTag size="small">{{ detail.novels.length }}</NTag>
         </div>
         <div
           v-if="!detail.novels.length"
@@ -258,18 +252,20 @@ async function updateRole(role: 'admin' | 'user') {
                 {{ novel.description || '暂无简介' }}
               </p>
             </div>
-            <UBadge variant="subtle">{{ novel.status }}</UBadge>
+            <NTag size="small">{{ novel.status }}</NTag>
             <p class="text-sm text-(--ui-text-muted)">
               {{ new Date(novel.updatedAt).toLocaleDateString() }}
             </p>
-            <UButton
-              :to="`/admin/novels/${novel.id}`"
-              size="sm"
-              variant="outline"
-              icon="i-lucide-eye"
+            <NButton
+              size="small"
+              secondary
+              @click="navigateTo(`/admin/novels/${novel.id}`)"
             >
+              <template #icon>
+                <Icon icon="lucide:eye" />
+              </template>
               查阅
-            </UButton>
+            </NButton>
           </div>
         </div>
       </section>

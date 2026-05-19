@@ -54,18 +54,20 @@ const filteredConfigs = computed(() => {
           查阅用户配置的模型、用途和启用状态。密钥仅显示遮蔽结果。
         </p>
       </div>
-      <UInput
-        v-model="search"
+      <NInput
+        v-model:value="search"
         class="sm:w-80"
-        icon="i-lucide-search"
         placeholder="搜索用户、模型或地址"
-      />
+      >
+        <template #prefix>
+          <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+        </template>
+      </NInput>
     </div>
 
-    <UAlert
+    <NAlert
       v-if="error"
-      color="error"
-      variant="subtle"
+      type="error"
       title="模型配置加载失败"
     />
 
@@ -73,10 +75,11 @@ const filteredConfigs = computed(() => {
       v-if="pending"
       class="space-y-3"
     >
-      <USkeleton
+      <NSkeleton
         v-for="item in 6"
         :key="item"
         class="h-24 rounded-lg"
+        text
       />
     </div>
     <div
@@ -100,20 +103,18 @@ const filteredConfigs = computed(() => {
               <h2 class="font-semibold text-(--ui-text-highlighted)">
                 {{ config.name }}
               </h2>
-              <UBadge
+              <NTag
                 v-if="config.isDefault"
-                size="xs"
-                variant="subtle"
+                size="small"
               >
                 默认
-              </UBadge>
-              <UBadge
-                :color="config.enabled ? 'success' : 'neutral'"
-                size="xs"
-                variant="subtle"
+              </NTag>
+              <NTag
+                :type="config.enabled ? 'success' : 'default'"
+                size="small"
               >
                 {{ config.enabled ? '启用' : '停用' }}
-              </UBadge>
+              </NTag>
             </div>
             <p class="mt-2 truncate text-sm text-(--ui-text-muted)">
               {{ config.apiUrl }}
