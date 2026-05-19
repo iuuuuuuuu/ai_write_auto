@@ -138,7 +138,7 @@ async function handleCreateNovel() {
             </div>
             <div class="space-y-1.5">
               <label class="text-sm font-medium text-(--ui-text)">{{ t('novel.genre') }}</label>
-              <USelect v-model="newNovelGenre" :items="genreOptions" value-key="value" />
+              <USelectMenu v-model="newNovelGenre" :items="genreOptions" value-key="value" :placeholder="t('novel.genre')" />
             </div>
           </div>
           <div class="flex justify-end gap-2 pt-2">
