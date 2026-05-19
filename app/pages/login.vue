@@ -18,7 +18,9 @@ async function handleLogin() {
     await login(form.username, form.password)
     navigateTo('/dashboard')
   } catch (e: any) {
-    error.value = e.data?.message || t('auth.loginFailed')
+    error.value = e.data?.statusCode === 401
+      ? t('auth.invalidCredentials')
+      : t('auth.loginFailed')
   } finally {
     loading.value = false
   }
