@@ -19,12 +19,15 @@ const SQLITE_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS ai_configs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL REFERENCES users(id),
+    name TEXT NOT NULL DEFAULT '默认模型',
     purpose TEXT NOT NULL,
     api_url TEXT NOT NULL,
     api_key TEXT NOT NULL,
     model TEXT NOT NULL,
     temperature TEXT DEFAULT '0.7',
     max_tokens INTEGER DEFAULT 4096,
+    is_default INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL DEFAULT (unixepoch()),
     updated_at INTEGER NOT NULL DEFAULT (unixepoch())
   )`,
@@ -159,7 +162,7 @@ const SQLITE_STATEMENTS = [
     user_id INTEGER NOT NULL REFERENCES users(id),
     key TEXT NOT NULL,
     value TEXT NOT NULL
-  )`,
+  )`
 ]
 
 const MYSQL_STATEMENTS = [
@@ -177,12 +180,15 @@ const MYSQL_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS ai_configs (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
+    name VARCHAR(255) NOT NULL DEFAULT '默认模型',
     purpose VARCHAR(50) NOT NULL,
     api_url TEXT NOT NULL,
     api_key TEXT NOT NULL,
     model VARCHAR(255) NOT NULL,
     temperature VARCHAR(10) DEFAULT '0.7',
     max_tokens INT DEFAULT 4096,
+    is_default TINYINT(1) NOT NULL DEFAULT 0,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
     created_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
     updated_at BIGINT NOT NULL DEFAULT (UNIX_TIMESTAMP()),
     FOREIGN KEY (user_id) REFERENCES users(id)
@@ -334,8 +340,96 @@ const MYSQL_STATEMENTS = [
     \`key\` VARCHAR(255) NOT NULL,
     value TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
-  )`,
+  )`
 ]
+
+const SQLITE_AI_CONFIG_COLUMNS = [
+  {
+    name: 'name',
+    sql: `ALTER TABLE ai_configs ADD COLUMN name TEXT NOT NULL DEFAULT '默认模型'`
+  },
+  {
+    name: 'is_default',
+    sql: `ALTER TABLE ai_configs ADD COLUMN is_default INTEGER NOT NULL DEFAULT 0`
+  },
+  {
+    name: 'enabled',
+    sql: `ALTER TABLE ai_configs ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`
+  }
+]
+
+const MYSQL_AI_CONFIG_COLUMNS = [
+  {
+    name: 'name',
+    sql: `ALTER TABLE ai_configs ADD COLUMN name VARCHAR(255) NOT NULL DEFAULT '默认模型'`
+  },
+  {
+    name: 'is_default',
+    sql: `ALTER TABLE ai_configs ADD COLUMN is_default TINYINT(1) NOT NULL DEFAULT 0`
+  },
+  {
+    name: 'enabled',
+    sql: `ALTER TABLE ai_configs ADD COLUMN enabled TINYINT(1) NOT NULL DEFAULT 1`
+  }
+]
+
+async function ensureSqliteAiConfigColumns(
+  client: ReturnType<typeof createClient>
+) {
+  const result = await client.execute('PRAGMA table_info(ai_configs)')
+  const existingColumns = new Set(result.rows.map((row) => String(row.name)))
+
+  for (const column of SQLITE_AI_CONFIG_COLUMNS) {
+    if (!existingColumns.has(column.name)) {
+      try {
+        await client.execute(column.sql)
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !error.message.includes('duplicate column name')
+        ) {
+          throw error
+        }
+      }
+    }
+  }
+
+  await client.execute(
+    `UPDATE ai_configs SET name = model WHERE name = '默认模型' OR name IS NULL`
+  )
+  await client.execute(
+    `UPDATE ai_configs SET is_default = 1 WHERE id IN (SELECT MIN(id) FROM ai_configs GROUP BY user_id, purpose) AND is_default = 0`
+  )
+}
+
+async function ensureMysqlAiConfigColumns(connection: mysql.Connection) {
+  const [rows] = await connection.execute<mysql.RowDataPacket[]>(
+    'SHOW COLUMNS FROM ai_configs'
+  )
+  const existingColumns = new Set(rows.map((row) => String(row.Field)))
+
+  for (const column of MYSQL_AI_CONFIG_COLUMNS) {
+    if (!existingColumns.has(column.name)) {
+      try {
+        await connection.execute(column.sql)
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !error.message.includes('Duplicate column name')
+        ) {
+          throw error
+        }
+      }
+    }
+  }
+
+  await connection.execute(
+    `UPDATE ai_configs SET name = model WHERE name = '默认模型' OR name IS NULL`
+  )
+  await connection.execute(
+    `UPDATE ai_configs SET is_default = 1 WHERE id IN (SELECT id FROM (SELECT MIN(id) AS id FROM ai_configs GROUP BY user_id, purpose) defaults) AND is_default = 0`
+  )
+}
 
 export async function runMigrations(config: DbConfig): Promise<void> {
   if (config.type === 'mysql') {
@@ -346,14 +440,18 @@ export async function runMigrations(config: DbConfig): Promise<void> {
       user: mysqlConfig.user,
       password: mysqlConfig.password,
       database: mysqlConfig.database,
-      multipleStatements: true,
+      multipleStatements: true
     })
     for (const stmt of MYSQL_STATEMENTS) {
       await connection.execute(stmt)
     }
+    await ensureMysqlAiConfigColumns(connection)
     await connection.end()
   } else {
-    const dbPath = resolve(process.cwd(), config.sqlite?.path || './data/novel.db')
+    const dbPath = resolve(
+      process.cwd(),
+      config.sqlite?.path || './data/novel.db'
+    )
     const dir = dirname(dbPath)
     if (!existsSync(dir)) {
       mkdirSync(dir, { recursive: true })
@@ -362,5 +460,6 @@ export async function runMigrations(config: DbConfig): Promise<void> {
     for (const stmt of SQLITE_STATEMENTS) {
       await client.execute(stmt)
     }
+    await ensureSqliteAiConfigColumns(client)
   }
 }

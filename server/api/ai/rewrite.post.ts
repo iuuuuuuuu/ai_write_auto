@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { eq, and } from 'drizzle-orm'
 import { getDatabase, schema } from '../../database'
 import { streamAi } from '../../utils/ai-client'
+import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { checkRateLimit } from '../../utils/rate-limit'
 
 const rewriteSchema = z.object({
@@ -9,6 +10,7 @@ const rewriteSchema = z.object({
   chapterId: z.number().int().positive(),
   selectedText: z.string().min(1),
   direction: z.string().optional(),
+  aiConfigId: z.number().int().positive().optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -16,7 +18,10 @@ export default defineEventHandler(async (event) => {
 
   const rateCheck = checkRateLimit(auth.userId)
   if (!rateCheck.allowed) {
-    throw createError({ statusCode: 429, message: `Rate limit exceeded. Try again in ${Math.ceil(rateCheck.resetIn / 1000)}s` })
+    throw createError({
+      statusCode: 429,
+      message: `Rate limit exceeded. Try again in ${Math.ceil(rateCheck.resetIn / 1000)}s`
+    })
   }
 
   const body = await readBody(event)
@@ -24,40 +29,43 @@ export default defineEventHandler(async (event) => {
 
   const db = await getDatabase()
 
-  const aiConfigs = await (db as any)
-    .select()
-    .from(schema.aiConfigs)
-    .where(and(eq(schema.aiConfigs.userId, auth.userId), eq(schema.aiConfigs.purpose, 'generation')))
-    .limit(1)
-
-  if (!aiConfigs.length) {
-    throw createError({ statusCode: 400, message: 'No AI config found' })
-  }
-  const aiConfig = aiConfigs[0]
+  const aiConfig = await resolveUserAiConfig(
+    db,
+    auth.userId,
+    'generation',
+    data.aiConfigId
+  )
 
   const chapters = await (db as any)
     .select()
     .from(schema.chapters)
-    .where(eq(schema.chapters.id, data.chapterId))
+    .innerJoin(schema.novels, eq(schema.chapters.novelId, schema.novels.id))
+    .where(
+      and(
+        eq(schema.chapters.id, data.chapterId),
+        eq(schema.novels.userId, auth.userId)
+      )
+    )
     .limit(1)
 
-  const chapterContent = chapters[0]?.content || ''
+  const chapterContent = chapters[0]?.chapters?.content || ''
 
   const messages = [
     {
       role: 'system' as const,
-      content: '你是一位专业的小说作家。请将用户选中的文本进行重写，使其质量更高。保持原有的情节走向和关键信息，但可以改变表达方式、句式结构和描写手法。只返回重写后的内容，不要其他说明。',
+      content:
+        '你是一位专业的小说作家。请将用户选中的文本进行重写，使其质量更高。保持原有的情节走向和关键信息，但可以改变表达方式、句式结构和描写手法。只返回重写后的内容，不要其他说明。'
     },
     {
       role: 'user' as const,
-      content: `章节上下文（供参考）：\n${chapterContent.slice(0, 2000)}\n\n需要重写的段落：\n${data.selectedText}${data.direction ? `\n\n重写方向：${data.direction}` : ''}`,
-    },
+      content: `章节上下文（供参考）：\n${chapterContent.slice(0, 2000)}\n\n需要重写的段落：\n${data.selectedText}${data.direction ? `\n\n重写方向：${data.direction}` : ''}`
+    }
   ]
 
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
+    Connection: 'keep-alive'
   })
 
   const stream = new ReadableStream({
@@ -71,22 +79,34 @@ export default defineEventHandler(async (event) => {
           messages,
           temperature: parseFloat(aiConfig.temperature || '0.7'),
           maxTokens: 2000,
-          stream: true,
+          stream: true
         })) {
           if (chunk.content) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk.content, done: false })}\n\n`))
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ content: chunk.content, done: false })}\n\n`
+              )
+            )
           }
           if (chunk.done) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '', done: true })}\n\n`))
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ content: '', done: true })}\n\n`
+              )
+            )
             controller.close()
             return
           }
         }
       } catch (err: any) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: err.message, done: true })}\n\n`))
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ error: err.message, done: true })}\n\n`
+          )
+        )
         controller.close()
       }
-    },
+    }
   })
 
   return new Response(stream)

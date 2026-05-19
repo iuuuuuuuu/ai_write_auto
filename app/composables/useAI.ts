@@ -19,11 +19,13 @@ export function useAI() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-        signal: abortController.signal,
+        signal: abortController.signal
       })
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ message: 'Request failed' }))
+        const err = await response
+          .json()
+          .catch(() => ({ message: 'Request failed' }))
         throw new Error(err.message || `HTTP ${response.status}`)
       }
 
@@ -64,16 +66,42 @@ export function useAI() {
     abortController?.abort()
   }
 
-  async function generateChapter(novelId: number, options: { chapterId?: number; direction?: string; temperature?: number; model?: string } = {}) {
+  async function generateChapter(
+    novelId: number,
+    options: {
+      chapterId?: number
+      direction?: string
+      temperature?: number
+      aiConfigId?: number
+    } = {}
+  ) {
     return streamGenerate('/api/ai/generate', { novelId, ...options })
   }
 
-  async function expandText(novelId: number, chapterId: number, selectedText: string) {
-    return streamGenerate('/api/ai/expand', { novelId, chapterId, selectedText })
+  async function expandText(
+    novelId: number,
+    chapterId: number,
+    selectedText: string
+  ) {
+    return streamGenerate('/api/ai/expand', {
+      novelId,
+      chapterId,
+      selectedText
+    })
   }
 
-  async function rewriteText(novelId: number, chapterId: number, selectedText: string, direction?: string) {
-    return streamGenerate('/api/ai/rewrite', { novelId, chapterId, selectedText, direction })
+  async function rewriteText(
+    novelId: number,
+    chapterId: number,
+    selectedText: string,
+    direction?: string
+  ) {
+    return streamGenerate('/api/ai/rewrite', {
+      novelId,
+      chapterId,
+      selectedText,
+      direction
+    })
   }
 
   async function generateOutline(novelId: number, idea: string) {
@@ -83,7 +111,7 @@ export function useAI() {
   async function checkConsistency(novelId: number, chapterId: number) {
     const data = await $fetch('/api/ai/consistency-check', {
       method: 'POST',
-      body: { novelId, chapterId },
+      body: { novelId, chapterId }
     })
     return data
   }
@@ -91,7 +119,7 @@ export function useAI() {
   async function analyzeStyle(novelId: number) {
     const data = await $fetch('/api/ai/analyze-style', {
       method: 'POST',
-      body: { novelId },
+      body: { novelId }
     })
     return data
   }
@@ -107,6 +135,6 @@ export function useAI() {
     rewriteText,
     generateOutline,
     checkConsistency,
-    analyzeStyle,
+    analyzeStyle
   }
 }

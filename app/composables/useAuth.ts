@@ -10,7 +10,9 @@ export function useAuth() {
 
   async function fetchUser() {
     try {
-      const data = await $fetch<{ user: User }>('/api/auth/me')
+      const data = await $fetch<{ user: User }>('/api/auth/me', {
+        headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
+      })
       user.value = data.user
     } catch {
       user.value = null
@@ -22,18 +24,20 @@ export function useAuth() {
   async function login(username: string, password: string) {
     const data = await $fetch<{ user: User }>('/api/auth/login', {
       method: 'POST',
-      body: { username, password },
+      body: { username, password }
     })
     user.value = data.user
+    loading.value = false
     return data.user
   }
 
   async function register(username: string, password: string) {
     const data = await $fetch<{ user: User }>('/api/auth/register', {
       method: 'POST',
-      body: { username, password },
+      body: { username, password }
     })
     user.value = data.user
+    loading.value = false
     return data.user
   }
 
@@ -51,6 +55,6 @@ export function useAuth() {
     register,
     logout,
     isAdmin: computed(() => user.value?.role === 'admin'),
-    isLoggedIn: computed(() => !!user.value),
+    isLoggedIn: computed(() => !!user.value)
   }
 }

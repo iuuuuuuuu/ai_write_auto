@@ -13,14 +13,17 @@ let _db: Database | null = null
 let _currentConfig: DbConfig | null = null
 
 function createSqliteConnection(config: DbConfig) {
-  const dbPath = resolve(process.cwd(), config.sqlite?.path || './data/novel.db')
+  const dbPath = resolve(
+    process.cwd(),
+    config.sqlite?.path || './data/novel.db'
+  )
   const dir = dirname(dbPath)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
   }
 
   const client = createClient({
-    url: `file:${dbPath}`,
+    url: `file:${dbPath}`
   })
 
   return drizzleSqlite(client, { schema })
@@ -35,7 +38,7 @@ async function createMysqlConnection(config: DbConfig) {
     password: mysqlConfig.password,
     database: mysqlConfig.database,
     waitForConnections: true,
-    connectionLimit: 10,
+    connectionLimit: 10
   })
 
   return drizzleMysql(pool, { schema, mode: 'default' })
@@ -43,8 +46,9 @@ async function createMysqlConnection(config: DbConfig) {
 
 export async function getDatabase(): Promise<Database> {
   const config = getEffectiveDbConfig()
+  const configKey = JSON.stringify(config)
 
-  if (_db && _currentConfig && JSON.stringify(_currentConfig) === JSON.stringify(config)) {
+  if (_db && _currentConfig && JSON.stringify(_currentConfig) === configKey) {
     return _db
   }
 
@@ -57,7 +61,9 @@ export async function getDatabase(): Promise<Database> {
   return _db
 }
 
-export async function testConnection(config: DbConfig): Promise<{ success: boolean; error?: string }> {
+export async function testConnection(
+  config: DbConfig
+): Promise<{ success: boolean; error?: string }> {
   try {
     if (config.type === 'mysql') {
       const connection = await mysql.createConnection({
@@ -65,12 +71,15 @@ export async function testConnection(config: DbConfig): Promise<{ success: boole
         port: config.mysql!.port,
         user: config.mysql!.user,
         password: config.mysql!.password,
-        database: config.mysql!.database,
+        database: config.mysql!.database
       })
       await connection.ping()
       await connection.end()
     } else {
-      const dbPath = resolve(process.cwd(), config.sqlite?.path || './data/novel.db')
+      const dbPath = resolve(
+        process.cwd(),
+        config.sqlite?.path || './data/novel.db'
+      )
       const dir = dirname(dbPath)
       if (!existsSync(dir)) {
         mkdirSync(dir, { recursive: true })

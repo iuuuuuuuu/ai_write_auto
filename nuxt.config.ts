@@ -1,4 +1,26 @@
 export default defineNuxtConfig({
+  hooks: {
+    'app:templates'(app) {
+      const uiCssTemplate = app.templates.find(
+        (template) => template.filename === 'ui.css'
+      )
+
+      if (!uiCssTemplate?.getContents) return
+
+      const getContents = uiCssTemplate.getContents
+
+      uiCssTemplate.getContents = async (data) => {
+        const contents = await getContents(data)
+
+        return contents.replace(
+          /^@source "([A-Z]):\/([^"\n]+)";/gim,
+          (_, drive: string, sourcePath: string) =>
+            `@source "/${drive.toLowerCase()}/${sourcePath}";`
+        )
+      }
+    }
+  },
+
   devServer: {
     port: 4530
   },

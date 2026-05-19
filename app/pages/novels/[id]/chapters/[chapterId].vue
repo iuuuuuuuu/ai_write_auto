@@ -9,6 +9,16 @@ const chapterId = computed(() => Number(route.params.chapterId))
 const { data: chapter, refresh: refreshChapter } = await useFetch(
   `/api/novels/${novelId.value}/chapters/${chapterId.value}`
 )
+const { data: aiConfigs } = await useFetch<
+  Array<{
+    id: number
+    name: string
+    purpose: string
+    model: string
+    isDefault: boolean
+    enabled: boolean
+  }>
+>('/api/ai/config', { default: () => [] })
 
 const content = ref(chapter.value?.content || '')
 const saving = ref(false)
@@ -17,6 +27,7 @@ const generating = ref(false)
 const generatedContent = ref('')
 const showGenerateDialog = ref(false)
 const generateDirection = ref('')
+const selectedAiConfigId = ref<number | undefined>()
 const zenMode = ref(false)
 const conflictDetected = ref(false)
 const serverUpdatedAt = ref(chapter.value?.updatedAt || null)
@@ -28,6 +39,33 @@ const selectedText = ref('')
 const expandingOrRewriting = ref(false)
 const aiActionResult = ref('')
 const aiActionType = ref<'expand' | 'rewrite' | null>(null)
+
+const generationModelOptions = computed(() =>
+  aiConfigs.value
+    .filter((config) => config.purpose === 'generation' && config.enabled)
+    .map((config) => ({
+      label: config.isDefault ? `${config.name} · 默认` : config.name,
+      value: config.id,
+      description: config.model
+    }))
+)
+
+watch(
+  generationModelOptions,
+  (options) => {
+    if (!options.length) {
+      selectedAiConfigId.value = undefined
+      return
+    }
+    if (
+      !selectedAiConfigId.value ||
+      !options.some((option) => option.value === selectedAiConfigId.value)
+    ) {
+      selectedAiConfigId.value = options[0].value
+    }
+  },
+  { immediate: true }
+)
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -44,15 +82,19 @@ async function autoSave() {
 async function saveContent() {
   saving.value = true
   try {
-    const result = await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, {
-      method: 'PUT',
-      body: {
-        content: content.value,
-        expectedUpdatedAt: serverUpdatedAt.value || undefined,
-      },
-    })
+    const result = await $fetch(
+      `/api/novels/${novelId.value}/chapters/${chapterId.value}`,
+      {
+        method: 'PUT',
+        body: {
+          content: content.value,
+          expectedUpdatedAt: serverUpdatedAt.value || undefined
+        }
+      }
+    )
     lastSaved.value = new Date()
-    serverUpdatedAt.value = (result as any)?.updatedAt || lastSaved.value.toISOString()
+    serverUpdatedAt.value =
+      (result as any)?.updatedAt || lastSaved.value.toISOString()
     conflictDetected.value = false
   } catch (e: any) {
     if (e?.statusCode === 409) {
@@ -65,7 +107,10 @@ async function saveContent() {
 
 function handleTextSelect(e: Event) {
   const textarea = e.target as HTMLTextAreaElement
-  const selected = textarea.value.substring(textarea.selectionStart, textarea.selectionEnd)
+  const selected = textarea.value.substring(
+    textarea.selectionStart,
+    textarea.selectionEnd
+  )
   if (selected.trim().length > 0) {
     selectedText.value = selected
     const rect = textarea.getBoundingClientRect()
@@ -91,7 +136,8 @@ async function doAiAction(type: 'expand' | 'rewrite') {
         novelId: novelId.value,
         chapterId: chapterId.value,
         selectedText: selectedText.value,
-      }),
+        aiConfigId: selectedAiConfigId.value
+      })
     })
 
     const reader = response.body!.getReader()
@@ -117,7 +163,10 @@ async function doAiAction(type: 'expand' | 'rewrite') {
 
 function applyAiResult() {
   if (aiActionResult.value && selectedText.value) {
-    content.value = content.value.replace(selectedText.value, aiActionResult.value)
+    content.value = content.value.replace(
+      selectedText.value,
+      aiActionResult.value
+    )
     aiActionResult.value = ''
     aiActionType.value = null
     saveContent()
@@ -129,7 +178,20 @@ function discardAiResult() {
   aiActionType.value = null
 }
 
+async function loadLatestChapter() {
+  await refreshChapter()
+  content.value = chapter.value?.content || ''
+  conflictDetected.value = false
+}
+
+function forceSaveContent() {
+  serverUpdatedAt.value = null
+  saveContent()
+}
+
 async function generateChapter() {
+  if (!selectedAiConfigId.value) return
+
   generating.value = true
   generatedContent.value = ''
   showGenerateDialog.value = false
@@ -142,7 +204,8 @@ async function generateChapter() {
         novelId: novelId.value,
         chapterId: chapterId.value,
         direction: generateDirection.value || undefined,
-      }),
+        aiConfigId: selectedAiConfigId.value
+      })
     })
 
     const reader = response.body!.getReader()
@@ -176,10 +239,21 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col" :class="{ 'fixed inset-0 z-50 bg-white dark:bg-gray-950': zenMode }">
+  <div
+    class="h-screen flex flex-col"
+    :class="{ 'fixed inset-0 z-50 bg-white dark:bg-gray-950': zenMode }"
+  >
     <!-- Toolbar -->
-    <div v-if="!zenMode" class="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-      <UButton variant="ghost" icon="i-lucide-arrow-left" size="sm" :to="`/novels/${novelId}`" />
+    <div
+      v-if="!zenMode"
+      class="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+    >
+      <UButton
+        variant="ghost"
+        icon="i-lucide-arrow-left"
+        size="sm"
+        :to="`/novels/${novelId}`"
+      />
       <div class="flex-1 min-w-0">
         <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
           {{ chapter?.title }}
@@ -193,31 +267,66 @@ onBeforeUnmount(() => {
         <span class="text-xs text-gray-400">
           {{ content.replace(/\s/g, '').length }} {{ t('chapter.wordCount') }}
         </span>
-        <UButton size="sm" variant="ghost" icon="i-lucide-maximize" @click="zenMode = true" />
-        <UButton size="sm" variant="soft" icon="i-lucide-sparkles" :loading="generating" @click="showGenerateDialog = true">
+        <UButton
+          size="sm"
+          variant="ghost"
+          icon="i-lucide-maximize"
+          @click="zenMode = true"
+        />
+        <UButton
+          size="sm"
+          variant="soft"
+          icon="i-lucide-sparkles"
+          :loading="generating"
+          @click="showGenerateDialog = true"
+        >
           {{ t('chapter.generate') }}
         </UButton>
-        <UButton size="sm" :loading="saving" @click="saveContent">
+        <UButton
+          size="sm"
+          :loading="saving"
+          @click="saveContent"
+        >
           {{ t('common.save') }}
         </UButton>
       </div>
     </div>
 
     <!-- Zen Mode Exit -->
-    <div v-if="zenMode" class="absolute top-4 right-4 z-10 opacity-0 hover:opacity-100 transition-opacity">
-      <UButton size="sm" variant="ghost" icon="i-lucide-minimize" @click="zenMode = false" />
+    <div
+      v-if="zenMode"
+      class="absolute top-4 right-4 z-10 opacity-0 hover:opacity-100 transition-opacity"
+    >
+      <UButton
+        size="sm"
+        variant="ghost"
+        icon="i-lucide-minimize"
+        @click="zenMode = false"
+      />
     </div>
 
     <!-- Conflict Warning -->
-    <div v-if="conflictDetected" class="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between">
+    <div
+      v-if="conflictDetected"
+      class="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between"
+    >
       <p class="text-sm text-amber-700 dark:text-amber-300">
         此章节已在其他标签页中被修改，保存可能覆盖更改。
       </p>
       <div class="flex gap-2">
-        <UButton size="xs" variant="soft" color="warning" @click="refreshChapter().then(() => { content = chapter?.content || ''; conflictDetected = false })">
+        <UButton
+          size="xs"
+          variant="soft"
+          color="warning"
+          @click="loadLatestChapter"
+        >
           加载最新版本
         </UButton>
-        <UButton size="xs" variant="ghost" @click="serverUpdatedAt = null; saveContent()">
+        <UButton
+          size="xs"
+          variant="ghost"
+          @click="forceSaveContent"
+        >
           强制保存
         </UButton>
       </div>
@@ -239,23 +348,52 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- AI Action Result -->
-        <div v-if="aiActionResult" class="max-w-3xl mx-auto mt-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+        <div
+          v-if="aiActionResult"
+          class="max-w-3xl mx-auto mt-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+        >
           <div class="flex items-center justify-between mb-2">
             <p class="text-xs font-medium text-green-600 dark:text-green-400">
-              {{ aiActionType === 'expand' ? t('chapter.expand') : t('chapter.rewrite') }}
+              {{
+                aiActionType === 'expand' ?
+                  t('chapter.expand')
+                : t('chapter.rewrite')
+              }}
             </p>
             <div class="flex gap-1">
-              <UButton size="xs" variant="soft" color="success" @click="applyAiResult">应用</UButton>
-              <UButton size="xs" variant="ghost" @click="discardAiResult">放弃</UButton>
+              <UButton
+                size="xs"
+                variant="soft"
+                color="success"
+                @click="applyAiResult"
+                >应用</UButton
+              >
+              <UButton
+                size="xs"
+                variant="ghost"
+                @click="discardAiResult"
+                >放弃</UButton
+              >
             </div>
           </div>
-          <div class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap text-sm">{{ aiActionResult }}</div>
+          <div
+            class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap text-sm"
+          >
+            {{ aiActionResult }}
+          </div>
         </div>
 
         <!-- Generated Content Preview -->
-        <div v-if="generating && generatedContent" class="max-w-3xl mx-auto mt-4 p-4 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800">
-          <p class="text-xs text-primary-600 dark:text-primary-400 mb-2">{{ t('ai.generating') }}</p>
-          <div class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ generatedContent }}</div>
+        <div
+          v-if="generating && generatedContent"
+          class="max-w-3xl mx-auto mt-4 p-4 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800"
+        >
+          <p class="text-xs text-primary-600 dark:text-primary-400 mb-2">
+            {{ t('ai.generating') }}
+          </p>
+          <div class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
+            {{ generatedContent }}
+          </div>
         </div>
       </div>
     </div>
@@ -265,12 +403,28 @@ onBeforeUnmount(() => {
       <div
         v-if="showFloatingToolbar && !generating"
         class="fixed z-50 flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700"
-        :style="{ left: `${floatingToolbarPos.x}px`, top: `${floatingToolbarPos.y}px`, transform: 'translate(-50%, -100%)' }"
+        :style="{
+          left: `${floatingToolbarPos.x}px`,
+          top: `${floatingToolbarPos.y}px`,
+          transform: 'translate(-50%, -100%)'
+        }"
       >
-        <UButton size="xs" variant="ghost" icon="i-lucide-expand" :loading="expandingOrRewriting" @click="doAiAction('expand')">
+        <UButton
+          size="xs"
+          variant="ghost"
+          icon="i-lucide-expand"
+          :loading="expandingOrRewriting"
+          @click="doAiAction('expand')"
+        >
           {{ t('chapter.expand') }}
         </UButton>
-        <UButton size="xs" variant="ghost" icon="i-lucide-refresh-cw" :loading="expandingOrRewriting" @click="doAiAction('rewrite')">
+        <UButton
+          size="xs"
+          variant="ghost"
+          icon="i-lucide-refresh-cw"
+          :loading="expandingOrRewriting"
+          @click="doAiAction('rewrite')"
+        >
           {{ t('chapter.rewrite') }}
         </UButton>
       </div>
@@ -290,11 +444,37 @@ onBeforeUnmount(() => {
               :rows="3"
             />
           </UFormField>
+          <UFormField
+            :label="t('chapter.generateDialog.model')"
+            required
+          >
+            <USelectMenu
+              v-model="selectedAiConfigId"
+              :items="generationModelOptions"
+              value-key="value"
+              placeholder="选择用于生成的模型"
+            />
+          </UFormField>
+          <UAlert
+            v-if="!generationModelOptions.length"
+            color="warning"
+            variant="soft"
+            icon="i-lucide-circle-alert"
+            title="还没有可用的内容生成模型"
+            description="请先到设置页创建并启用一个内容生成模型。"
+          />
           <div class="flex justify-end gap-2">
-            <UButton variant="ghost" @click="showGenerateDialog = false">
+            <UButton
+              variant="ghost"
+              @click="showGenerateDialog = false"
+            >
               {{ t('common.cancel') }}
             </UButton>
-            <UButton icon="i-lucide-sparkles" @click="generateChapter">
+            <UButton
+              icon="i-lucide-sparkles"
+              :disabled="!selectedAiConfigId"
+              @click="generateChapter"
+            >
               {{ t('chapter.generate') }}
             </UButton>
           </div>
