@@ -8,6 +8,7 @@ const updateChapterSchema = z.object({
   summary: z.string().optional(),
   status: z.enum(['draft', 'generated', 'edited', 'final']).optional(),
   chapterNumber: z.number().int().positive().optional(),
+  expectedUpdatedAt: z.string().optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -29,7 +30,24 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const updates: any = { ...data, updatedAt: new Date() }
+  if (data.expectedUpdatedAt) {
+    const current = await (db as any)
+      .select({ updatedAt: schema.chapters.updatedAt })
+      .from(schema.chapters)
+      .where(and(eq(schema.chapters.id, chapterId), eq(schema.chapters.novelId, novelId)))
+      .limit(1)
+
+    if (current.length && current[0].updatedAt) {
+      const serverTime = new Date(current[0].updatedAt).getTime()
+      const clientTime = new Date(data.expectedUpdatedAt).getTime()
+      if (serverTime > clientTime) {
+        throw createError({ statusCode: 409, message: 'Conflict: chapter was modified in another tab' })
+      }
+    }
+  }
+
+  const { expectedUpdatedAt, ...updateData } = data
+  const updates: any = { ...updateData, updatedAt: new Date() }
   if (data.content !== undefined) {
     updates.wordCount = data.content.replace(/\s/g, '').length
   }

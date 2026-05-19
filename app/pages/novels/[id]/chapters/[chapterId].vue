@@ -18,6 +18,8 @@ const generatedContent = ref('')
 const showGenerateDialog = ref(false)
 const generateDirection = ref('')
 const zenMode = ref(false)
+const conflictDetected = ref(false)
+const serverUpdatedAt = ref(chapter.value?.updatedAt || null)
 
 // Floating toolbar state
 const showFloatingToolbar = ref(false)
@@ -42,11 +44,20 @@ async function autoSave() {
 async function saveContent() {
   saving.value = true
   try {
-    await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, {
+    const result = await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, {
       method: 'PUT',
-      body: { content: content.value },
+      body: {
+        content: content.value,
+        expectedUpdatedAt: serverUpdatedAt.value || undefined,
+      },
     })
     lastSaved.value = new Date()
+    serverUpdatedAt.value = (result as any)?.updatedAt || lastSaved.value.toISOString()
+    conflictDetected.value = false
+  } catch (e: any) {
+    if (e?.statusCode === 409) {
+      conflictDetected.value = true
+    }
   } finally {
     saving.value = false
   }
@@ -195,6 +206,21 @@ onBeforeUnmount(() => {
     <!-- Zen Mode Exit -->
     <div v-if="zenMode" class="absolute top-4 right-4 z-10 opacity-0 hover:opacity-100 transition-opacity">
       <UButton size="sm" variant="ghost" icon="i-lucide-minimize" @click="zenMode = false" />
+    </div>
+
+    <!-- Conflict Warning -->
+    <div v-if="conflictDetected" class="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between">
+      <p class="text-sm text-amber-700 dark:text-amber-300">
+        此章节已在其他标签页中被修改，保存可能覆盖更改。
+      </p>
+      <div class="flex gap-2">
+        <UButton size="xs" variant="soft" color="warning" @click="refreshChapter().then(() => { content = chapter?.content || ''; conflictDetected = false })">
+          加载最新版本
+        </UButton>
+        <UButton size="xs" variant="ghost" @click="serverUpdatedAt = null; saveContent()">
+          强制保存
+        </UButton>
+      </div>
     </div>
 
     <!-- Editor Area -->

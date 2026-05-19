@@ -26,6 +26,30 @@ export default defineEventHandler(async (event) => {
     .where(and(eq(schema.chapters.novelId, novelId), isNull(schema.chapters.deletedAt)))
     .orderBy(schema.chapters.chapterNumber)
 
+  if (format === 'epub') {
+    const epub = (await import('epub-gen-memory')).default
+    const epubChapters = chapters.map((ch: any) => ({
+      title: `第${ch.chapterNumber}章 ${ch.title}`,
+      content: (ch.content || '').split('\n').map((p: string) => `<p>${p}</p>`).join(''),
+    }))
+
+    const buffer = await epub(
+      {
+        title: novel.title,
+        author: 'AI Novel Writer',
+        description: novel.description || '',
+      },
+      epubChapters
+    )
+
+    setResponseHeaders(event, {
+      'Content-Type': 'application/epub+zip',
+      'Content-Disposition': `attachment; filename="${encodeURIComponent(novel.title)}.epub"`,
+    })
+
+    return buffer
+  }
+
   let content = ''
   let contentType = 'text/plain'
   let ext = 'txt'

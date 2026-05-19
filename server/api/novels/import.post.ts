@@ -69,7 +69,7 @@ export default defineEventHandler(async (event) => {
   const chapters = splitIntoChapters(data.content, data.format)
 
   for (let i = 0; i < chapters.length; i++) {
-    const ch = chapters[i]
+    const ch = chapters[i]!
     const wordCount = ch.content.replace(/\s/g, '').length
     await (db as any).insert(schema.chapters).values({
       novelId: novel.id,

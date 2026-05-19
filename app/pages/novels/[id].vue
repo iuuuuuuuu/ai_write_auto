@@ -37,7 +37,8 @@ async function exportNovel(format: string) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `${novel.value?.title || 'novel'}.${format === 'md' ? 'md' : 'txt'}`
+  const extMap: Record<string, string> = { txt: 'txt', md: 'md', epub: 'epub' }
+  a.download = `${novel.value?.title || 'novel'}.${extMap[format] || format}`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -56,10 +57,12 @@ async function exportNovel(format: string) {
           {{ novel.description }}
         </p>
       </div>
+      <UButton variant="ghost" color="neutral" icon="i-lucide-book-open" :to="`/novels/${novelId}/read`" />
       <UDropdownMenu
         :items="[
           [{ label: '导出 TXT', icon: 'i-lucide-file-text', click: () => exportNovel('txt') }],
           [{ label: '导出 Markdown', icon: 'i-lucide-file-code', click: () => exportNovel('md') }],
+          [{ label: '导出 EPUB', icon: 'i-lucide-book-open', click: () => exportNovel('epub') }],
         ]"
       >
         <UButton variant="ghost" color="neutral" icon="i-lucide-download" />

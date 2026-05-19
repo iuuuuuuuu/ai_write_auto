@@ -7,6 +7,7 @@ const sidebarOpen = ref(false)
 
 const navItems = computed(() => [
   { label: t('dashboard.title'), icon: 'i-lucide-layout-dashboard', to: '/dashboard' },
+  { label: '回收站', icon: 'i-lucide-trash-2', to: '/trash' },
   { label: t('common.settings'), icon: 'i-lucide-settings', to: '/settings' },
   ...(isAdmin.value ? [{ label: t('common.admin'), icon: 'i-lucide-shield', to: '/admin' }] : []),
 ])

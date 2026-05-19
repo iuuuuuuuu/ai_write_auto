@@ -3,6 +3,7 @@ import { eq, and, isNull } from 'drizzle-orm'
 import { getDatabase, schema } from '../../database'
 import { streamAi } from '../../utils/ai-client'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
+import { checkRateLimit } from '../../utils/rate-limit'
 
 const generateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -15,6 +16,12 @@ const generateSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
+
+  const rateCheck = checkRateLimit(auth.userId)
+  if (!rateCheck.allowed) {
+    throw createError({ statusCode: 429, message: `Rate limit exceeded. Try again in ${Math.ceil(rateCheck.resetIn / 1000)}s` })
+  }
+
   const body = await readBody(event)
   const data = generateSchema.parse(body)
 

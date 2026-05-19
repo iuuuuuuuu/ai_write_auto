@@ -7,6 +7,7 @@ const tabs = [
   { label: t('settings.aiConfig'), value: 'ai', icon: 'i-lucide-brain' },
   { label: t('settings.general'), value: 'general', icon: 'i-lucide-settings' },
   { label: t('settings.database'), value: 'database', icon: 'i-lucide-database' },
+  { label: t('settings.usage'), value: 'usage', icon: 'i-lucide-bar-chart-2' },
 ]
 
 const activeTab = ref('ai')
@@ -37,5 +38,6 @@ const activeTab = ref('ai')
     <SettingsAi v-if="activeTab === 'ai'" />
     <SettingsGeneral v-else-if="activeTab === 'general'" />
     <SettingsDatabase v-else-if="activeTab === 'database'" />
+    <SettingsUsage v-else-if="activeTab === 'usage'" />
   </div>
 </template>

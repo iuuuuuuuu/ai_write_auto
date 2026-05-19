@@ -5,7 +5,7 @@ const { t } = useI18n()
 const { user } = useAuth()
 
 const { data: novels, refresh: refreshNovels } = await useFetch('/api/novels')
-const { data: stats } = await useFetch('/api/stats/overview')
+const { data: stats } = await useFetch<{ todayWords: number; streak: number; totalNovels: number; totalWords: number }>('/api/stats/overview')
 
 const showCreateModal = ref(false)
 </script>
