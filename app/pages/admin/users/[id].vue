@@ -78,7 +78,10 @@ async function updateRole(role: 'admin' | 'user') {
 
 <template>
   <div class="mx-auto max-w-6xl space-y-6">
-    <NButton quaternary @click="navigateTo('/admin/users')">
+    <NButton
+      quaternary
+      @click="navigateTo('/admin/users')"
+    >
       <template #icon>
         <Icon icon="lucide:arrow-left" />
       </template>
@@ -95,32 +98,41 @@ async function updateRole(role: 'admin' | 'user') {
       v-else-if="pending"
       class="space-y-4"
     >
-      <NSkeleton class="h-28 rounded-lg" text />
-      <NSkeleton class="h-64 rounded-lg" text />
+      <NSkeleton
+        class="h-28 rounded-lg"
+        text
+      />
+      <NSkeleton
+        class="h-64 rounded-lg"
+        text
+      />
     </div>
 
     <template v-else-if="detail">
-      <section
-        class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-5"
-      >
+      <section class="card-surface p-5">
         <div
           class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
         >
-          <div>
-            <p class="text-sm text-(--ui-text-muted)">
-              User #{{ detail.user.id }}
-            </p>
-            <h1
-              class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)"
+          <div class="flex items-center gap-4">
+            <div
+              class="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-400/15 to-primary-600/5 text-xl font-bold text-primary-500"
             >
-              {{ detail.user.username }}
-            </h1>
-            <p class="mt-2 text-sm text-(--ui-text-muted)">
-              创建于 {{ new Date(detail.user.createdAt).toLocaleString() }}
-            </p>
+              {{ detail.user.username.charAt(0).toUpperCase() }}
+            </div>
+            <div>
+              <p class="text-xs text-(--ui-text-dimmed)">
+                User #{{ detail.user.id }}
+              </p>
+              <h1 class="text-xl font-bold text-(--ui-text-highlighted)">
+                {{ detail.user.username }}
+              </h1>
+              <p class="text-xs text-(--ui-text-muted)">
+                创建于 {{ new Date(detail.user.createdAt).toLocaleString() }}
+              </p>
+            </div>
           </div>
           <div class="w-full sm:w-56">
-            <label class="mb-1 block text-sm text-(--ui-text-muted)"
+            <label class="mb-1 block text-xs text-(--ui-text-muted)"
               >角色</label
             >
             <NSelect
@@ -134,43 +146,41 @@ async function updateRole(role: 'admin' | 'user') {
       </section>
 
       <div class="grid gap-3 md:grid-cols-4">
-        <section
-          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-4"
-        >
-          <p class="text-sm text-(--ui-text-muted)">小说</p>
-          <p class="mt-3 text-2xl font-semibold">{{ detail.stats.novels }}</p>
+        <section class="card-surface p-4">
+          <p class="text-xs text-(--ui-text-dimmed)">小说</p>
+          <p class="mt-2 text-2xl font-bold font-mono">
+            {{ detail.stats.novels }}
+          </p>
         </section>
-        <section
-          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-4"
-        >
-          <p class="text-sm text-(--ui-text-muted)">模型配置</p>
-          <p class="mt-3 text-2xl font-semibold">
+        <section class="card-surface p-4">
+          <p class="text-xs text-(--ui-text-dimmed)">模型配置</p>
+          <p class="mt-2 text-2xl font-bold font-mono">
             {{ detail.stats.aiConfigs }}
           </p>
         </section>
-        <section
-          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-4"
-        >
-          <p class="text-sm text-(--ui-text-muted)">可用模型</p>
-          <p class="mt-3 text-2xl font-semibold">
+        <section class="card-surface p-4">
+          <p class="text-xs text-(--ui-text-dimmed)">可用模型</p>
+          <p class="mt-2 text-2xl font-bold font-mono">
             {{ detail.stats.enabledAiConfigs }}
           </p>
         </section>
-        <section
-          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-4"
-        >
-          <p class="text-sm text-(--ui-text-muted)">Token</p>
-          <p class="mt-3 text-2xl font-semibold">
+        <section class="card-surface p-4">
+          <p class="text-xs text-(--ui-text-dimmed)">Token</p>
+          <p class="mt-2 text-2xl font-bold font-mono">
             {{ detail.stats.totalTokens.toLocaleString() }}
           </p>
         </section>
       </div>
 
-      <section
-        class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-5"
-      >
+      <section class="card-surface p-5">
         <div class="mb-4 flex items-center justify-between">
-          <h2 class="font-semibold text-(--ui-text-highlighted)">模型配置</h2>
+          <div class="flex items-center gap-2">
+            <Icon
+              icon="lucide:cpu"
+              class="size-4 text-primary-500"
+            />
+            <h2 class="font-semibold text-(--ui-text-highlighted)">模型配置</h2>
+          </div>
           <NTag size="small">{{ detail.aiConfigs.length }}</NTag>
         </div>
         <div
@@ -181,7 +191,7 @@ async function updateRole(role: 'admin' | 'user') {
         </div>
         <div
           v-else
-          class="divide-y divide-(--ui-border)"
+          class="divide-y divide-(--ui-border)/40"
         >
           <div
             v-for="config in detail.aiConfigs"

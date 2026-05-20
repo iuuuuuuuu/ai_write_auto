@@ -8,7 +8,7 @@ const { locale, locales, setLocale } = useI18n()
 const darkModeOptions = [
   { label: '跟随系统', value: 'system' },
   { label: '亮色', value: 'light' },
-  { label: '暗色', value: 'dark' },
+  { label: '暗色', value: 'dark' }
 ]
 
 const languageOptions = computed(() =>
@@ -17,9 +17,11 @@ const languageOptions = computed(() =>
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="p-4 rounded-lg border border-gray-200 dark:border-gray-800 space-y-4">
-      <h3 class="font-medium text-gray-900 dark:text-white">{{ t('settings.appearance') }}</h3>
+  <div class="space-y-4">
+    <div class="card-surface p-3 space-y-3">
+      <h3 class="text-sm font-bold text-(--ui-text-highlighted)">
+        {{ t('settings.appearance') }}
+      </h3>
 
       <NFormItem :label="t('settings.darkMode')">
         <NRadioGroup

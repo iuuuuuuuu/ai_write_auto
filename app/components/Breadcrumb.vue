@@ -24,38 +24,30 @@ const labelMap: Record<string, string> = {
 const items = computed<BreadcrumbItem[]>(() => {
   const parts = route.path.split('/').filter(Boolean)
   const crumbs: BreadcrumbItem[] = []
-
   let path = ''
   for (let i = 0; i < parts.length; i++) {
     const part = parts[i]!
     path += '/' + part
     const isLast = i === parts.length - 1
-    const isId = /^\d+$/.test(part)
-
-    if (isId) continue
-
-    crumbs.push({
-      label: labelMap[part] || part,
-      to: isLast ? undefined : path,
-    })
+    if (/^\d+$/.test(part)) continue
+    crumbs.push({ label: labelMap[part] || part, to: isLast ? undefined : path })
   }
-
   return crumbs
 })
 </script>
 
 <template>
-  <nav v-if="items.length > 1" class="flex items-center gap-1 text-sm mb-3">
+  <nav v-if="items.length > 1" class="flex items-center gap-1 text-xs mb-2">
     <template v-for="(item, i) in items" :key="i">
-      <span v-if="i > 0" class="text-(--ui-text-dimmed)">/</span>
+      <span v-if="i > 0" class="text-(--ui-text-dimmed) opacity-40">/</span>
       <NuxtLink
         v-if="item.to"
         :to="item.to"
-        class="text-(--ui-text-muted) hover:text-(--ui-text)"
+        class="text-(--ui-text-dimmed) hover:text-(--ui-text) transition-colors"
       >
         {{ item.label }}
       </NuxtLink>
-      <span v-else class="text-(--ui-text-highlighted)">{{ item.label }}</span>
+      <span v-else class="text-(--ui-text) font-medium">{{ item.label }}</span>
     </template>
   </nav>
 </template>

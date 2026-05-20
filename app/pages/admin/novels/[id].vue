@@ -58,7 +58,10 @@ const {
 
 <template>
   <div class="mx-auto max-w-6xl space-y-6">
-    <NButton quaternary @click="navigateTo('/admin/novels')">
+    <NButton
+      quaternary
+      @click="navigateTo('/admin/novels')"
+    >
       <template #icon>
         <Icon icon="lucide:arrow-left" />
       </template>
@@ -75,14 +78,18 @@ const {
       v-else-if="pending"
       class="space-y-4"
     >
-      <NSkeleton class="h-32 rounded-lg" text />
-      <NSkeleton class="h-72 rounded-lg" text />
+      <NSkeleton
+        class="h-32 rounded-lg"
+        text
+      />
+      <NSkeleton
+        class="h-72 rounded-lg"
+        text
+      />
     </div>
 
     <template v-else-if="detail">
-      <section
-        class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-5"
-      >
+      <section class="card-surface p-5">
         <div
           class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
         >
@@ -91,9 +98,7 @@ const {
               作者 {{ detail.novel.user?.username || '未知用户' }} ·
               {{ detail.novel.genre || '未分类' }}
             </p>
-            <h1
-              class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)"
-            >
+            <h1 class="mt-1 text-2xl font-bold text-(--ui-text-highlighted)">
               {{ detail.novel.title }}
             </h1>
             <p class="mt-3 max-w-3xl text-sm leading-6 text-(--ui-text-muted)">
@@ -101,26 +106,28 @@ const {
             </p>
           </div>
           <div class="grid grid-cols-3 gap-3 lg:w-80">
-            <div class="rounded-lg bg-(--ui-bg-elevated) p-3 text-center">
+            <div class="card-bezel p-3 text-center">
               <p class="text-xs text-(--ui-text-dimmed)">章节</p>
-              <p class="mt-1 font-semibold">{{ detail.novel.chapterCount }}</p>
+              <p class="mt-1 font-bold font-mono">
+                {{ detail.novel.chapterCount }}
+              </p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg-elevated) p-3 text-center">
+            <div class="card-bezel p-3 text-center">
               <p class="text-xs text-(--ui-text-dimmed)">字数</p>
-              <p class="mt-1 font-semibold">{{ detail.novel.wordCount }}</p>
+              <p class="mt-1 font-bold font-mono">
+                {{ detail.novel.wordCount }}
+              </p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg-elevated) p-3 text-center">
+            <div class="card-bezel p-3 text-center">
               <p class="text-xs text-(--ui-text-dimmed)">状态</p>
-              <p class="mt-1 font-semibold">{{ detail.novel.status }}</p>
+              <p class="mt-1 font-bold font-mono">{{ detail.novel.status }}</p>
             </div>
           </div>
         </div>
       </section>
 
       <div class="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <section
-          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-5"
-        >
+        <section class="card-surface p-5">
           <h2 class="font-semibold text-(--ui-text-highlighted)">章节</h2>
           <div
             v-if="!detail.chapters.length"
@@ -161,14 +168,22 @@ const {
         </section>
 
         <div class="space-y-4">
-          <section
-            class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-5"
-          >
-            <h2 class="font-semibold text-(--ui-text-highlighted)">AI 设定</h2>
+          <section class="card-surface p-5">
+            <div class="flex items-center gap-2 mb-3">
+              <Icon
+                icon="lucide:sparkles"
+                class="size-4 text-violet-500"
+              />
+              <h2 class="font-semibold text-(--ui-text-highlighted)">
+                AI 设定
+              </h2>
+            </div>
             <dl class="mt-4 space-y-3 text-sm">
               <div class="flex justify-between gap-4">
                 <dt class="text-(--ui-text-muted)">Temperature</dt>
-                <dd>{{ detail.novel.aiTemperature || '未设置' }}</dd>
+                <dd class="font-mono">
+                  {{ detail.novel.aiTemperature || '未设置' }}
+                </dd>
               </div>
               <div>
                 <dt class="text-(--ui-text-muted)">额外提示</dt>
@@ -179,10 +194,14 @@ const {
             </dl>
           </section>
 
-          <section
-            class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-5"
-          >
-            <h2 class="font-semibold text-(--ui-text-highlighted)">角色</h2>
+          <section class="card-surface p-5">
+            <div class="flex items-center gap-2 mb-3">
+              <Icon
+                icon="lucide:users"
+                class="size-4 text-blue-500"
+              />
+              <h2 class="font-semibold text-(--ui-text-highlighted)">角色</h2>
+            </div>
             <div
               v-if="!detail.characters.length"
               class="mt-4 text-sm text-(--ui-text-muted)"
@@ -191,12 +210,12 @@ const {
             </div>
             <div
               v-else
-              class="mt-4 space-y-3"
+              class="mt-4 space-y-2"
             >
               <div
                 v-for="character in detail.characters"
                 :key="character.id"
-                class="rounded-lg bg-(--ui-bg-elevated) p-3"
+                class="card-bezel p-3"
               >
                 <p class="font-medium">{{ character.name }}</p>
                 <p class="mt-1 line-clamp-2 text-sm text-(--ui-text-muted)">

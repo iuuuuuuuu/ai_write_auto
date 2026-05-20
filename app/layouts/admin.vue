@@ -2,7 +2,6 @@
 const { t } = useI18n()
 const route = useRoute()
 const { user, logout } = useAuth()
-
 const sidebarOpen = ref(false)
 
 const adminNavGroups = computed(() => [
@@ -41,9 +40,10 @@ function isActiveNav(to: string) {
 <template>
   <div class="min-h-screen bg-(--ui-bg)">
     <!-- Top bar -->
-    <header class="sticky top-0 z-40 border-b border-(--ui-border)/60 bg-(--ui-bg)/90 backdrop-blur-sm">
-      <div class="mx-auto flex h-11 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center gap-2.5">
+    <header class="sticky top-0 z-40 border-b border-(--ui-border)/40"
+            style="background: linear-gradient(180deg, var(--ui-bg) 0%, var(--ui-bg-muted) 100%); backdrop-filter: blur(16px); box-shadow: inset 0 -1px 0 var(--ui-border);">
+      <div class="mx-auto flex h-10 max-w-7xl items-center justify-between px-3">
+        <div class="flex items-center gap-2">
           <button
             class="lg:hidden flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
             @click="sidebarOpen = true"
@@ -52,7 +52,7 @@ function isActiveNav(to: string) {
           </button>
           <NuxtLink
             to="/dashboard"
-            class="flex items-center gap-1.5 text-xs text-(--ui-text-dimmed) hover:text-(--ui-text) transition-colors"
+            class="flex items-center gap-1 text-xs text-(--ui-text-dimmed) hover:text-(--ui-text) transition-colors"
           >
             <Icon icon="lucide:arrow-left" class="w-3.5 h-3.5" />
             <span>返回</span>
@@ -74,25 +74,26 @@ function isActiveNav(to: string) {
 
     <div class="mx-auto flex max-w-7xl">
       <!-- Desktop Sidebar -->
-      <aside class="hidden w-56 shrink-0 border-r border-(--ui-border)/40 py-4 lg:block">
-        <nav class="space-y-4 px-2">
-          <div v-for="group in adminNavGroups" :key="group.title">
-            <p class="mb-1 px-3 text-[10px] font-medium text-(--ui-text-dimmed) uppercase tracking-wider">{{ group.title }}</p>
+      <aside class="hidden w-[210px] shrink-0 py-3 lg:block">
+        <nav class="space-y-3 px-2">
+          <div v-for="group in adminNavGroups" :key="group.title" class="card-surface p-2">
+            <p class="mb-1 px-2 text-[10px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider">{{ group.title }}</p>
             <div class="space-y-0.5">
               <NuxtLink
                 v-for="item in group.items"
                 :key="item.to"
                 :to="item.to"
-                class="relative flex items-center gap-2.5 h-8 rounded-lg px-3 text-[13px] font-medium transition-colors"
+                class="relative flex items-center gap-2 h-7 rounded-md px-2 text-[12px] font-medium transition-all duration-200"
                 :class="
                   isActiveNav(item.to)
-                    ? 'bg-primary-500/8 text-primary-600 dark:text-primary-400'
-                    : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted)/80 hover:text-(--ui-text)'
+                    ? 'text-primary-600 dark:text-primary-400 bg-primary-500/[0.06]'
+                    : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted)/60 hover:text-(--ui-text)'
                 "
               >
                 <div
                   v-if="isActiveNav(item.to)"
-                  class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-3.5 rounded-r-full bg-primary-500"
+                  class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-3 rounded-r-full"
+                  style="background: linear-gradient(180deg, var(--ui-primary-400), var(--ui-primary-600));"
                 />
                 <Icon :icon="item.icon" class="w-3.5 h-3.5" />
                 {{ item.label }}
@@ -103,7 +104,7 @@ function isActiveNav(to: string) {
       </aside>
 
       <!-- Main -->
-      <main class="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8">
+      <main class="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-3">
         <slot />
       </main>
     </div>
@@ -112,36 +113,36 @@ function isActiveNav(to: string) {
     <Teleport to="body">
       <Transition name="overlay">
         <div v-if="sidebarOpen" class="fixed inset-0 z-50 lg:hidden">
-          <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="sidebarOpen = false" />
-          <aside class="absolute inset-y-0 left-0 w-64 bg-(--ui-bg) border-r border-(--ui-border)/40 flex flex-col">
-            <div class="flex h-11 items-center justify-between px-4 border-b border-(--ui-border)/40">
-              <span class="text-sm font-medium text-(--ui-text)">管理端</span>
+          <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="sidebarOpen = false" />
+          <aside class="absolute inset-y-0 left-0 w-[260px] bg-(--ui-bg-muted) border-r border-(--ui-border)/40 flex flex-col">
+            <div class="flex h-10 items-center justify-between px-4 border-b border-(--ui-border)/40">
+              <span class="text-sm font-semibold text-(--ui-text)">管理端</span>
               <button
-                class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+                class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated) transition-colors"
                 @click="sidebarOpen = false"
               >
                 <Icon icon="lucide:x" class="w-4 h-4" />
               </button>
             </div>
-            <nav class="flex-1 space-y-4 px-2 py-4 overflow-y-auto">
-              <div v-for="group in adminNavGroups" :key="group.title">
-                <p class="mb-1 px-3 text-[10px] font-medium text-(--ui-text-dimmed) uppercase tracking-wider">{{ group.title }}</p>
+            <nav class="flex-1 space-y-3 px-2 py-3 overflow-y-auto">
+              <div v-for="group in adminNavGroups" :key="group.title" class="card-surface p-2">
+                <p class="mb-1 px-2 text-[10px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider">{{ group.title }}</p>
                 <div class="space-y-0.5">
                   <NuxtLink
                     v-for="item in group.items"
                     :key="item.to"
                     :to="item.to"
-                    class="relative flex items-center gap-2.5 h-9 rounded-lg px-3 text-[13px] font-medium transition-colors"
+                    class="relative flex items-center gap-2 h-8 rounded-md px-2 text-[13px] font-medium transition-colors"
                     :class="
                       isActiveNav(item.to)
-                        ? 'bg-primary-500/8 text-primary-600 dark:text-primary-400'
+                        ? 'text-primary-600 dark:text-primary-400 bg-primary-500/[0.06]'
                         : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted)/80 hover:text-(--ui-text)'
                     "
                     @click="sidebarOpen = false"
                   >
                     <div
                       v-if="isActiveNav(item.to)"
-                      class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-3.5 rounded-r-full bg-primary-500"
+                      class="absolute left-0 top-1/2 -translate-y-1/2 w-[2px] h-3 rounded-r-full bg-primary-500"
                     />
                     <Icon :icon="item.icon" class="w-3.5 h-3.5" />
                     {{ item.label }}
@@ -157,12 +158,6 @@ function isActiveNav(to: string) {
 </template>
 
 <style scoped>
-.overlay-enter-active,
-.overlay-leave-active {
-  transition: opacity 0.25s ease;
-}
-.overlay-enter-from,
-.overlay-leave-to {
-  opacity: 0;
-}
+.overlay-enter-active, .overlay-leave-active { transition: opacity 0.25s cubic-bezier(0.32, 0.72, 0, 1); }
+.overlay-enter-from, .overlay-leave-to { opacity: 0; }
 </style>

@@ -33,10 +33,10 @@ const {
   totalPages,
   pageSize,
   goToPage,
-  refresh,
+  refresh
 } = usePagination<AdminNovelListItem>({
   url: '/api/admin/novels',
-  params: queryParams,
+  params: queryParams
 })
 
 const { confirmDelete } = useConfirmDialog()
@@ -77,7 +77,10 @@ const statusItems = [
           clearable
         >
           <template #prefix>
-            <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+            <Icon
+              icon="lucide:search"
+              class="text-(--ui-text-dimmed)"
+            />
           </template>
         </NInput>
         <NSelect
@@ -100,7 +103,7 @@ const statusItems = [
     </div>
     <div
       v-else-if="!novels.length"
-      class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-10 text-center text-sm text-(--ui-text-muted)"
+      class="card-surface p-10 text-center text-sm text-(--ui-text-muted)"
     >
       暂无匹配小说
     </div>
@@ -109,12 +112,15 @@ const statusItems = [
         <div
           v-for="novel in novels"
           :key="novel.id"
-          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-4 transition-colors hover:bg-(--ui-bg-elevated)"
+          class="card-surface group p-4 transition-colors hover:bg-(--ui-bg-elevated)/60"
         >
           <div
             class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"
           >
-            <NuxtLink :to="`/admin/novels/${novel.id}`" class="min-w-0 flex-1">
+            <NuxtLink
+              :to="`/admin/novels/${novel.id}`"
+              class="min-w-0 flex-1"
+            >
               <div class="flex flex-wrap items-center gap-2">
                 <h2 class="font-semibold text-(--ui-text-highlighted)">
                   {{ novel.title }}
@@ -166,7 +172,10 @@ const statusItems = [
         </div>
       </div>
 
-      <div v-if="totalPages > 1" class="flex items-center justify-between pt-2">
+      <div
+        v-if="totalPages > 1"
+        class="flex items-center justify-between pt-2"
+      >
         <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
         <NPagination
           :page="page"

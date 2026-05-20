@@ -1,53 +1,62 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'default' })
-
 const { t } = useI18n()
-
-const tabs = [
-  { label: t('settings.aiConfig'), value: 'ai', icon: 'lucide:brain' },
-  { label: t('settings.general'), value: 'general', icon: 'lucide:settings' },
-  { label: t('settings.database'), value: 'database', icon: 'lucide:database' },
-  { label: t('settings.usage'), value: 'usage', icon: 'lucide:bar-chart-2' }
-]
-
-const activeTab = ref('ai')
 </script>
 
 <template>
-  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-    <!-- Header -->
-    <div class="flex items-center gap-2.5 mb-6">
-      <button
-        class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
-        @click="navigateTo('/dashboard')"
+  <div class="max-w-6xl mx-auto">
+    <div class="flex items-center gap-3 mb-5">
+      <div
+        class="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-400/15 to-primary-600/5"
       >
-        <Icon icon="lucide:arrow-left" class="w-4 h-4" />
-      </button>
-      <h1 class="text-lg font-semibold text-(--ui-text-highlighted)">
-        {{ t('settings.title') }}
-      </h1>
+        <Icon
+          icon="lucide:settings"
+          class="size-5 text-primary-500"
+        />
+      </div>
+      <div>
+        <h1 class="text-xl font-bold text-(--ui-text-highlighted)">
+          {{ t('common.settings') }}
+        </h1>
+        <p class="text-xs text-(--ui-text-muted)">管理个人偏好与系统配置</p>
+      </div>
     </div>
-
-    <!-- Tab Navigation -->
-    <div class="flex items-center gap-1 p-1 rounded-lg bg-(--ui-bg-muted)/50 border border-(--ui-border)/40 w-fit mb-6">
-      <button
-        v-for="tab in tabs"
-        :key="tab.value"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all duration-200"
-        :class="activeTab === tab.value
-          ? 'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
-          : 'text-(--ui-text-muted) hover:text-(--ui-text)'"
-        @click="activeTab = tab.value"
+    <NTabs
+      type="segment"
+      animated
+      class="mt-4"
+    >
+      <NTabPane
+        name="general"
+        tab="通用"
       >
-        <Icon :icon="tab.icon" class="w-3.5 h-3.5" />
-        {{ tab.label }}
-      </button>
-    </div>
-
-    <!-- Content -->
-    <SettingsAi v-show="activeTab === 'ai'" />
-    <SettingsGeneral v-show="activeTab === 'general'" />
-    <SettingsDatabase v-show="activeTab === 'database'" />
-    <SettingsUsage v-show="activeTab === 'usage'" />
+        <div class="mt-4">
+          <SettingsGeneral />
+        </div>
+      </NTabPane>
+      <NTabPane
+        name="ai"
+        tab="AI 配置"
+      >
+        <div class="mt-4">
+          <SettingsAi />
+        </div>
+      </NTabPane>
+      <NTabPane
+        name="database"
+        tab="数据库"
+      >
+        <div class="mt-4">
+          <SettingsDatabase />
+        </div>
+      </NTabPane>
+      <NTabPane
+        name="usage"
+        tab="用量"
+      >
+        <div class="mt-4">
+          <SettingsUsage />
+        </div>
+      </NTabPane>
+    </NTabs>
   </div>
 </template>

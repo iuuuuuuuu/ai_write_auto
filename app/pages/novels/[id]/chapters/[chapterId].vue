@@ -22,9 +22,7 @@ const { data: chapter, refresh: refreshChapter } = await useFetch<{
   wordCount: number | null
   updatedAt: string
   createdAt: string
-}>(
-  `/api/novels/${novelId.value}/chapters/${chapterId.value}`
-)
+}>(`/api/novels/${novelId.value}/chapters/${chapterId.value}`)
 const { data: aiConfigs } = await useFetch<
   Array<{
     id: number
@@ -261,16 +259,19 @@ onBeforeUnmount(() => {
     <!-- Toolbar -->
     <div
       v-if="!zenMode"
-      class="flex items-center gap-2.5 px-4 h-11 border-b border-(--ui-border)/60 bg-(--ui-bg-muted)/50 backdrop-blur-sm shrink-0"
+      class="flex items-center gap-2.5 px-4 h-12 border-b border-(--ui-border)/60 bg-(--ui-bg-muted)/60 backdrop-blur-md shrink-0"
     >
       <button
-        class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated) transition-colors"
+        class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
         @click="navigateTo(getNovelTo())"
       >
-        <Icon icon="lucide:arrow-left" class="w-4 h-4" />
+        <Icon
+          icon="lucide:arrow-left"
+          class="w-4 h-4"
+        />
       </button>
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-(--ui-text-highlighted) truncate">
+        <p class="text-sm font-semibold text-(--ui-text-highlighted) truncate">
           {{ chapter?.title }}
         </p>
       </div>
@@ -278,21 +279,42 @@ onBeforeUnmount(() => {
         <span class="text-[11px] tabular-nums text-(--ui-text-dimmed)">
           {{ content.replace(/\s/g, '').length }} {{ t('chapter.wordCount') }}
         </span>
-        <span v-if="saving" class="text-[11px] text-(--ui-text-dimmed)">· 保存中</span>
-        <span v-else-if="lastSaved" class="text-[11px] text-(--ui-text-dimmed)">· 已保存</span>
+        <span
+          v-if="saving"
+          class="text-[11px] text-primary-500"
+          >· 保存中</span
+        >
+        <span
+          v-else-if="lastSaved"
+          class="text-[11px] text-emerald-500"
+          >· 已保存</span
+        >
         <div class="w-px h-4 bg-(--ui-border)/40 mx-1" />
         <button
-          class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated) transition-colors"
+          class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
           @click="zenMode = true"
         >
-          <Icon icon="lucide:maximize" class="w-3.5 h-3.5" />
+          <Icon
+            icon="lucide:maximize"
+            class="w-3.5 h-3.5"
+          />
         </button>
-        <NButton size="tiny" quaternary :loading="generating" @click="showGenerateDialog = true">
+        <NButton
+          size="tiny"
+          quaternary
+          :loading="generating"
+          @click="showGenerateDialog = true"
+        >
           <template #icon>
             <Icon icon="lucide:sparkles" />
           </template>
         </NButton>
-        <NButton size="tiny" type="primary" :loading="saving" @click="saveContent">
+        <NButton
+          size="tiny"
+          type="primary"
+          :loading="saving"
+          @click="saveContent"
+        >
           <template #icon>
             <Icon icon="lucide:save" />
           </template>
@@ -306,24 +328,40 @@ onBeforeUnmount(() => {
       class="absolute top-4 right-4 z-10 opacity-0 hover:opacity-100 transition-opacity duration-300"
     >
       <button
-        class="flex items-center justify-center w-8 h-8 rounded-lg bg-(--ui-bg-muted) border border-(--ui-border)/60 text-(--ui-text-dimmed) hover:text-(--ui-text) transition-colors"
+        class="flex items-center justify-center w-9 h-9 rounded-xl card-glass text-(--ui-text-muted) hover:text-(--ui-text) transition-colors"
         @click="zenMode = false"
       >
-        <Icon icon="lucide:minimize" class="w-4 h-4" />
+        <Icon
+          icon="lucide:minimize"
+          class="w-4 h-4"
+        />
       </button>
     </div>
 
     <!-- Conflict Warning -->
     <div
       v-if="conflictDetected"
-      class="px-4 py-2 bg-amber-500/5 border-b border-amber-500/20 flex items-center justify-between shrink-0"
+      class="px-4 py-2.5 bg-amber-500/5 border-b border-amber-500/20 flex items-center justify-between shrink-0"
     >
-      <p class="text-xs text-amber-700 dark:text-amber-400">
-        此章节已在其他地方被修改，保存可能覆盖更改。
-      </p>
+      <div class="flex items-center gap-2">
+        <span class="size-1.5 rounded-full bg-amber-400 animate-pulse" />
+        <p class="text-xs text-amber-600 dark:text-amber-400">
+          此章节已在其他地方被修改，保存可能覆盖更改。
+        </p>
+      </div>
       <div class="flex gap-1.5">
-        <NButton size="tiny" secondary @click="loadLatestChapter">加载最新</NButton>
-        <NButton size="tiny" quaternary @click="forceSaveContent">强制保存</NButton>
+        <NButton
+          size="tiny"
+          secondary
+          @click="loadLatestChapter"
+          >加载最新</NButton
+        >
+        <NButton
+          size="tiny"
+          quaternary
+          @click="forceSaveContent"
+          >强制保存</NButton
+        >
       </div>
     </div>
 
@@ -333,7 +371,7 @@ onBeforeUnmount(() => {
         <div class="max-w-3xl mx-auto">
           <textarea
             v-model="content"
-            class="w-full min-h-[calc(100vh-160px)] bg-transparent text-(--ui-text) text-[15px] leading-[2] resize-none outline-none placeholder:text-(--ui-text-dimmed)/50"
+            class="w-full min-h-[calc(100vh-160px)] bg-transparent text-(--ui-text) text-[15px] leading-[2] resize-none outline-none placeholder:text-(--ui-text-dimmed)/40"
             :class="zenMode ? 'text-base leading-[2.2]' : ''"
             :placeholder="t('chapter.content') + '...'"
             @keydown.ctrl.s.prevent="saveContent"
@@ -345,18 +383,41 @@ onBeforeUnmount(() => {
         <!-- AI Action Result -->
         <div
           v-if="aiActionResult"
-          class="max-w-3xl mx-auto mt-4 p-4 rounded-xl bg-primary-500/5 border border-primary-500/15"
+          class="max-w-3xl mx-auto mt-4 p-4 card-surface border-l-2 border-l-primary-400"
         >
           <div class="flex items-center justify-between mb-2">
-            <p class="text-xs font-medium text-primary-600 dark:text-primary-400">
-              {{ aiActionType === 'expand' ? t('chapter.expand') : t('chapter.rewrite') }}
-            </p>
+            <div class="flex items-center gap-2">
+              <span
+                class="size-1.5 rounded-full bg-primary-400 animate-pulse"
+              />
+              <p
+                class="text-xs font-medium text-primary-600 dark:text-primary-400"
+              >
+                {{
+                  aiActionType === 'expand' ?
+                    t('chapter.expand')
+                  : t('chapter.rewrite')
+                }}
+              </p>
+            </div>
             <div class="flex gap-1">
-              <NButton size="tiny" type="primary" @click="applyAiResult">应用</NButton>
-              <NButton size="tiny" quaternary @click="discardAiResult">放弃</NButton>
+              <NButton
+                size="tiny"
+                type="primary"
+                @click="applyAiResult"
+                >应用</NButton
+              >
+              <NButton
+                size="tiny"
+                quaternary
+                @click="discardAiResult"
+                >放弃</NButton
+              >
             </div>
           </div>
-          <div class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed">
+          <div
+            class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
+          >
             {{ aiActionResult }}
           </div>
         </div>
@@ -364,12 +425,17 @@ onBeforeUnmount(() => {
         <!-- Generated Content Preview -->
         <div
           v-if="generating && generatedContent"
-          class="max-w-3xl mx-auto mt-4 p-4 rounded-xl bg-(--ui-bg-muted) border border-(--ui-border)/60"
+          class="max-w-3xl mx-auto mt-4 p-4 card-surface"
         >
-          <p class="text-xs text-primary-600 dark:text-primary-400 mb-2">
-            {{ t('ai.generating') }}
-          </p>
-          <div class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="size-1.5 rounded-full bg-violet-400 animate-pulse" />
+            <p class="text-xs font-medium text-violet-500">
+              {{ t('ai.generating') }}
+            </p>
+          </div>
+          <div
+            class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
+          >
             {{ generatedContent }}
           </div>
         </div>
@@ -380,20 +446,30 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <div
         v-if="showFloatingToolbar && !generating"
-        class="fixed z-50 flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-(--ui-bg-elevated) shadow-lg border border-(--ui-border)/60 backdrop-blur-sm"
+        class="fixed z-50 flex items-center gap-0.5 px-2 py-1.5 rounded-xl card-glass shadow-xl"
         :style="{
           left: `${floatingToolbarPos.x}px`,
           top: `${floatingToolbarPos.y}px`,
           transform: 'translate(-50%, -100%)'
         }"
       >
-        <NButton size="tiny" quaternary :loading="expandingOrRewriting" @click="doAiAction('expand')">
+        <NButton
+          size="tiny"
+          quaternary
+          :loading="expandingOrRewriting"
+          @click="doAiAction('expand')"
+        >
           <template #icon>
             <Icon icon="lucide:expand" />
           </template>
           {{ t('chapter.expand') }}
         </NButton>
-        <NButton size="tiny" quaternary :loading="expandingOrRewriting" @click="doAiAction('rewrite')">
+        <NButton
+          size="tiny"
+          quaternary
+          :loading="expandingOrRewriting"
+          @click="doAiAction('rewrite')"
+        >
           <template #icon>
             <Icon icon="lucide:refresh-cw" />
           </template>
@@ -403,7 +479,12 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <!-- Generate Dialog -->
-    <NModal v-model:show="showGenerateDialog" preset="card" :title="t('chapter.generateDialog.title')" style="max-width: 480px;">
+    <NModal
+      v-model:show="showGenerateDialog"
+      preset="card"
+      :title="t('chapter.generateDialog.title')"
+      style="max-width: 480px"
+    >
       <div class="space-y-4">
         <NFormItem :label="t('chapter.generateDialog.direction')">
           <NInput
@@ -413,21 +494,34 @@ onBeforeUnmount(() => {
             :rows="3"
           />
         </NFormItem>
-        <NFormItem :label="t('chapter.generateDialog.model')" required>
+        <NFormItem
+          :label="t('chapter.generateDialog.model')"
+          required
+        >
           <NSelect
             v-model:value="selectedAiConfigId"
             :options="generationModelOptions"
             placeholder="选择用于生成的模型"
           />
         </NFormItem>
-        <NAlert v-if="!generationModelOptions.length" type="warning" title="还没有可用的内容生成模型">
+        <NAlert
+          v-if="!generationModelOptions.length"
+          type="warning"
+          title="还没有可用的内容生成模型"
+        >
           请先到设置页创建并启用一个内容生成模型。
         </NAlert>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton @click="showGenerateDialog = false">{{ t('common.cancel') }}</NButton>
-          <NButton type="primary" :disabled="!selectedAiConfigId" @click="generateChapter">
+          <NButton @click="showGenerateDialog = false">{{
+            t('common.cancel')
+          }}</NButton>
+          <NButton
+            type="primary"
+            :disabled="!selectedAiConfigId"
+            @click="generateChapter"
+          >
             <template #icon><Icon icon="lucide:sparkles" /></template>
             {{ t('chapter.generate') }}
           </NButton>

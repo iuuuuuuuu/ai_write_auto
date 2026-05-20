@@ -33,10 +33,10 @@ const {
   totalPages,
   pageSize,
   goToPage,
-  refresh,
+  refresh
 } = usePagination<AdminAiConfig>({
   url: '/api/admin/ai-configs',
-  params: queryParams,
+  params: queryParams
 })
 
 const { confirmDelete } = useConfirmDialog()
@@ -44,7 +44,7 @@ const { confirmDelete } = useConfirmDialog()
 async function toggleEnabled(config: AdminAiConfig) {
   await $fetch(`/api/admin/ai-configs/${config.id}`, {
     method: 'PUT',
-    body: { enabled: !config.enabled },
+    body: { enabled: !config.enabled }
   })
   refresh()
 }
@@ -78,7 +78,10 @@ async function deleteConfig(config: AdminAiConfig) {
         clearable
       >
         <template #prefix>
-          <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+          <Icon
+            icon="lucide:search"
+            class="text-(--ui-text-dimmed)"
+          />
         </template>
       </NInput>
     </div>
@@ -96,7 +99,7 @@ async function deleteConfig(config: AdminAiConfig) {
     </div>
     <div
       v-else-if="!configs.length"
-      class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-10 text-center text-sm text-(--ui-text-muted)"
+      class="card-surface p-10 text-center text-sm text-(--ui-text-muted)"
     >
       暂无匹配模型配置
     </div>
@@ -105,9 +108,11 @@ async function deleteConfig(config: AdminAiConfig) {
         <section
           v-for="config in configs"
           :key="config.id"
-          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-4"
+          class="card-surface group p-4"
         >
-          <div class="grid gap-4 lg:grid-cols-[1fr_220px_160px] lg:items-center">
+          <div
+            class="grid gap-4 lg:grid-cols-[1fr_220px_160px] lg:items-center"
+          >
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <h2 class="font-semibold text-(--ui-text-highlighted)">
@@ -169,10 +174,20 @@ async function deleteConfig(config: AdminAiConfig) {
               >
             </div>
             <div class="flex gap-1">
-              <NButton size="small" :type="config.enabled ? 'default' : 'primary'" quaternary @click="toggleEnabled(config)">
+              <NButton
+                size="small"
+                :type="config.enabled ? 'default' : 'primary'"
+                quaternary
+                @click="toggleEnabled(config)"
+              >
                 {{ config.enabled ? '停用' : '启用' }}
               </NButton>
-              <NButton size="small" quaternary type="error" @click="deleteConfig(config)">
+              <NButton
+                size="small"
+                quaternary
+                type="error"
+                @click="deleteConfig(config)"
+              >
                 <template #icon><Icon icon="lucide:trash-2" /></template>
               </NButton>
             </div>
@@ -180,7 +195,10 @@ async function deleteConfig(config: AdminAiConfig) {
         </section>
       </div>
 
-      <div v-if="totalPages > 1" class="flex items-center justify-between pt-2">
+      <div
+        v-if="totalPages > 1"
+        class="flex items-center justify-between pt-2"
+      >
         <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
         <NPagination
           :page="page"

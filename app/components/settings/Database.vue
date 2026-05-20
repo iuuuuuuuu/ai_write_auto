@@ -21,12 +21,18 @@ async function exportDatabase() {
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div class="p-4 rounded-lg border border-gray-200 dark:border-gray-800 space-y-4">
-      <h3 class="font-medium text-gray-900 dark:text-white">{{ t('settings.database') }}</h3>
+  <div class="space-y-4">
+    <div class="card-surface p-3 space-y-3">
+      <h3 class="text-sm font-bold text-(--ui-text-highlighted)">
+        {{ t('settings.database') }}
+      </h3>
 
       <div class="flex gap-3">
-        <NButton secondary :loading="exporting" @click="exportDatabase">
+        <NButton
+          secondary
+          :loading="exporting"
+          @click="exportDatabase"
+        >
           <template #icon>
             <Icon icon="lucide:download" />
           </template>
