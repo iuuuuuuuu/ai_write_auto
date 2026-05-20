@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { callAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
+import { NovelSchema } from '../../database/entities'
 
 const outlineGenSchema = z.object({
   novelId: z.number().int().positive(),
@@ -15,7 +16,7 @@ export default defineEventHandler(async (event) => {
   const data = outlineGenSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne('Novel', { id: data.novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
@@ -32,7 +33,7 @@ export default defineEventHandler(async (event) => {
     },
     {
       role: 'user' as const,
-      content: `小说标题：${(novel as any).title}\n类型：${(novel as any).genre || '未指定'}\n故事核心想法：${data.idea}`
+      content: `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}\n故事核心想法：${data.idea}`
     }
   ]
 

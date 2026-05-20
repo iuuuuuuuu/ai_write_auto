@@ -1,9 +1,10 @@
-import { EntitySchema } from '@mikro-orm/core'
+import { EntitySchema, type OptionalProps } from '@mikro-orm/core'
 import { UnixTimestampType } from '../types/UnixTimestampType'
 
 // ─── Interfaces ───
 
 export interface User {
+  [OptionalProps]?: 'id' | 'role' | 'createdAt'
   id: number
   username: string
   passwordHash: string
@@ -17,6 +18,7 @@ export interface SiteConfig {
 }
 
 export interface AiConfig {
+  [OptionalProps]?: 'id' | 'temperature' | 'maxTokens' | 'isDefault' | 'enabled' | 'createdAt' | 'updatedAt'
   id: number
   user: User
   name: string
@@ -33,6 +35,7 @@ export interface AiConfig {
 }
 
 export interface Novel {
+  [OptionalProps]?: 'id' | 'description' | 'genre' | 'status' | 'styleGuide' | 'worldSetting' | 'aiTemperature' | 'aiExtraPrompt' | 'aiConfig' | 'deletedAt' | 'createdAt' | 'updatedAt'
   id: number
   user: User
   title: string
@@ -43,12 +46,14 @@ export interface Novel {
   worldSetting: string | null
   aiTemperature: string | null
   aiExtraPrompt: string | null
+  aiConfig: AiConfig | null
   deletedAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
 
 export interface NovelOutline {
+  [OptionalProps]?: 'id'
   id: number
   novel: Novel
   chapterNumber: number
@@ -57,6 +62,7 @@ export interface NovelOutline {
 }
 
 export interface NovelTemplate {
+  [OptionalProps]?: 'id' | 'defaultStyleGuide' | 'defaultAiPrompt' | 'defaultTemperature'
   id: number
   name: string
   genre: string
@@ -66,6 +72,7 @@ export interface NovelTemplate {
 }
 
 export interface Chapter {
+  [OptionalProps]?: 'id' | 'content' | 'summary' | 'status' | 'wordCount' | 'deletedAt' | 'createdAt' | 'updatedAt'
   id: number
   novel: Novel
   chapterNumber: number
@@ -80,6 +87,7 @@ export interface Chapter {
 }
 
 export interface ChapterVersion {
+  [OptionalProps]?: 'id' | 'createdAt'
   id: number
   chapter: Chapter
   versionNumber: number
@@ -89,6 +97,7 @@ export interface ChapterVersion {
 }
 
 export interface ChapterNote {
+  [OptionalProps]?: 'id' | 'createdAt' | 'updatedAt'
   id: number
   chapter: Chapter
   content: string
@@ -97,6 +106,7 @@ export interface ChapterNote {
 }
 
 export interface Character {
+  [OptionalProps]?: 'id' | 'description' | 'traits' | 'relationships' | 'currentState' | 'firstAppearanceChapter' | 'lastAppearanceChapter' | 'createdAt'
   id: number
   novel: Novel
   name: string
@@ -109,7 +119,16 @@ export interface Character {
   createdAt: Date
 }
 
+export interface ChapterCharacter {
+  [OptionalProps]?: 'id' | 'role'
+  id: number
+  chapter: Chapter
+  character: Character
+  role: 'main' | 'supporting' | 'mentioned'
+}
+
 export interface PlotPoint {
+  [OptionalProps]?: 'id' | 'chapter' | 'status' | 'createdAt'
   id: number
   novel: Novel
   chapter: Chapter | null
@@ -120,6 +139,7 @@ export interface PlotPoint {
 }
 
 export interface StoryArc {
+  [OptionalProps]?: 'id' | 'summary' | 'endChapter'
   id: number
   novel: Novel
   title: string
@@ -129,6 +149,7 @@ export interface StoryArc {
 }
 
 export interface GenerationTask {
+  [OptionalProps]?: 'id' | 'chapter' | 'status' | 'result' | 'error' | 'retryCount' | 'tokensUsed' | 'createdAt' | 'completedAt'
   id: number
   novel: Novel
   chapter: Chapter | null
@@ -143,6 +164,7 @@ export interface GenerationTask {
 }
 
 export interface TokenUsage {
+  [OptionalProps]?: 'id' | 'aiConfig' | 'estimatedCost' | 'createdAt'
   id: number
   user: User
   aiConfig: AiConfig | null
@@ -153,6 +175,7 @@ export interface TokenUsage {
 }
 
 export interface PromptTemplate {
+  [OptionalProps]?: 'id' | 'user' | 'isSystem' | 'createdAt'
   id: number
   user: User | null
   name: string
@@ -163,6 +186,7 @@ export interface PromptTemplate {
 }
 
 export interface WritingStat {
+  [OptionalProps]?: 'id' | 'wordsWritten' | 'chaptersCompleted' | 'aiGenerations'
   id: number
   user: User
   date: string
@@ -172,6 +196,7 @@ export interface WritingStat {
 }
 
 export interface UserPreference {
+  [OptionalProps]?: 'id'
   id: number
   user: User
   key: string
@@ -235,6 +260,7 @@ export const NovelSchema = new EntitySchema<Novel>({
     worldSetting: { type: 'string', nullable: true, fieldName: 'world_setting' },
     aiTemperature: { type: 'string', nullable: true, fieldName: 'ai_temperature' },
     aiExtraPrompt: { type: 'string', nullable: true, fieldName: 'ai_extra_prompt' },
+    aiConfig: { kind: 'm:1', entity: () => 'AiConfig', fieldName: 'ai_config_id', nullable: true },
     deletedAt: { type: UnixTimestampType, nullable: true, fieldName: 'deleted_at' },
     createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
     updatedAt: { type: UnixTimestampType, fieldName: 'updated_at', onCreate: () => new Date(), onUpdate: () => new Date() },
@@ -323,6 +349,17 @@ export const CharacterSchema = new EntitySchema<Character>({
     firstAppearanceChapter: { type: 'number', nullable: true, fieldName: 'first_appearance_chapter' },
     lastAppearanceChapter: { type: 'number', nullable: true, fieldName: 'last_appearance_chapter' },
     createdAt: { type: UnixTimestampType, fieldName: 'created_at', onCreate: () => new Date() },
+  },
+})
+
+export const ChapterCharacterSchema = new EntitySchema<ChapterCharacter>({
+  name: 'ChapterCharacter',
+  tableName: 'chapter_characters',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    chapter: { kind: 'm:1', entity: () => 'Chapter', fieldName: 'chapter_id' },
+    character: { kind: 'm:1', entity: () => 'Character', fieldName: 'character_id' },
+    role: { type: 'string', default: 'supporting' },
   },
 })
 
@@ -434,6 +471,7 @@ export const allEntities = [
   ChapterVersionSchema,
   ChapterNoteSchema,
   CharacterSchema,
+  ChapterCharacterSchema,
   PlotPointSchema,
   StoryArcSchema,
   GenerationTaskSchema,

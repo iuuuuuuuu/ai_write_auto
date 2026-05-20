@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { NovelSchema, ChapterSchema } from '../../database/entities'
 
 const importSchema = z.object({
   title: z.string().min(1),
@@ -56,7 +57,7 @@ export default defineEventHandler(async (event) => {
   const data = importSchema.parse(body)
   const em = useEm(event)
 
-  const novel = em.create('Novel', {
+  const novel = em.create(NovelSchema, {
     user: auth.userId,
     title: data.title,
     status: 'in_progress',
@@ -69,7 +70,7 @@ export default defineEventHandler(async (event) => {
   for (let i = 0; i < chapters.length; i++) {
     const ch = chapters[i]!
     const wordCount = ch.content.replace(/\s/g, '').length
-    em.create('Chapter', {
+    em.create(ChapterSchema, {
       novel: novel.id,
       chapterNumber: i + 1,
       title: ch.title,

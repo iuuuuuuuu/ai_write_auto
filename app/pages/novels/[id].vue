@@ -11,6 +11,8 @@ interface NovelDetail {
   id: number
   title: string
   description: string | null
+  aiConfigId: number | null
+  aiConfigName: string | null
 }
 
 interface ChapterItem {
@@ -120,11 +122,42 @@ watch(
       !selectedAiConfigId.value ||
       !options.some((option) => option.value === selectedAiConfigId.value)
     ) {
-      selectedAiConfigId.value = options[0].value
+      selectedAiConfigId.value = options[0]?.value
     }
   },
   { immediate: true }
 )
+
+const showNovelSettings = shallowRef(false)
+const novelAiConfigId = ref<number | null>(novel.value?.aiConfigId || null)
+const savingNovelSettings = shallowRef(false)
+
+const aiConfigOptions = computed(() => [
+  { label: '使用默认配置', value: null as any },
+  ...aiConfigs.value
+    .filter(c => c.enabled)
+    .map(c => ({ label: `${c.name} (${c.model})`, value: c.id }))
+])
+
+async function saveNovelAiConfig() {
+  savingNovelSettings.value = true
+  try {
+    await $fetch(`/api/novels/${novelId.value}`, {
+      method: 'PUT',
+      body: { aiConfigId: novelAiConfigId.value }
+    })
+    if (novel.value) {
+      novel.value.aiConfigId = novelAiConfigId.value
+      novel.value.aiConfigName = aiConfigs.value.find(c => c.id === novelAiConfigId.value)?.name || null
+    }
+    message.success('模型配置已更新')
+    showNovelSettings.value = false
+  } catch {
+    message.error('更新失败')
+  } finally {
+    savingNovelSettings.value = false
+  }
+}
 
 const selectedChapter = computed(() => {
   if (!chapters.value.length) return null
@@ -137,13 +170,41 @@ const selectedChapter = computed(() => {
 
 const readTo = computed(() => `/novels/${novelId.value}/read`)
 
-const chapterCharacters = computed(() => {
-  const chapter = selectedChapter.value
-  if (!chapter || !chapter.content) return []
-  return (characters.value || []).filter((char) =>
-    chapter.content!.includes(char.name)
-  )
-})
+const chapterCharacters = ref<CharacterItem[]>([])
+
+async function refreshChapterCharacters() {
+  if (!selectedChapter.value) {
+    chapterCharacters.value = []
+    return
+  }
+  try {
+    const data = await $fetch<Array<{ characterId: number; characterName: string; characterDescription: string | null; role: string }>>(
+      `/api/novels/${novelId.value}/chapters/${selectedChapter.value.id}/characters`
+    )
+    chapterCharacters.value = data.map(d => ({
+      id: d.characterId,
+      name: d.characterName,
+      description: d.characterDescription,
+      traits: null,
+      relationships: null,
+      currentState: null,
+    }))
+  } catch {
+    // Fallback to name-based detection
+    const chapter = selectedChapter.value
+    if (chapter?.content) {
+      chapterCharacters.value = (characters.value || []).filter(char =>
+        chapter.content!.includes(char.name)
+      )
+    } else {
+      chapterCharacters.value = []
+    }
+  }
+}
+
+watch(() => selectedChapter.value?.id, () => {
+  refreshChapterCharacters()
+}, { immediate: true })
 
 const hasDuplicateCharacterName = computed(() => {
   const name = newCharacter.name.trim()
@@ -164,7 +225,7 @@ watch(
     if (
       !chapterList.some((chapter) => chapter.id === selectedChapterId.value)
     ) {
-      selectedChapterId.value = chapterList[0].id
+      selectedChapterId.value = chapterList[0]?.id ?? null
     }
   },
   { immediate: true }
@@ -261,6 +322,97 @@ async function createCharacter() {
   }
 }
 
+const showEditCharacter = shallowRef(false)
+const editingCharacter = reactive({
+  id: 0,
+  name: '',
+  description: '',
+  traits: '',
+  relationships: '',
+  currentState: ''
+})
+const savingCharacter = shallowRef(false)
+
+function startEditCharacter(character: CharacterItem) {
+  editingCharacter.id = character.id
+  editingCharacter.name = character.name
+  editingCharacter.description = character.description || ''
+  editingCharacter.traits = character.traits || ''
+  editingCharacter.relationships = character.relationships || ''
+  editingCharacter.currentState = character.currentState || ''
+  showEditCharacter.value = true
+}
+
+async function saveEditCharacter() {
+  if (!editingCharacter.name.trim()) {
+    message.warning('请输入角色名称')
+    return
+  }
+  savingCharacter.value = true
+  try {
+    await $fetch(`/api/novels/${novelId.value}/characters/${editingCharacter.id}`, {
+      method: 'PUT',
+      body: {
+        name: editingCharacter.name.trim(),
+        description: editingCharacter.description.trim() || undefined,
+        traits: editingCharacter.traits.trim() || undefined,
+        relationships: editingCharacter.relationships.trim() || undefined,
+        currentState: editingCharacter.currentState.trim() || undefined
+      }
+    })
+    message.success('角色已更新')
+    showEditCharacter.value = false
+    await refreshCharacters()
+  } catch {
+    message.error('更新角色失败')
+  } finally {
+    savingCharacter.value = false
+  }
+}
+
+async function deleteCharacter(characterId: number) {
+  try {
+    await $fetch(`/api/novels/${novelId.value}/characters/${characterId}`, {
+      method: 'DELETE'
+    })
+    message.success('角色已删除')
+    await refreshCharacters()
+  } catch {
+    message.error('删除角色失败')
+  }
+}
+
+async function assignCharacterToChapter(characterId: number) {
+  if (!selectedChapter.value) return
+  const current = chapterCharacters.value.map(c => ({ characterId: c.id, role: 'supporting' as const }))
+  current.push({ characterId, role: 'supporting' })
+  try {
+    await $fetch(`/api/novels/${novelId.value}/chapters/${selectedChapter.value.id}/characters`, {
+      method: 'PUT',
+      body: { characters: current }
+    })
+    await refreshChapterCharacters()
+  } catch {
+    message.error('分配角色失败')
+  }
+}
+
+async function unassignCharacterFromChapter(characterId: number) {
+  if (!selectedChapter.value) return
+  const current = chapterCharacters.value
+    .filter(c => c.id !== characterId)
+    .map(c => ({ characterId: c.id, role: 'supporting' as const }))
+  try {
+    await $fetch(`/api/novels/${novelId.value}/chapters/${selectedChapter.value.id}/characters`, {
+      method: 'PUT',
+      body: { characters: current }
+    })
+    await refreshChapterCharacters()
+  } catch {
+    message.error('取消分配失败')
+  }
+}
+
 async function generateChapter() {
   if (!selectedAiConfigId.value || !selectedChapter.value) return
   try {
@@ -303,37 +455,39 @@ async function exportNovel(format: string) {
   </div>
   <div
     v-else
-    class="mx-auto flex h-[calc(100dvh-3.5rem)] max-w-[1680px] flex-col gap-4 px-4 pb-4 pt-5 sm:px-6 lg:px-8"
+    class="flex h-[calc(100dvh-3rem)] flex-col gap-3 px-3 pb-3 pt-3 lg:px-4"
   >
     <!-- Header -->
-    <div class="flex shrink-0 items-center gap-3">
-      <NButton
-        quaternary
-        size="small"
+    <div class="flex shrink-0 items-center gap-2.5">
+      <button
+        class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
         @click="navigateTo('/dashboard')"
       >
-        <template #icon>
-          <Icon icon="lucide:arrow-left" />
-        </template>
-      </NButton>
+        <Icon icon="lucide:arrow-left" class="w-4 h-4" />
+      </button>
       <div class="min-w-0 flex-1">
-        <h1
-          class="truncate text-xl font-semibold tracking-tight text-(--ui-text-highlighted)"
-        >
+        <h1 class="truncate text-base font-semibold text-(--ui-text-highlighted)">
           {{ novel?.title }}
         </h1>
-        <p
-          v-if="novel?.description"
-          class="mt-0.5 truncate text-sm text-(--ui-text-dimmed)"
-        >
-          {{ novel.description }}
-        </p>
       </div>
+      <button
+        class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+        @click="showNovelSettings = true"
+      >
+        <Icon icon="lucide:settings" class="w-3.5 h-3.5" />
+      </button>
+      <NuxtLink
+        :to="`/novels/${novelId}/chapters/${selectedChapter?.id}`"
+        v-if="selectedChapter"
+        class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+      >
+        <Icon icon="lucide:maximize-2" class="w-3.5 h-3.5" />
+      </NuxtLink>
     </div>
 
     <!-- Three-column layout -->
     <div
-      class="grid min-h-0 flex-1 gap-4 xl:grid-cols-[340px_minmax(0,1fr)_280px]"
+      class="grid min-h-0 flex-1 gap-3 lg:grid-cols-[300px_minmax(0,1fr)_260px]"
     >
       <NovelResourceTabs
         v-model:active-tab="activeTab"
@@ -344,6 +498,8 @@ async function exportNovel(format: string) {
         class="h-full"
         @create-chapter="showCreateChapter = true"
         @create-character="showCreateCharacter = true"
+        @edit-character="startEditCharacter"
+        @delete-character="deleteCharacter"
       />
 
       <NovelChapterEditor
@@ -357,6 +513,7 @@ async function exportNovel(format: string) {
         :read-to="readTo"
         :selected-chapter="selectedChapter"
         :chapter-characters="chapterCharacters"
+        :all-characters="characters"
         :chapter-count="chapters.length"
         :character-count="characters.length"
         :outline-count="outlines.length"
@@ -366,6 +523,8 @@ async function exportNovel(format: string) {
         @export-novel="exportNovel"
         @generate="showGenerateDialog = true"
         @expand="showGenerateDialog = true"
+        @assign-character="assignCharacterToChapter"
+        @unassign-character="unassignCharacterFromChapter"
       />
     </div>
 
@@ -502,6 +661,60 @@ async function exportNovel(format: string) {
             </template>
             生成
           </NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- Edit Character Modal -->
+    <NModal v-model:show="showEditCharacter" preset="card" title="编辑角色" style="max-width: 560px;">
+      <div class="space-y-4">
+        <NFormItem label="角色名称" required>
+          <NInput v-model:value="editingCharacter.name" placeholder="角色名称" size="large" />
+        </NFormItem>
+        <NFormItem label="角色简介">
+          <NInput v-model:value="editingCharacter.description" type="textarea" placeholder="身份、背景或人物定位" :rows="3" />
+        </NFormItem>
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <NFormItem label="性格特征">
+            <NInput v-model:value="editingCharacter.traits" placeholder="冷静、敏锐、慢热" />
+          </NFormItem>
+          <NFormItem label="当前状态">
+            <NInput v-model:value="editingCharacter.currentState" placeholder="正在调查主线事件" />
+          </NFormItem>
+        </div>
+        <NFormItem label="人物关系">
+          <NInput v-model:value="editingCharacter.relationships" type="textarea" placeholder="与其他角色的关系" :rows="3" />
+        </NFormItem>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showEditCharacter = false">{{ t('common.cancel') }}</NButton>
+          <NButton type="primary" :loading="savingCharacter" @click="saveEditCharacter">保存</NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- Novel Settings Modal -->
+    <NModal v-model:show="showNovelSettings" preset="card" title="小说设置" style="max-width: 480px;">
+      <div class="space-y-4">
+        <div>
+          <p class="text-sm font-medium text-(--ui-text) mb-1.5">AI 模型配置</p>
+          <p class="text-xs text-(--ui-text-dimmed) mb-3">为这本小说选择独立的模型配置，或使用你的默认配置</p>
+          <NSelect
+            v-model:value="novelAiConfigId"
+            :options="aiConfigOptions"
+            placeholder="使用默认配置"
+            clearable
+          />
+        </div>
+        <div v-if="novel?.aiConfigName" class="text-xs text-(--ui-text-dimmed)">
+          当前使用：<span class="font-medium text-(--ui-text)">{{ novel.aiConfigName }}</span>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showNovelSettings = false">取消</NButton>
+          <NButton type="primary" :loading="savingNovelSettings" @click="saveNovelAiConfig">保存</NButton>
         </div>
       </template>
     </NModal>

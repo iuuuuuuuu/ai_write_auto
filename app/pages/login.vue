@@ -29,31 +29,36 @@ async function handleLogin() {
 
 <template>
   <div>
-    <!-- Header -->
-    <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary-500/10 border border-primary-500/20 mb-4">
-        <Icon icon="lucide:pen-tool" class="w-6 h-6 text-primary-400" />
+    <!-- Mobile logo (hidden on desktop where branding panel shows) -->
+    <div class="lg:hidden flex items-center gap-2.5 mb-8">
+      <div class="w-9 h-9 rounded-xl bg-primary-500/10 border border-primary-500/15 flex items-center justify-center">
+        <Icon icon="lucide:pen-tool" class="w-4.5 h-4.5 text-primary-500" />
       </div>
+      <span class="text-base font-semibold text-(--ui-text)">AI 小说写作</span>
+    </div>
+
+    <!-- Header -->
+    <div class="mb-6">
       <h1 class="text-xl font-semibold text-(--ui-text-highlighted)">
         {{ t('auth.loginTitle') }}
       </h1>
-      <p class="mt-1.5 text-sm text-(--ui-text-muted)">
+      <p class="mt-1 text-sm text-(--ui-text-muted)">
         {{ t('auth.loginSubtitle') }}
       </p>
     </div>
 
     <!-- Error -->
     <Transition name="slide-fade">
-      <div v-if="error" class="mb-5 flex items-start gap-2.5 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-600 dark:text-red-300">
-        <Icon icon="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+      <div v-if="error" class="mb-4 flex items-center gap-2 p-3 rounded-lg bg-red-500/8 border border-red-500/15 text-sm text-red-600 dark:text-red-400">
+        <Icon icon="lucide:alert-circle" class="w-4 h-4 shrink-0" />
         <span>{{ error }}</span>
       </div>
     </Transition>
 
     <!-- Form -->
-    <form class="space-y-5" @submit.prevent="handleLogin">
+    <form class="space-y-4" @submit.prevent="handleLogin">
       <div class="space-y-1.5">
-        <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('auth.username') }}</label>
+        <label class="block text-xs font-medium text-(--ui-text-muted)">{{ t('auth.username') }}</label>
         <NInput
           v-model:value="form.username"
           :placeholder="t('auth.usernamePlaceholder')"
@@ -66,7 +71,7 @@ async function handleLogin() {
         </NInput>
       </div>
       <div class="space-y-1.5">
-        <label class="block text-xs font-medium text-(--ui-text-muted) uppercase tracking-wide">{{ t('auth.password') }}</label>
+        <label class="block text-xs font-medium text-(--ui-text-muted)">{{ t('auth.password') }}</label>
         <NInput
           v-model:value="form.password"
           type="password"
@@ -79,7 +84,7 @@ async function handleLogin() {
           </template>
         </NInput>
       </div>
-      <NButton type="primary" attr-type="submit" block size="large" :loading="loading" class="mt-2">
+      <NButton type="primary" attr-type="submit" block size="large" :loading="loading">
         {{ t('auth.loginButton') }}
       </NButton>
     </form>

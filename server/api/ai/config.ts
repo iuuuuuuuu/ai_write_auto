@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { wrap } from '@mikro-orm/core'
 import { maskApiKey } from '../../utils/ai-configs'
+import { AiConfigSchema } from '../../database/entities'
 
 const aiConfigSchema = z.object({
   id: z.number().int().positive().optional(),
@@ -38,7 +39,7 @@ export default defineEventHandler(async (event) => {
   const em = useEm(event)
 
   if (method === 'GET') {
-    const configs = await em.find('AiConfig', { user: auth.userId })
+    const configs = await em.find(AiConfigSchema, { user: auth.userId })
     return configs.map(serializeConfig)
   }
 
@@ -46,13 +47,13 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     const data = aiConfigSchema.parse(body)
     if (data.id) {
-      const existing = await em.findOne('AiConfig', { id: data.id, user: auth.userId })
+      const existing = await em.findOne(AiConfigSchema, { id: data.id, user: auth.userId })
       if (!existing) {
         throw createError({ statusCode: 404, message: 'AI config not found' })
       }
 
       if (data.isDefault) {
-        await em.nativeUpdate('AiConfig', { user: auth.userId, purpose: data.purpose }, { isDefault: false, updatedAt: new Date() })
+        await em.nativeUpdate(AiConfigSchema, { user: auth.userId, purpose: data.purpose }, { isDefault: false, updatedAt: new Date() })
       }
 
       wrap(existing).assign({
@@ -62,8 +63,8 @@ export default defineEventHandler(async (event) => {
         model: data.model,
         temperature: data.temperature,
         maxTokens: data.maxTokens,
-        isDefault: data.isDefault ?? (existing as any).isDefault,
-        enabled: data.enabled ?? (existing as any).enabled,
+        isDefault: data.isDefault ?? existing.isDefault,
+        enabled: data.enabled ?? existing.enabled,
         updatedAt: new Date(),
         ...(data.apiKey ? { apiKey: data.apiKey } : {}),
       })
@@ -75,13 +76,13 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: 'API key is required' })
     }
 
-    const existingForPurpose = await em.find('AiConfig', { user: auth.userId, purpose: data.purpose })
+    const existingForPurpose = await em.find(AiConfigSchema, { user: auth.userId, purpose: data.purpose })
     const isDefault = data.isDefault ?? existingForPurpose.length === 0
     if (isDefault) {
-      await em.nativeUpdate('AiConfig', { user: auth.userId, purpose: data.purpose }, { isDefault: false, updatedAt: new Date() })
+      await em.nativeUpdate(AiConfigSchema, { user: auth.userId, purpose: data.purpose }, { isDefault: false, updatedAt: new Date() })
     }
 
-    const config = em.create('AiConfig', {
+    const config = em.create(AiConfigSchema, {
       user: auth.userId,
       name: data.name,
       purpose: data.purpose,
@@ -101,18 +102,18 @@ export default defineEventHandler(async (event) => {
     const query = getQuery(event)
     const { id } = deleteSchema.parse(query)
 
-    const existing = await em.findOne('AiConfig', { id, user: auth.userId })
+    const existing = await em.findOne(AiConfigSchema, { id, user: auth.userId })
     if (!existing) {
       throw createError({ statusCode: 404, message: 'AI config not found' })
     }
 
-    const wasDefault = (existing as any).isDefault
-    const purpose = (existing as any).purpose
+    const wasDefault = existing.isDefault
+    const purpose = existing.purpose
 
-    await em.nativeDelete('AiConfig', { id, user: auth.userId })
+    await em.nativeDelete(AiConfigSchema, { id, user: auth.userId })
 
     if (wasDefault) {
-      const remaining = await em.findOne('AiConfig', { user: auth.userId, purpose })
+      const remaining = await em.findOne(AiConfigSchema, { user: auth.userId, purpose })
       if (remaining) {
         wrap(remaining).assign({ isDefault: true, updatedAt: new Date() })
         await em.flush()

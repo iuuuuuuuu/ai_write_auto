@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { NovelSchema } from '../../database/entities'
 
 const createNovelSchema = z.object({
   title: z.string().min(1).max(200),
@@ -16,7 +17,7 @@ export default defineEventHandler(async (event) => {
   const data = createNovelSchema.parse(body)
   const em = useEm(event)
 
-  const novel = em.create('Novel', {
+  const novel = em.create(NovelSchema, {
     user: auth.userId,
     title: data.title,
     description: data.description || null,

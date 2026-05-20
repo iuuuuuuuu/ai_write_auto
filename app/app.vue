@@ -1,9 +1,11 @@
 <template>
   <NaiveConfig>
     <NMessageProvider>
-      <NuxtLayout>
-        <NuxtPage />
-      </NuxtLayout>
+      <NDialogProvider>
+        <NuxtLayout>
+          <NuxtPage />
+        </NuxtLayout>
+      </NDialogProvider>
     </NMessageProvider>
   </NaiveConfig>
 </template>

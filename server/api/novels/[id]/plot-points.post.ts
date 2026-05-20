@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { NovelSchema, PlotPointSchema } from '../../../database/entities'
 
 const plotPointSchema = z.object({
   description: z.string().min(1),
@@ -14,12 +15,12 @@ export default defineEventHandler(async (event) => {
   const data = plotPointSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const plotPoint = em.create('PlotPoint', {
+  const plotPoint = em.create(PlotPointSchema, {
     novel: novelId,
     chapter: data.chapterId || null,
     description: data.description,

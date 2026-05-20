@@ -29,6 +29,13 @@ const purposeOptions = computed(() => [
   { label: t('ai.purpose.styleAnalysis'), value: 'style_analysis' }
 ])
 
+const purposeIcons: Record<string, string> = {
+  generation: 'lucide:wand-sparkles',
+  extraction: 'lucide:scan-text',
+  consistency_check: 'lucide:shield-check',
+  style_analysis: 'lucide:palette'
+}
+
 const { data: configs, refresh } = await useFetch<AiConfigItem[]>(
   '/api/ai/config',
   { default: () => [] }
@@ -38,7 +45,6 @@ const editingId = ref<number | null>(null)
 const showForm = ref(false)
 const saving = ref(false)
 const deletingId = ref<number | null>(null)
-const formError = ref('')
 
 const form = reactive({
   id: undefined as number | undefined,
@@ -56,9 +62,12 @@ const form = reactive({
 const groupedConfigs = computed(() =>
   purposeOptions.value.map((purpose) => ({
     ...purpose,
+    icon: purposeIcons[purpose.value],
     configs: configs.value.filter((config) => config.purpose === purpose.value)
   }))
 )
+
+// PLACEHOLDER_REST
 
 function resetForm(purpose: AiPurpose = 'generation') {
   editingId.value = null
@@ -73,7 +82,6 @@ function resetForm(purpose: AiPurpose = 'generation') {
   form.isDefault =
     configs.value.filter((config) => config.purpose === purpose).length === 0
   form.enabled = true
-  formError.value = ''
 }
 
 function startCreate(purpose: AiPurpose = 'generation') {
@@ -93,25 +101,16 @@ function startEdit(config: AiConfigItem) {
   form.maxTokens = config.maxTokens || 4096
   form.isDefault = config.isDefault
   form.enabled = config.enabled
-  formError.value = ''
   showForm.value = true
 }
 
-function validateForm() {
-  if (!form.name.trim()) return '请输入配置名称'
-  if (!form.apiUrl.trim()) return '请输入 API 地址'
-  if (!form.model.trim()) return '请输入模型名称'
-  if (!editingId.value && !form.apiKey.trim()) return '请输入 API 密钥'
-  if (!form.temperature.trim()) return '请输入 Temperature'
-  if (!form.maxTokens || form.maxTokens <= 0) return '请输入有效的最大 Token 数'
-  return ''
-}
-
 async function saveConfig() {
-  const errorMessage = validateForm()
-  if (errorMessage) {
-    formError.value = errorMessage
-    message.error(errorMessage)
+  if (!form.name.trim() || !form.apiUrl.trim() || !form.model.trim()) {
+    message.error('请填写必填字段')
+    return
+  }
+  if (!editingId.value && !form.apiKey.trim()) {
+    message.error('请输入 API 密钥')
     return
   }
 
@@ -132,19 +131,17 @@ async function saveConfig() {
         enabled: form.enabled
       }
     })
-    message.success(editingId.value ? '模型配置已更新' : '模型配置已创建')
+    message.success(editingId.value ? '配置已更新' : '配置已创建')
     showForm.value = false
     await refresh()
   } catch (error) {
-    const msg = error instanceof Error ? error.message : '保存模型配置失败'
-    message.error(msg)
+    message.error('保存失败')
   } finally {
     saving.value = false
   }
 }
 
 async function setDefault(config: AiConfigItem) {
-  saving.value = true
   try {
     await $fetch('/api/ai/config', {
       method: 'POST',
@@ -162,11 +159,8 @@ async function setDefault(config: AiConfigItem) {
     })
     message.success('默认模型已更新')
     await refresh()
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : '更新默认模型失败'
-    message.error(msg)
-  } finally {
-    saving.value = false
+  } catch {
+    message.error('更新失败')
   }
 }
 
@@ -177,172 +171,155 @@ async function deleteConfig(config: AiConfigItem) {
       method: 'DELETE',
       query: { id: config.id }
     })
-    message.success('模型配置已删除')
+    message.success('配置已删除')
     await refresh()
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : '删除模型配置失败'
-    message.error(msg)
+  } catch {
+    message.error('删除失败')
   } finally {
     deletingId.value = null
   }
 }
-
-function getDropdownOptions(config: AiConfigItem) {
-  return [
-    { label: '编辑', key: 'edit', icon: 'lucide:pencil' },
-    { label: '设为默认', key: 'default', icon: 'lucide:star', disabled: config.isDefault },
-    { label: '删除', key: 'delete', icon: 'lucide:trash-2' }
-  ]
-}
-
-function handleDropdownSelect(key: string, config: AiConfigItem) {
-  if (key === 'edit') startEdit(config)
-  else if (key === 'default') setDefault(config)
-  else if (key === 'delete') deleteConfig(config)
-}
 </script>
 
 <template>
-  <div class="space-y-6">
-    <div
-      class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-    >
+  <div class="space-y-5">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
       <div>
-        <h2 class="text-lg font-semibold text-(--ui-text-highlighted)">
-          {{ t('ai.config') }}
-        </h2>
-        <p class="mt-1 text-sm text-(--ui-text-muted)">
-          每个用户独立维护自己的模型配置，生成时可选择启用的内容生成模型。
-        </p>
+        <h2 class="text-base font-semibold text-(--ui-text-highlighted)">{{ t('ai.config') }}</h2>
+        <p class="mt-0.5 text-xs text-(--ui-text-dimmed)">管理你的 AI 模型配置，每个用途可设置一个默认模型</p>
       </div>
-      <NButton type="primary" @click="startCreate()">
-        <template #icon>
-          <Icon icon="lucide:plus" />
-        </template>
-        新增模型
+      <NButton size="small" type="primary" @click="startCreate()">
+        <template #icon><Icon icon="lucide:plus" /></template>
+        新增
       </NButton>
     </div>
 
-    <NAlert
-      v-if="formError"
-      type="error"
-      :title="formError"
-    />
-
-    <!-- Form -->
-    <div
-      v-if="showForm"
-      class="rounded-xl border border-(--ui-border) bg-(--ui-bg-muted) p-5"
-    >
-      <div class="grid gap-4 md:grid-cols-2">
-        <NFormItem label="配置名称" required>
-          <NInput v-model:value="form.name" placeholder="例如：OpenAI 主力模型" />
-        </NFormItem>
-        <NFormItem label="用途" required>
-          <NSelect v-model:value="form.purpose" :options="purposeOptions" />
-        </NFormItem>
-        <NFormItem :label="t('ai.apiUrl')" required>
-          <NInput v-model:value="form.apiUrl" placeholder="https://api.openai.com/v1/chat/completions" />
-        </NFormItem>
-        <NFormItem :label="t('ai.model')" required>
-          <NInput v-model:value="form.model" placeholder="gpt-4o" />
-        </NFormItem>
-        <NFormItem :label="t('ai.apiKey')" :required="!editingId">
-          <NInput v-model:value="form.apiKey" type="password" show-password-on="click" :placeholder="editingId ? '留空则不修改密钥' : 'sk-...'" />
-        </NFormItem>
-        <div class="grid grid-cols-2 gap-3">
-          <NFormItem :label="t('ai.temperature')" required>
-            <NInput v-model:value="form.temperature" placeholder="0.7" />
-          </NFormItem>
-          <NFormItem :label="t('ai.maxTokens')" required>
-            <NInputNumber v-model:value="form.maxTokens" placeholder="4096" :show-button="false" />
-          </NFormItem>
-        </div>
-      </div>
-
-      <div class="mt-4 flex flex-wrap items-center gap-4">
-        <NCheckbox v-model:checked="form.isDefault" label="设为该用途默认模型" />
-        <NCheckbox v-model:checked="form.enabled" label="启用此配置" />
-      </div>
-
-      <div class="mt-5 flex justify-end gap-2">
-        <NButton @click="showForm = false">{{ t('common.cancel') }}</NButton>
-        <NButton type="primary" :loading="saving" @click="saveConfig">{{ t('common.save') }}</NButton>
-      </div>
-    </div>
-
-    <!-- Config List -->
-    <div class="space-y-5">
+    <!-- Config Groups -->
+    <div class="space-y-4">
       <section
         v-for="group in groupedConfigs"
         :key="group.value"
-        class="rounded-xl border border-(--ui-border) bg-(--ui-bg-muted) p-5"
+        class="rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-muted)/30 overflow-hidden"
       >
-        <div class="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h3 class="font-medium text-(--ui-text-highlighted)">
-              {{ group.label }}
-            </h3>
-            <p class="mt-1 text-sm text-(--ui-text-muted)">
-              {{ group.configs.length }} 个模型配置
-            </p>
+        <!-- Group Header -->
+        <div class="flex items-center justify-between px-4 py-2.5 border-b border-(--ui-border)/40">
+          <div class="flex items-center gap-2">
+            <Icon :icon="group.icon" class="w-3.5 h-3.5 text-(--ui-text-muted)" />
+            <span class="text-sm font-medium text-(--ui-text)">{{ group.label }}</span>
+            <span class="text-[11px] text-(--ui-text-dimmed)">{{ group.configs.length }}</span>
           </div>
-          <NButton size="small" secondary @click="startCreate(group.value as AiPurpose)">
-            <template #icon>
-              <Icon icon="lucide:plus" />
-            </template>
+          <button
+            class="text-[11px] text-primary-600 dark:text-primary-400 hover:underline"
+            @click="startCreate(group.value as AiPurpose)"
+          >
             添加
-          </NButton>
+          </button>
         </div>
 
-        <div
-          v-if="group.configs.length"
-          class="grid gap-3 lg:grid-cols-2"
-        >
-          <article
+        <!-- Config Cards -->
+        <div v-if="group.configs.length" class="p-2 space-y-1.5">
+          <div
             v-for="config in group.configs"
             :key="config.id"
-            class="rounded-lg border border-(--ui-border) bg-(--ui-bg-elevated) p-4"
+            class="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-(--ui-bg-elevated)/60"
           >
-            <div class="flex items-start justify-between gap-3">
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h4 class="truncate font-medium text-(--ui-text-highlighted)">
-                    {{ config.name }}
-                  </h4>
-                  <NTag v-if="config.isDefault" type="info" size="small">默认</NTag>
-                  <NTag :type="config.enabled ? 'success' : 'default'" size="small">
-                    {{ config.enabled ? '启用' : '停用' }}
-                  </NTag>
-                </div>
-                <p class="mt-1 truncate text-sm text-(--ui-text-muted)">
-                  {{ config.model }}
-                </p>
-                <p class="mt-1 truncate text-xs text-(--ui-text-dimmed)">
-                  {{ config.maskedApiKey || '未保存密钥' }}
-                </p>
+            <!-- Status dot -->
+            <div
+              class="w-2 h-2 rounded-full shrink-0"
+              :class="config.enabled ? 'bg-emerald-500' : 'bg-(--ui-text-dimmed)/30'"
+            />
+
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="text-[13px] font-medium text-(--ui-text) truncate">{{ config.name }}</span>
+                <span
+                  v-if="config.isDefault"
+                  class="text-[10px] px-1.5 py-0.5 rounded bg-primary-500/10 text-primary-600 dark:text-primary-400 font-medium"
+                >
+                  默认
+                </span>
               </div>
-              <NDropdown
-                :options="getDropdownOptions(config)"
-                @select="(key: string) => handleDropdownSelect(key, config)"
-              >
-                <NButton quaternary :loading="deletingId === config.id">
-                  <template #icon>
-                    <Icon icon="lucide:more-horizontal" />
-                  </template>
-                </NButton>
-              </NDropdown>
+              <p class="text-[11px] text-(--ui-text-dimmed) truncate mt-0.5">
+                {{ config.model }} · {{ config.maskedApiKey || '未保存密钥' }}
+              </p>
             </div>
-          </article>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-1 shrink-0">
+              <button
+                v-if="!config.isDefault"
+                class="text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) px-1.5 py-0.5 rounded hover:bg-(--ui-bg-muted) transition-colors"
+                @click="setDefault(config)"
+              >
+                设为默认
+              </button>
+              <button
+                class="flex items-center justify-center w-6 h-6 rounded text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+                @click="startEdit(config)"
+              >
+                <Icon icon="lucide:pencil" class="w-3 h-3" />
+              </button>
+              <button
+                class="flex items-center justify-center w-6 h-6 rounded text-(--ui-text-dimmed) hover:text-red-500 hover:bg-red-500/5 transition-colors"
+                :disabled="deletingId === config.id"
+                @click="deleteConfig(config)"
+              >
+                <Icon icon="lucide:trash-2" class="w-3 h-3" />
+              </button>
+            </div>
+          </div>
         </div>
 
-        <div
-          v-else
-          class="rounded-lg border border-dashed border-(--ui-border) px-4 py-8 text-center"
-        >
-          <p class="text-sm text-(--ui-text-muted)">暂无该用途模型配置</p>
+        <!-- Empty -->
+        <div v-else class="px-4 py-6 text-center">
+          <p class="text-xs text-(--ui-text-dimmed)">暂无配置</p>
         </div>
       </section>
     </div>
+
+    <!-- Create/Edit Modal -->
+    <NModal v-model:show="showForm" preset="card" :title="editingId ? '编辑模型配置' : '新增模型配置'" style="max-width: 520px;">
+      <div class="space-y-4">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <NFormItem label="配置名称" required>
+            <NInput v-model:value="form.name" placeholder="例如：GPT-4o" size="small" />
+          </NFormItem>
+          <NFormItem label="用途" required>
+            <NSelect v-model:value="form.purpose" :options="purposeOptions" size="small" />
+          </NFormItem>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <NFormItem :label="t('ai.apiUrl')" required>
+            <NInput v-model:value="form.apiUrl" placeholder="https://api.openai.com/v1/chat/completions" size="small" />
+          </NFormItem>
+          <NFormItem :label="t('ai.model')" required>
+            <NInput v-model:value="form.model" placeholder="gpt-4o" size="small" />
+          </NFormItem>
+        </div>
+        <NFormItem :label="t('ai.apiKey')" :required="!editingId">
+          <NInput v-model:value="form.apiKey" type="password" show-password-on="click" :placeholder="editingId ? '留空则不修改' : 'sk-...'" size="small" />
+        </NFormItem>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <NFormItem :label="t('ai.temperature')">
+            <NInput v-model:value="form.temperature" placeholder="0.7" size="small" />
+          </NFormItem>
+          <NFormItem :label="t('ai.maxTokens')">
+            <NInputNumber v-model:value="form.maxTokens" placeholder="4096" :show-button="false" size="small" />
+          </NFormItem>
+        </div>
+        <div class="flex items-center gap-4">
+          <NCheckbox v-model:checked="form.isDefault" label="设为默认" />
+          <NCheckbox v-model:checked="form.enabled" label="启用" />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton size="small" @click="showForm = false">取消</NButton>
+          <NButton size="small" type="primary" :loading="saving" @click="saveConfig">保存</NButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>

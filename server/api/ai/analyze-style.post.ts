@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { callAi } from '../../utils/ai-client'
+import { NovelSchema, AiConfigSchema, ChapterSchema } from '../../database/entities'
 
 const styleSchema = z.object({
   novelId: z.number().int().positive(),
@@ -11,27 +12,27 @@ export default defineEventHandler(async (event) => {
   const data = styleSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne('Novel', { id: data.novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  let aiConfig = await em.findOne('AiConfig', { user: auth.userId, purpose: 'style_analysis' })
+  let aiConfig = await em.findOne(AiConfigSchema, { user: auth.userId, purpose: 'style_analysis' })
   if (!aiConfig) {
-    aiConfig = await em.findOne('AiConfig', { user: auth.userId, purpose: 'extraction' })
+    aiConfig = await em.findOne(AiConfigSchema, { user: auth.userId, purpose: 'extraction' })
     if (!aiConfig) {
       throw createError({ statusCode: 400, message: 'No AI config found' })
     }
   }
 
-  const chapters = await em.find('Chapter', {
+  const chapters = await em.find(ChapterSchema, {
     novel: data.novelId,
     deletedAt: null,
   }, { orderBy: { chapterNumber: 'ASC' }, limit: 5 })
 
   const sampleText = chapters
-    .filter((c: any) => c.content)
-    .map((c: any) => c.content!.slice(0, 1500))
+    .filter((c) => c.content)
+    .map((c) => c.content!.slice(0, 1500))
     .join('\n\n---\n\n')
 
   if (!sampleText) {
@@ -58,15 +59,15 @@ export default defineEventHandler(async (event) => {
   ]
 
   const styleGuide = await callAi({
-    apiUrl: (aiConfig as any).apiUrl,
-    apiKey: (aiConfig as any).apiKey,
-    model: (aiConfig as any).model,
+    apiUrl: aiConfig.apiUrl,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
     messages,
     temperature: 0.3,
     maxTokens: 1000,
   })
 
-  await em.nativeUpdate('Novel', { id: data.novelId }, { styleGuide, updatedAt: new Date() })
+  await em.nativeUpdate(NovelSchema, { id: data.novelId }, { styleGuide, updatedAt: new Date() })
 
   return { styleGuide }
 })

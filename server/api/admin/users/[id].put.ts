@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { wrap } from '@mikro-orm/core'
+import { UserSchema } from '../../../database/entities'
 
 const updateUserSchema = z.object({
   role: z.enum(['admin', 'user'])
@@ -24,7 +25,7 @@ export default defineEventHandler(async (event) => {
   const data = updateUserSchema.parse(body)
   const em = useEm(event)
 
-  const user = await em.findOne('User', { id })
+  const user = await em.findOne(UserSchema, { id })
   if (!user) {
     throw createError({ statusCode: 404, message: 'User not found' })
   }
@@ -33,9 +34,9 @@ export default defineEventHandler(async (event) => {
   await em.flush()
 
   return {
-    id: (user as any).id,
-    username: (user as any).username,
-    role: (user as any).role,
-    createdAt: (user as any).createdAt,
+    id: user.id,
+    username: user.username,
+    role: user.role,
+    createdAt: user.createdAt,
   }
 })

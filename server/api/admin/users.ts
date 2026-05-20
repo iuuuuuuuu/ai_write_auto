@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { hashPassword } from '../../utils/auth'
+import { UserSchema } from '../../database/entities'
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
@@ -7,13 +8,32 @@ export default defineEventHandler(async (event) => {
   const em = useEm(event)
 
   if (method === 'GET') {
-    const users = await em.find('User', {})
-    return users.map((u: any) => ({
+    const query = getQuery(event)
+    const pagination = parsePagination(event)
+    const search = (query.search as string || '').trim().toLowerCase()
+
+    const filter: Record<string, any> = {}
+    if (search) {
+      filter.username = { $like: `%${search}%` }
+    }
+
+    const [users, total] = await Promise.all([
+      em.find(UserSchema, filter, {
+        limit: pagination.limit,
+        offset: pagination.offset,
+        orderBy: { createdAt: 'DESC' },
+      }),
+      em.count(UserSchema, filter),
+    ])
+
+    const items = users.map((u) => ({
       id: u.id,
       username: u.username,
       role: u.role,
       createdAt: u.createdAt,
     }))
+
+    return paginatedResult(items, total, pagination)
   }
 
   if (method === 'POST') {
@@ -24,19 +44,19 @@ export default defineEventHandler(async (event) => {
       role: z.enum(['admin', 'user']).default('user'),
     }).parse(body)
 
-    const existing = await em.findOne('User', { username: data.username })
+    const existing = await em.findOne(UserSchema, { username: data.username })
     if (existing) {
       throw createError({ statusCode: 409, message: 'Username already exists' })
     }
 
-    const user = em.create('User', {
+    const user = em.create(UserSchema, {
       username: data.username,
       passwordHash: hashPassword(data.password),
       role: data.role,
     })
     await em.flush()
 
-    return { id: (user as any).id, username: (user as any).username, role: (user as any).role }
+    return { id: user.id, username: user.username, role: user.role }
   }
 
   if (method === 'DELETE') {
@@ -47,7 +67,7 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: 'Cannot delete the primary admin' })
     }
 
-    await em.nativeDelete('User', { id })
+    await em.nativeDelete(UserSchema, { id })
     return { success: true }
   }
 })

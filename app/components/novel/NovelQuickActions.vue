@@ -14,10 +14,16 @@ interface ChapterCharacter {
   currentState: string | null
 }
 
+interface AllCharacter {
+  id: number
+  name: string
+}
+
 const props = defineProps<{
   readTo: string
   selectedChapter: QuickActionChapter | null
   chapterCharacters: ChapterCharacter[]
+  allCharacters?: AllCharacter[]
   chapterCount: number
   characterCount: number
   outlineCount: number
@@ -29,6 +35,8 @@ const emit = defineEmits<{
   exportNovel: [format: string]
   generate: []
   expand: []
+  assignCharacter: [characterId: number]
+  unassignCharacter: [characterId: number]
 }>()
 
 const selectedChapterWords = computed(
@@ -37,55 +45,31 @@ const selectedChapterWords = computed(
 const hasSelectedChapterContent = computed(() =>
   Boolean(props.selectedChapter?.content?.trim())
 )
+
+const unassignedCharacters = computed(() => {
+  if (!props.allCharacters) return []
+  const assignedIds = new Set(props.chapterCharacters.map(c => c.id))
+  return props.allCharacters.filter(c => !assignedIds.has(c.id))
+})
 </script>
 
 <template>
-  <aside class="flex flex-col gap-3">
+  <aside class="flex flex-col gap-2.5">
     <!-- Quick Actions -->
-    <section
-      class="rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) p-4 shadow-sm"
-    >
-      <div class="flex items-center gap-2">
-        <div
-          class="flex h-6 w-6 items-center justify-center rounded-md bg-(--ui-bg-accented)"
-        >
-          <Icon
-            icon="lucide:bolt"
-            class="h-3.5 w-3.5 text-(--ui-primary)"
-          />
-        </div>
-        <span
-          class="text-xs font-semibold uppercase tracking-wider text-(--ui-text-muted)"
-        >
-          快捷操作
-        </span>
-      </div>
-
-      <div class="mt-3 grid grid-cols-2 gap-2">
+    <section class="rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-elevated) p-3">
+      <p class="text-[11px] font-medium text-(--ui-text-dimmed) uppercase tracking-wider mb-2.5">操作</p>
+      <div class="grid grid-cols-2 gap-1.5">
         <NButton block size="small" type="primary" @click="emit('createChapter')">
-          <template #icon>
-            <Icon icon="lucide:plus" />
-          </template>
+          <template #icon><Icon icon="lucide:plus" /></template>
           新章节
         </NButton>
         <NButton block size="small" secondary @click="emit('createCharacter')">
-          <template #icon>
-            <Icon icon="lucide:user-plus" />
-          </template>
+          <template #icon><Icon icon="lucide:user-plus" /></template>
           新角色
         </NButton>
       </div>
-
-      <NButton
-        class="mt-2"
-        block
-        size="small"
-        secondary
-        @click="navigateTo(props.readTo)"
-      >
-        <template #icon>
-          <Icon icon="lucide:book-open" />
-        </template>
+      <NButton class="mt-1.5" block size="small" quaternary @click="navigateTo(props.readTo)">
+        <template #icon><Icon icon="lucide:book-open" /></template>
         阅读全文
       </NButton>
     </section>
@@ -93,175 +77,88 @@ const hasSelectedChapterContent = computed(() =>
     <!-- Chapter Characters -->
     <section
       v-if="props.selectedChapter"
-      class="rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) p-4 shadow-sm"
+      class="rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-elevated) p-3"
     >
-      <div class="flex items-center gap-2">
-        <div
-          class="flex h-6 w-6 items-center justify-center rounded-md bg-(--ui-bg-accented)"
-        >
-          <Icon
-            icon="lucide:users"
-            class="h-3.5 w-3.5 text-(--ui-primary)"
-          />
-        </div>
-        <span
-          class="text-xs font-semibold uppercase tracking-wider text-(--ui-text-muted)"
-        >
-          本章角色
-        </span>
-        <span class="ml-auto text-[11px] tabular-nums text-(--ui-text-dimmed)">
-          {{ props.chapterCharacters.length }}
-        </span>
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-[11px] font-medium text-(--ui-text-dimmed) uppercase tracking-wider">本章角色</p>
+        <span class="text-[10px] tabular-nums text-(--ui-text-dimmed)">{{ props.chapterCharacters.length }}</span>
       </div>
+      <div v-if="props.chapterCharacters.length" class="flex flex-wrap gap-1 mb-2">
+        <NTooltip v-for="char in props.chapterCharacters" :key="char.id">
+          <template #trigger>
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-primary-500/8 text-primary-600 dark:text-primary-400 cursor-default group">
+              {{ char.name }}
+              <button
+                class="opacity-0 group-hover:opacity-100 transition-opacity text-primary-400 hover:text-red-500"
+                @click="emit('unassignCharacter', char.id)"
+              >
+                <Icon icon="lucide:x" class="w-2.5 h-2.5" />
+              </button>
+            </span>
+          </template>
+          {{ char.description || char.name }}
+        </NTooltip>
+      </div>
+      <p v-else class="text-[11px] text-(--ui-text-dimmed) mb-2">暂未分配角色</p>
 
-      <div class="mt-3">
-        <div
-          v-if="props.chapterCharacters.length"
-          class="flex flex-wrap gap-1.5"
-        >
-          <NTooltip
-            v-for="char in props.chapterCharacters"
+      <!-- Quick assign from unassigned -->
+      <div v-if="unassignedCharacters.length" class="border-t border-(--ui-border)/40 pt-2 mt-1">
+        <p class="text-[10px] text-(--ui-text-dimmed) mb-1.5">快速添加：</p>
+        <div class="flex flex-wrap gap-1">
+          <button
+            v-for="char in unassignedCharacters.slice(0, 6)"
             :key="char.id"
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-(--ui-text-muted) border border-(--ui-border)/40 hover:border-primary-500/30 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            @click="emit('assignCharacter', char.id)"
           >
-            <template #trigger>
-              <NTag type="info" size="small" class="cursor-default">
-                {{ char.name }}
-              </NTag>
-            </template>
-            {{ char.description || char.name }}
-          </NTooltip>
+            <Icon icon="lucide:plus" class="w-2.5 h-2.5" />
+            {{ char.name }}
+          </button>
         </div>
-        <p
-          v-else
-          class="text-xs text-(--ui-text-dimmed)"
-        >
-          本章暂未检测到角色
-        </p>
       </div>
     </section>
 
-    <!-- Generate -->
+    <!-- AI Generate -->
     <section
       v-if="props.selectedChapter"
-      class="rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) p-4 shadow-sm"
+      class="rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-elevated) p-3"
     >
-      <div class="flex items-center gap-2">
-        <div
-          class="flex h-6 w-6 items-center justify-center rounded-md bg-(--ui-bg-accented)"
-        >
-          <Icon
-            icon="lucide:sparkles"
-            class="h-3.5 w-3.5 text-(--ui-primary)"
-          />
-        </div>
-        <span
-          class="text-xs font-semibold uppercase tracking-wider text-(--ui-text-muted)"
-        >
-          AI 生成
-        </span>
-      </div>
-
-      <div class="mt-3 space-y-2">
+      <p class="text-[11px] font-medium text-(--ui-text-dimmed) uppercase tracking-wider mb-2.5">AI 辅助</p>
+      <div class="space-y-1.5">
         <NButton block size="small" type="primary" @click="emit('generate')">
-          <template #icon>
-            <Icon icon="lucide:wand-sparkles" />
-          </template>
+          <template #icon><Icon icon="lucide:wand-sparkles" /></template>
           生成章节
         </NButton>
         <NButton block size="small" secondary :disabled="!hasSelectedChapterContent" @click="emit('expand')">
-          <template #icon>
-            <Icon icon="lucide:expand" />
-          </template>
+          <template #icon><Icon icon="lucide:expand" /></template>
           扩写/改写
         </NButton>
-      </div>
-
-      <div class="mt-3 rounded-lg bg-(--ui-bg-muted) px-3 py-2">
-        <p class="truncate text-xs text-(--ui-text-muted)">
-          当前：
-          <span class="font-medium text-(--ui-text)">
-            {{ props.selectedChapter.title }}
-          </span>
-          <span class="ml-1.5 tabular-nums text-(--ui-text-dimmed)">
-            {{ selectedChapterWords }} 字
-          </span>
-        </p>
       </div>
     </section>
 
     <!-- Stats -->
-    <section
-      class="rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) p-4 shadow-sm"
-    >
-      <div class="grid grid-cols-3 gap-2">
-        <div
-          class="flex flex-col items-center rounded-lg border border-(--ui-border-muted) bg-(--ui-bg-muted) py-3 text-center transition-colors hover:border-(--ui-border)"
-        >
-          <p class="text-2xl font-bold tabular-nums text-(--ui-primary)">
-            {{ props.chapterCount }}
-          </p>
-          <p
-            class="mt-1 text-[10px] font-semibold uppercase tracking-wider text-(--ui-text-dimmed)"
-          >
-            章节
-          </p>
-        </div>
-        <div
-          class="flex flex-col items-center rounded-lg border border-(--ui-border-muted) bg-(--ui-bg-muted) py-3 text-center transition-colors hover:border-(--ui-border)"
-        >
-          <p class="text-2xl font-bold tabular-nums text-(--ui-primary)">
-            {{ props.characterCount }}
-          </p>
-          <p
-            class="mt-1 text-[10px] font-semibold uppercase tracking-wider text-(--ui-text-dimmed)"
-          >
-            角色
-          </p>
-        </div>
-        <div
-          class="flex flex-col items-center rounded-lg border border-(--ui-border-muted) bg-(--ui-bg-muted) py-3 text-center transition-colors hover:border-(--ui-border)"
-        >
-          <p class="text-2xl font-bold tabular-nums text-(--ui-primary)">
-            {{ props.outlineCount }}
-          </p>
-          <p
-            class="mt-1 text-[10px] font-semibold uppercase tracking-wider text-(--ui-text-dimmed)"
-          >
-            大纲
-          </p>
-        </div>
+    <section class="rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-elevated) p-3">
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="text-(--ui-text-dimmed)">章节</span>
+        <span class="font-medium tabular-nums text-(--ui-text)">{{ props.chapterCount }}</span>
+      </div>
+      <div class="flex items-center justify-between text-[11px] mt-1.5">
+        <span class="text-(--ui-text-dimmed)">角色</span>
+        <span class="font-medium tabular-nums text-(--ui-text)">{{ props.characterCount }}</span>
+      </div>
+      <div class="flex items-center justify-between text-[11px] mt-1.5">
+        <span class="text-(--ui-text-dimmed)">大纲</span>
+        <span class="font-medium tabular-nums text-(--ui-text)">{{ props.outlineCount }}</span>
       </div>
     </section>
 
     <!-- Export -->
-    <section
-      class="rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) p-4 shadow-sm"
-    >
-      <div class="flex items-center gap-2">
-        <div
-          class="flex h-6 w-6 items-center justify-center rounded-md bg-(--ui-bg-accented)"
-        >
-          <Icon
-            icon="lucide:download"
-            class="h-3.5 w-3.5 text-(--ui-primary)"
-          />
-        </div>
-        <span
-          class="text-xs font-semibold uppercase tracking-wider text-(--ui-text-muted)"
-        >
-          导出
-        </span>
-      </div>
-      <div class="mt-3 grid grid-cols-3 gap-2">
-        <NButton size="small" secondary class="text-xs" @click="emit('exportNovel', 'txt')">
-          TXT
-        </NButton>
-        <NButton size="small" secondary class="text-xs" @click="emit('exportNovel', 'md')">
-          MD
-        </NButton>
-        <NButton size="small" secondary class="text-xs" @click="emit('exportNovel', 'epub')">
-          EPUB
-        </NButton>
+    <section class="rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-elevated) p-3">
+      <p class="text-[11px] font-medium text-(--ui-text-dimmed) uppercase tracking-wider mb-2">导出</p>
+      <div class="grid grid-cols-3 gap-1.5">
+        <NButton size="tiny" secondary @click="emit('exportNovel', 'txt')">TXT</NButton>
+        <NButton size="tiny" secondary @click="emit('exportNovel', 'md')">MD</NButton>
+        <NButton size="tiny" secondary @click="emit('exportNovel', 'epub')">EPUB</NButton>
       </div>
     </section>
   </aside>

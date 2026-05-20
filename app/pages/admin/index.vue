@@ -48,7 +48,7 @@ const metrics = computed(() => [
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl space-y-6">
+  <div class="space-y-4">
     <div
       class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
     >

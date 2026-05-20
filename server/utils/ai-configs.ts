@@ -1,5 +1,5 @@
 import type { EntityManager } from '@mikro-orm/core'
-import type { AiConfig } from '../database/entities'
+import { AiConfigSchema, NovelSchema, type AiConfig } from '../database/entities'
 
 export type AiConfigPurpose =
   | 'generation'
@@ -13,10 +13,10 @@ export async function resolveUserAiConfig(
   purpose: AiConfigPurpose,
   aiConfigId?: number
 ): Promise<AiConfig> {
-  const configs = await em.find('AiConfig', {
+  const configs = await em.find(AiConfigSchema, {
     user: userId,
     purpose,
-  }) as AiConfig[]
+  })
 
   const enabledConfigs = configs.filter((c) => c.enabled !== false)
   const config =
@@ -32,6 +32,29 @@ export async function resolveUserAiConfig(
   }
 
   return config
+}
+
+export async function resolveNovelAiConfig(
+  em: EntityManager,
+  userId: number,
+  novelId: number,
+  purpose: AiConfigPurpose,
+  requestAiConfigId?: number
+): Promise<AiConfig> {
+  // Priority: request-specified > novel-configured > user default
+  if (requestAiConfigId) {
+    return resolveUserAiConfig(em, userId, purpose, requestAiConfigId)
+  }
+
+  const novel = await em.findOne(NovelSchema, { id: novelId }, { populate: ['aiConfig'] })
+  if (novel?.aiConfig && (novel.aiConfig as any).id) {
+    const novelConfig = await em.findOne(AiConfigSchema, { id: (novel.aiConfig as any).id })
+    if (novelConfig && novelConfig.enabled) {
+      return novelConfig
+    }
+  }
+
+  return resolveUserAiConfig(em, userId, purpose)
 }
 
 export function maskApiKey(apiKey: string) {

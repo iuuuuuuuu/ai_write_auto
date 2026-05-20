@@ -1,3 +1,5 @@
+import { UserSchema } from '../../../database/entities'
+
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const id = Number(getRouterParam(event, 'id'))
@@ -14,7 +16,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const em = useEm(event)
-  await em.nativeDelete('User', { id })
+  await em.nativeDelete(UserSchema, { id })
 
   return { success: true }
 })

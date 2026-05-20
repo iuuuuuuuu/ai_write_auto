@@ -39,6 +39,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   createChapter: []
   createCharacter: []
+  editCharacter: [character: CharacterItem]
+  deleteCharacter: [characterId: number]
 }>()
 
 const tabs = [
@@ -63,7 +65,7 @@ function getStatusColor(status: ChapterItem['status']) {
   if (status === 'final') return 'success'
   if (status === 'generated') return 'info'
   if (status === 'edited') return 'warning'
-  return 'neutral'
+  return 'default'
 }
 
 function selectChapter(chapterId: number) {
@@ -74,286 +76,208 @@ function selectChapter(chapterId: number) {
 
 <template>
   <aside
-    class="flex flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) shadow-sm"
+    class="flex flex-col overflow-hidden rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-elevated)"
   >
     <!-- Tabs -->
-    <div class="flex border-b border-(--ui-border)">
+    <div class="flex border-b border-(--ui-border)/60 px-1 pt-1">
       <button
         v-for="tab in tabs"
         :key="tab.key"
-        class="relative flex flex-1 items-center justify-center gap-1.5 px-3 py-2.5 text-sm font-medium transition-colors duration-200"
+        class="relative flex flex-1 items-center justify-center gap-1.5 rounded-t-lg px-2 py-2 text-xs font-medium transition-colors duration-200"
         :class="
           activeTab === tab.key ?
-            'text-(--ui-primary)'
-          : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+            'text-(--ui-text-highlighted) bg-(--ui-bg-muted)/50'
+          : 'text-(--ui-text-dimmed) hover:text-(--ui-text-muted)'
         "
         @click="activeTab = tab.key"
       >
         <Icon
           :icon="tab.icon"
-          class="h-4 w-4"
+          class="h-3.5 w-3.5"
         />
         <span>{{ tab.label }}</span>
-        <span
-          v-if="activeTab === tab.key"
-          class="absolute bottom-0 left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-full bg-(--ui-primary) transition-all duration-200"
-        />
       </button>
     </div>
 
     <!-- Content -->
-    <div class="flex-1 overflow-y-auto p-3">
+    <div class="flex-1 overflow-y-auto p-2">
       <!-- Chapters -->
       <div
         v-show="activeTab === 'chapters'"
-        class="space-y-2"
+        class="space-y-1.5"
       >
-        <div class="flex items-center justify-between gap-2 px-1">
-          <p
-            class="text-[11px] font-medium uppercase tracking-wider text-(--ui-text-dimmed)"
+        <div class="flex items-center justify-between gap-2 px-1 mb-1.5">
+          <NInput
+            v-model:value="searchQuery"
+            size="small"
+            placeholder="搜索..."
+            class="flex-1"
           >
-            {{ filteredChapters.length }} 章
-          </p>
-          <NButton
-            size="tiny"
-            quaternary
+            <template #prefix>
+              <Icon icon="lucide:search" class="w-3 h-3 text-(--ui-text-dimmed)" />
+            </template>
+          </NInput>
+          <button
+            class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors shrink-0"
             @click="emit('createChapter')"
           >
-            <template #icon>
-              <Icon icon="lucide:plus" />
-            </template>
-          </NButton>
+            <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+          </button>
         </div>
-
-        <NInput
-          v-model:value="searchQuery"
-          size="small"
-          placeholder="搜索章节..."
-        >
-          <template #prefix>
-            <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
-          </template>
-        </NInput>
 
         <div
           v-if="filteredChapters.length"
-          class="space-y-1.5"
+          class="space-y-0.5"
         >
           <button
             v-for="chapter in filteredChapters"
             :key="chapter.id"
-            class="group w-full rounded-lg border p-3 text-left transition-all duration-200"
+            class="group w-full rounded-lg px-2.5 py-2 text-left transition-all duration-150"
             :class="
               selectedChapterId === chapter.id ?
-                'border-(--ui-primary)/20 bg-(--ui-primary)/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]'
-              : 'border-transparent bg-(--ui-bg-muted)/60 hover:border-(--ui-border) hover:bg-(--ui-bg-muted)'
+                'bg-primary-500/8'
+              : 'hover:bg-(--ui-bg-muted)/80'
             "
             @click="selectChapter(chapter.id)"
           >
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
               <span
-                class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-(--ui-bg-accented) text-center text-[11px] font-semibold tabular-nums text-(--ui-text-dimmed) transition-colors"
+                class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-semibold tabular-nums"
                 :class="
-                  selectedChapterId === chapter.id ? 'text-(--ui-primary)' : ''
+                  selectedChapterId === chapter.id
+                    ? 'bg-primary-500/15 text-primary-600 dark:text-primary-400'
+                    : 'bg-(--ui-bg-accented) text-(--ui-text-dimmed)'
                 "
               >
                 {{ chapter.chapterNumber }}
               </span>
-              <div class="min-w-0 flex-1">
-                <p
-                  class="truncate text-sm font-medium transition-colors"
-                  :class="
-                    selectedChapterId === chapter.id ?
-                      'text-(--ui-text-highlighted)'
-                    : 'text-(--ui-text)'
-                  "
-                >
-                  {{ chapter.title }}
-                </p>
-                <p
-                  v-if="chapter.summary"
-                  class="mt-0.5 truncate text-xs text-(--ui-text-dimmed)"
-                >
-                  {{ chapter.summary }}
-                </p>
-              </div>
-            </div>
-            <div class="mt-2.5 flex items-center justify-between">
-              <span class="text-[11px] tabular-nums text-(--ui-text-dimmed)">
-                {{ chapter.wordCount || 0 }} 字
-              </span>
-              <NTag
-                :type="getStatusColor(chapter.status)"
-                size="small"
-                class="text-[10px]"
+              <p
+                class="truncate text-[13px] font-medium flex-1"
+                :class="
+                  selectedChapterId === chapter.id ?
+                    'text-(--ui-text-highlighted)'
+                  : 'text-(--ui-text)'
+                "
               >
-                {{ chapter.status }}
-              </NTag>
+                {{ chapter.title }}
+              </p>
+              <span class="text-[10px] tabular-nums text-(--ui-text-dimmed) shrink-0">
+                {{ chapter.wordCount || 0 }}字
+              </span>
             </div>
           </button>
         </div>
 
         <div
           v-else-if="!searchQuery.trim()"
-          class="flex flex-col items-center py-12 text-center"
+          class="flex flex-col items-center py-10 text-center"
         >
-          <div
-            class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--ui-bg-accented)"
-          >
-            <Icon
-              icon="lucide:file-text"
-              class="h-5 w-5 text-(--ui-text-dimmed)"
-            />
-          </div>
-          <p class="mt-3 text-sm text-(--ui-text-muted)">暂无章节</p>
-          <NButton
-            class="mt-3"
-            size="small"
-            secondary
+          <Icon icon="lucide:file-text" class="h-5 w-5 text-(--ui-text-dimmed)" />
+          <p class="mt-2 text-xs text-(--ui-text-muted)">暂无章节</p>
+          <button
+            class="mt-2 text-xs text-primary-600 dark:text-primary-400 hover:underline"
             @click="emit('createChapter')"
           >
-            <template #icon>
-              <Icon icon="lucide:plus" />
-            </template>
             新建章节
-          </NButton>
+          </button>
         </div>
-        <div
-          v-else
-          class="py-8 text-center"
-        >
-          <Icon
-            icon="lucide:search-x"
-            class="mx-auto h-6 w-6 text-(--ui-text-dimmed)"
-          />
-          <p class="mt-2 text-sm text-(--ui-text-muted)">未找到匹配章节</p>
+        <div v-else class="py-6 text-center">
+          <p class="text-xs text-(--ui-text-dimmed)">未找到匹配章节</p>
         </div>
       </div>
 
       <!-- Characters -->
       <div
         v-show="activeTab === 'characters'"
-        class="space-y-2"
+        class="space-y-1.5"
       >
-        <div class="flex items-center justify-between px-1">
-          <p
-            class="text-[11px] font-medium uppercase tracking-wider text-(--ui-text-dimmed)"
-          >
+        <div class="flex items-center justify-between px-1 mb-1.5">
+          <p class="text-[11px] text-(--ui-text-dimmed)">
             {{ props.characters.length }} 个角色
           </p>
-          <NButton
-            size="tiny"
-            quaternary
+          <button
+            class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
             @click="emit('createCharacter')"
           >
-            <template #icon>
-              <Icon icon="lucide:plus" />
-            </template>
-          </NButton>
+            <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+          </button>
         </div>
 
         <div
           v-if="props.characters.length"
-          class="space-y-1.5"
+          class="space-y-0.5"
         >
           <div
             v-for="character in props.characters"
             :key="character.id"
-            class="rounded-lg border border-transparent bg-(--ui-bg-muted)/60 p-3 transition-all duration-200 hover:border-(--ui-border) hover:bg-(--ui-bg-muted)"
+            class="group rounded-lg px-2.5 py-2 transition-colors hover:bg-(--ui-bg-muted)/80"
           >
-            <p class="text-sm font-medium text-(--ui-text)">
-              {{ character.name }}
-            </p>
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-[13px] font-medium text-(--ui-text) truncate">
+                {{ character.name }}
+              </p>
+              <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  class="flex items-center justify-center w-5 h-5 rounded text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated) transition-colors"
+                  @click="emit('editCharacter', character)"
+                >
+                  <Icon icon="lucide:pencil" class="w-3 h-3" />
+                </button>
+                <button
+                  class="flex items-center justify-center w-5 h-5 rounded text-(--ui-text-dimmed) hover:text-red-500 hover:bg-red-500/5 transition-colors"
+                  @click="emit('deleteCharacter', character.id)"
+                >
+                  <Icon icon="lucide:trash-2" class="w-3 h-3" />
+                </button>
+              </div>
+            </div>
             <p
               v-if="character.description"
-              class="mt-1 line-clamp-2 text-xs leading-5 text-(--ui-text-muted)"
+              class="mt-0.5 line-clamp-1 text-[11px] text-(--ui-text-dimmed)"
             >
               {{ character.description }}
             </p>
-            <div class="mt-2.5 flex flex-wrap gap-x-3 gap-y-1">
-              <span
-                v-if="character.traits"
-                class="inline-flex items-center gap-1 text-[11px] text-(--ui-text-dimmed)"
-              >
-                <span class="h-1 w-1 rounded-full bg-(--ui-text-dimmed)/50" />
-                {{ character.traits }}
-              </span>
-              <span
-                v-if="character.currentState"
-                class="inline-flex items-center gap-1 text-[11px] text-(--ui-text-dimmed)"
-              >
-                <span class="h-1 w-1 rounded-full bg-(--ui-text-dimmed)/50" />
-                {{ character.currentState }}
-              </span>
-            </div>
           </div>
         </div>
 
-        <div
-          v-else
-          class="flex flex-col items-center py-12 text-center"
-        >
-          <div
-            class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--ui-bg-accented)"
-          >
-            <Icon
-              icon="lucide:users"
-              class="h-5 w-5 text-(--ui-text-dimmed)"
-            />
-          </div>
-          <p class="mt-3 text-sm text-(--ui-text-muted)">暂无角色信息</p>
-          <NButton
-            class="mt-3"
-            size="small"
-            secondary
+        <div v-else class="flex flex-col items-center py-10 text-center">
+          <Icon icon="lucide:users" class="h-5 w-5 text-(--ui-text-dimmed)" />
+          <p class="mt-2 text-xs text-(--ui-text-muted)">暂无角色</p>
+          <button
+            class="mt-2 text-xs text-primary-600 dark:text-primary-400 hover:underline"
             @click="emit('createCharacter')"
           >
-            <template #icon>
-              <Icon icon="lucide:plus" />
-            </template>
             新建角色
-          </NButton>
+          </button>
         </div>
       </div>
 
       <!-- Outline -->
       <div
         v-show="activeTab === 'outline'"
-        class="space-y-2"
+        class="space-y-0.5"
       >
         <div
           v-if="props.outlines.length"
-          class="space-y-1.5"
+          class="space-y-0.5"
         >
           <div
             v-for="outline in props.outlines"
             :key="outline.id"
-            class="flex gap-3 rounded-lg border border-transparent bg-(--ui-bg-muted)/60 p-3 transition-all duration-200 hover:border-(--ui-border) hover:bg-(--ui-bg-muted)"
+            class="flex gap-2 rounded-lg px-2.5 py-2 transition-colors hover:bg-(--ui-bg-muted)/80"
           >
-            <span
-              class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-(--ui-bg-accented) text-center text-[11px] font-semibold tabular-nums text-(--ui-text-dimmed)"
-            >
+            <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded bg-(--ui-bg-accented) text-[10px] font-semibold tabular-nums text-(--ui-text-dimmed)">
               {{ outline.chapterNumber }}
             </span>
-            <p class="text-sm leading-relaxed text-(--ui-text-muted)">
+            <p class="text-[13px] leading-relaxed text-(--ui-text-muted)">
               {{ outline.description }}
             </p>
           </div>
         </div>
 
-        <div
-          v-else
-          class="flex flex-col items-center py-12 text-center"
-        >
-          <div
-            class="flex h-10 w-10 items-center justify-center rounded-xl bg-(--ui-bg-accented)"
-          >
-            <Icon
-              icon="lucide:list"
-              class="h-5 w-5 text-(--ui-text-dimmed)"
-            />
-          </div>
-          <p class="mt-3 text-sm text-(--ui-text-muted)">暂无大纲</p>
+        <div v-else class="flex flex-col items-center py-10 text-center">
+          <Icon icon="lucide:list" class="h-5 w-5 text-(--ui-text-dimmed)" />
+          <p class="mt-2 text-xs text-(--ui-text-muted)">暂无大纲</p>
         </div>
       </div>
     </div>

@@ -1,31 +1,33 @@
+import { UserSchema, NovelSchema, AiConfigSchema, TokenUsageSchema } from '../../database/entities'
+
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const em = useEm(event)
 
   const [users, novels, aiConfigs, tokenUsage] = await Promise.all([
-    em.find('User', {}),
-    em.find('Novel', { deletedAt: null }),
-    em.find('AiConfig', {}),
-    em.find('TokenUsage', {}),
+    em.find(UserSchema, {}),
+    em.find(NovelSchema, { deletedAt: null }),
+    em.find(AiConfigSchema, {}),
+    em.find(TokenUsageSchema, {}),
   ])
 
   const totalTokens = tokenUsage.reduce(
-    (sum: number, item: any) => sum + item.tokensInput + item.tokensOutput,
+    (sum, item) => sum + item.tokensInput + item.tokensOutput,
     0
   )
-  const enabledAiConfigs = aiConfigs.filter((config: any) => config.enabled).length
+  const enabledAiConfigs = aiConfigs.filter((config) => config.enabled).length
 
   return {
     users: {
       total: users.length,
-      admins: users.filter((user: any) => user.role === 'admin').length,
-      regular: users.filter((user: any) => user.role === 'user').length
+      admins: users.filter((user) => user.role === 'admin').length,
+      regular: users.filter((user) => user.role === 'user').length
     },
     novels: {
       total: novels.length,
-      draft: novels.filter((novel: any) => novel.status === 'draft').length,
-      inProgress: novels.filter((novel: any) => novel.status === 'in_progress').length,
-      completed: novels.filter((novel: any) => novel.status === 'completed').length
+      draft: novels.filter((novel) => novel.status === 'draft').length,
+      inProgress: novels.filter((novel) => novel.status === 'in_progress').length,
+      completed: novels.filter((novel) => novel.status === 'completed').length
     },
     aiConfigs: {
       total: aiConfigs.length,

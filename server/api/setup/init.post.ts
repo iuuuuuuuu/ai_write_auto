@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { writeDbConfig, type DbConfig } from '../../database/db-config'
 import { initOrm, getOrm, testConnection, resetOrm } from '../../database'
 import { hashPassword, signToken } from '../../utils/auth'
+import { UserSchema, SiteConfigSchema } from '../../database/entities'
 
 const setupSchema = z.object({
   database: z.object({
@@ -57,16 +58,16 @@ export default defineEventHandler(async (event) => {
   const em = getOrm().em.fork()
 
   const passwordHash = hashPassword(data.admin.password)
-  em.create('User', {
+  em.create(UserSchema, {
     username: data.admin.username,
     passwordHash,
     role: 'admin',
   })
 
-  em.create('SiteConfig', { key: 'site_name', value: data.site.name })
-  em.create('SiteConfig', { key: 'site_description', value: data.site.description || '' })
-  em.create('SiteConfig', { key: 'allow_registration', value: 'false' })
-  em.create('SiteConfig', { key: 'initialized', value: 'true' })
+  em.create(SiteConfigSchema, { key: 'site_name', value: data.site.name })
+  em.create(SiteConfigSchema, { key: 'site_description', value: data.site.description || '' })
+  em.create(SiteConfigSchema, { key: 'allow_registration', value: 'false' })
+  em.create(SiteConfigSchema, { key: 'initialized', value: 'true' })
 
   await em.flush()
 

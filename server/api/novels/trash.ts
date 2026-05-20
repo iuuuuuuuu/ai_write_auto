@@ -1,22 +1,36 @@
+import { NovelSchema, ChapterSchema } from '../../database/entities'
+
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const method = getMethod(event)
   const em = useEm(event)
 
   if (method === 'GET') {
-    const novels = await em.find('Novel', {
-      user: auth.userId,
-      deletedAt: { $ne: null },
-    })
+    const pagination = parsePagination(event)
 
-    const chapters = await em.find('Chapter', {
-      novel: { user: auth.userId },
-      deletedAt: { $ne: null },
-    }, {
-      populate: ['novel'],
-    })
+    const novelFilter = { user: auth.userId, deletedAt: { $ne: null } }
+    const chapterFilter = { novel: { user: auth.userId }, deletedAt: { $ne: null } }
 
-    return { novels, chapters }
+    const [novels, novelsTotal, chapters, chaptersTotal] = await Promise.all([
+      em.find(NovelSchema, novelFilter, {
+        limit: pagination.limit,
+        offset: pagination.offset,
+        orderBy: { deletedAt: 'DESC' },
+      }),
+      em.count(NovelSchema, novelFilter),
+      em.find(ChapterSchema, chapterFilter, {
+        limit: pagination.limit,
+        offset: pagination.offset,
+        populate: ['novel'],
+        orderBy: { deletedAt: 'DESC' },
+      }),
+      em.count(ChapterSchema, chapterFilter),
+    ])
+
+    return {
+      novels: paginatedResult(novels, novelsTotal, pagination),
+      chapters: paginatedResult(chapters, chaptersTotal, pagination),
+    }
   }
 
   if (method === 'POST') {
@@ -24,7 +38,7 @@ export default defineEventHandler(async (event) => {
     const { type, id } = body
 
     if (type === 'novel') {
-      const novel = await em.findOne('Novel', {
+      const novel = await em.findOne(NovelSchema, {
         id,
         user: auth.userId,
       })
@@ -34,13 +48,13 @@ export default defineEventHandler(async (event) => {
       }
 
       novel.deletedAt = null
-      await em.nativeUpdate('Chapter', { novel: id }, { deletedAt: null })
+      await em.nativeUpdate(ChapterSchema, { novel: id }, { deletedAt: null })
       await em.flush()
       return { success: true }
     }
 
     if (type === 'chapter') {
-      const chapter = await em.findOne('Chapter', {
+      const chapter = await em.findOne(ChapterSchema, {
         id,
         novel: { user: auth.userId },
       })

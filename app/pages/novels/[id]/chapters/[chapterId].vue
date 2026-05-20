@@ -12,7 +12,17 @@ function getNovelTo() {
   }
 }
 
-const { data: chapter, refresh: refreshChapter } = await useFetch(
+const { data: chapter, refresh: refreshChapter } = await useFetch<{
+  id: number
+  chapterNumber: number
+  title: string
+  content: string | null
+  summary: string | null
+  status: string
+  wordCount: number | null
+  updatedAt: string
+  createdAt: string
+}>(
   `/api/novels/${novelId.value}/chapters/${chapterId.value}`
 )
 const { data: aiConfigs } = await useFetch<
@@ -66,7 +76,7 @@ watch(
       !selectedAiConfigId.value ||
       !options.some((option) => option.value === selectedAiConfigId.value)
     ) {
-      selectedAiConfigId.value = options[0].value
+      selectedAiConfigId.value = options[0]?.value
     }
   },
   { immediate: true }
@@ -245,45 +255,47 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="h-screen flex flex-col"
-    :class="{ 'fixed inset-0 z-50 bg-white dark:bg-gray-950': zenMode }"
+    class="h-screen flex flex-col bg-(--ui-bg)"
+    :class="{ 'fixed inset-0 z-50': zenMode }"
   >
     <!-- Toolbar -->
     <div
       v-if="!zenMode"
-      class="flex items-center gap-3 px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+      class="flex items-center gap-2.5 px-4 h-11 border-b border-(--ui-border)/60 bg-(--ui-bg-muted)/50 backdrop-blur-sm shrink-0"
     >
-      <NButton quaternary size="small" @click="navigateTo(getNovelTo())">
-        <template #icon>
-          <Icon icon="lucide:arrow-left" />
-        </template>
-      </NButton>
+      <button
+        class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated) transition-colors"
+        @click="navigateTo(getNovelTo())"
+      >
+        <Icon icon="lucide:arrow-left" class="w-4 h-4" />
+      </button>
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+        <p class="text-sm font-medium text-(--ui-text-highlighted) truncate">
           {{ chapter?.title }}
         </p>
-        <p class="text-xs text-gray-400">
-          <span v-if="saving">{{ t('common.loading') }}</span>
-          <span v-else-if="lastSaved">{{ t('chapter.autoSaved') }}</span>
-        </p>
       </div>
-      <div class="flex items-center gap-2">
-        <span class="text-xs text-gray-400">
+      <div class="flex items-center gap-1.5">
+        <span class="text-[11px] tabular-nums text-(--ui-text-dimmed)">
           {{ content.replace(/\s/g, '').length }} {{ t('chapter.wordCount') }}
         </span>
-        <NButton size="small" quaternary @click="zenMode = true">
-          <template #icon>
-            <Icon icon="lucide:maximize" />
-          </template>
-        </NButton>
-        <NButton size="small" secondary :loading="generating" @click="showGenerateDialog = true">
+        <span v-if="saving" class="text-[11px] text-(--ui-text-dimmed)">· 保存中</span>
+        <span v-else-if="lastSaved" class="text-[11px] text-(--ui-text-dimmed)">· 已保存</span>
+        <div class="w-px h-4 bg-(--ui-border)/40 mx-1" />
+        <button
+          class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated) transition-colors"
+          @click="zenMode = true"
+        >
+          <Icon icon="lucide:maximize" class="w-3.5 h-3.5" />
+        </button>
+        <NButton size="tiny" quaternary :loading="generating" @click="showGenerateDialog = true">
           <template #icon>
             <Icon icon="lucide:sparkles" />
           </template>
-          {{ t('chapter.generate') }}
         </NButton>
-        <NButton size="small" type="primary" :loading="saving" @click="saveContent">
-          {{ t('common.save') }}
+        <NButton size="tiny" type="primary" :loading="saving" @click="saveContent">
+          <template #icon>
+            <Icon icon="lucide:save" />
+          </template>
         </NButton>
       </div>
     </div>
@@ -291,41 +303,38 @@ onBeforeUnmount(() => {
     <!-- Zen Mode Exit -->
     <div
       v-if="zenMode"
-      class="absolute top-4 right-4 z-10 opacity-0 hover:opacity-100 transition-opacity"
+      class="absolute top-4 right-4 z-10 opacity-0 hover:opacity-100 transition-opacity duration-300"
     >
-      <NButton size="small" quaternary @click="zenMode = false">
-        <template #icon>
-          <Icon icon="lucide:minimize" />
-        </template>
-      </NButton>
+      <button
+        class="flex items-center justify-center w-8 h-8 rounded-lg bg-(--ui-bg-muted) border border-(--ui-border)/60 text-(--ui-text-dimmed) hover:text-(--ui-text) transition-colors"
+        @click="zenMode = false"
+      >
+        <Icon icon="lucide:minimize" class="w-4 h-4" />
+      </button>
     </div>
 
     <!-- Conflict Warning -->
     <div
       v-if="conflictDetected"
-      class="px-4 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 flex items-center justify-between"
+      class="px-4 py-2 bg-amber-500/5 border-b border-amber-500/20 flex items-center justify-between shrink-0"
     >
-      <p class="text-sm text-amber-700 dark:text-amber-300">
-        此章节已在其他标签页中被修改，保存可能覆盖更改。
+      <p class="text-xs text-amber-700 dark:text-amber-400">
+        此章节已在其他地方被修改，保存可能覆盖更改。
       </p>
-      <div class="flex gap-2">
-        <NButton size="tiny" secondary type="warning" @click="loadLatestChapter">
-          加载最新版本
-        </NButton>
-        <NButton size="tiny" quaternary @click="forceSaveContent">
-          强制保存
-        </NButton>
+      <div class="flex gap-1.5">
+        <NButton size="tiny" secondary @click="loadLatestChapter">加载最新</NButton>
+        <NButton size="tiny" quaternary @click="forceSaveContent">强制保存</NButton>
       </div>
     </div>
 
     <!-- Editor Area -->
     <div class="flex-1 overflow-hidden flex">
-      <div class="flex-1 overflow-y-auto p-8">
+      <div class="flex-1 overflow-y-auto px-6 py-6">
         <div class="max-w-3xl mx-auto">
           <textarea
             v-model="content"
-            class="w-full min-h-[calc(100vh-200px)] bg-transparent text-gray-900 dark:text-gray-100 text-base leading-relaxed resize-none outline-none placeholder-gray-300 dark:placeholder-gray-600"
-            :class="zenMode ? 'text-lg leading-loose' : ''"
+            class="w-full min-h-[calc(100vh-160px)] bg-transparent text-(--ui-text) text-[15px] leading-[2] resize-none outline-none placeholder:text-(--ui-text-dimmed)/50"
+            :class="zenMode ? 'text-base leading-[2.2]' : ''"
             :placeholder="t('chapter.content') + '...'"
             @keydown.ctrl.s.prevent="saveContent"
             @keydown.ctrl.shift.z.prevent="zenMode = !zenMode"
@@ -336,24 +345,18 @@ onBeforeUnmount(() => {
         <!-- AI Action Result -->
         <div
           v-if="aiActionResult"
-          class="max-w-3xl mx-auto mt-4 p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800"
+          class="max-w-3xl mx-auto mt-4 p-4 rounded-xl bg-primary-500/5 border border-primary-500/15"
         >
           <div class="flex items-center justify-between mb-2">
-            <p class="text-xs font-medium text-green-600 dark:text-green-400">
-              {{
-                aiActionType === 'expand' ?
-                  t('chapter.expand')
-                : t('chapter.rewrite')
-              }}
+            <p class="text-xs font-medium text-primary-600 dark:text-primary-400">
+              {{ aiActionType === 'expand' ? t('chapter.expand') : t('chapter.rewrite') }}
             </p>
             <div class="flex gap-1">
-              <NButton size="tiny" secondary type="success" @click="applyAiResult">应用</NButton>
+              <NButton size="tiny" type="primary" @click="applyAiResult">应用</NButton>
               <NButton size="tiny" quaternary @click="discardAiResult">放弃</NButton>
             </div>
           </div>
-          <div
-            class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap text-sm"
-          >
+          <div class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed">
             {{ aiActionResult }}
           </div>
         </div>
@@ -361,12 +364,12 @@ onBeforeUnmount(() => {
         <!-- Generated Content Preview -->
         <div
           v-if="generating && generatedContent"
-          class="max-w-3xl mx-auto mt-4 p-4 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800"
+          class="max-w-3xl mx-auto mt-4 p-4 rounded-xl bg-(--ui-bg-muted) border border-(--ui-border)/60"
         >
           <p class="text-xs text-primary-600 dark:text-primary-400 mb-2">
             {{ t('ai.generating') }}
           </p>
-          <div class="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
+          <div class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed">
             {{ generatedContent }}
           </div>
         </div>
@@ -377,7 +380,7 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <div
         v-if="showFloatingToolbar && !generating"
-        class="fixed z-50 flex items-center gap-1 px-2 py-1 rounded-lg bg-white dark:bg-gray-800 shadow-lg border border-gray-200 dark:border-gray-700"
+        class="fixed z-50 flex items-center gap-0.5 px-1.5 py-1 rounded-lg bg-(--ui-bg-elevated) shadow-lg border border-(--ui-border)/60 backdrop-blur-sm"
         :style="{
           left: `${floatingToolbarPos.x}px`,
           top: `${floatingToolbarPos.y}px`,
@@ -400,7 +403,7 @@ onBeforeUnmount(() => {
     </Teleport>
 
     <!-- Generate Dialog -->
-    <NModal v-model:show="showGenerateDialog" preset="card" :title="t('chapter.generateDialog.title')" style="max-width: 500px;">
+    <NModal v-model:show="showGenerateDialog" preset="card" :title="t('chapter.generateDialog.title')" style="max-width: 480px;">
       <div class="space-y-4">
         <NFormItem :label="t('chapter.generateDialog.direction')">
           <NInput
@@ -417,27 +420,15 @@ onBeforeUnmount(() => {
             placeholder="选择用于生成的模型"
           />
         </NFormItem>
-        <NAlert
-          v-if="!generationModelOptions.length"
-          type="warning"
-          title="还没有可用的内容生成模型"
-        >
+        <NAlert v-if="!generationModelOptions.length" type="warning" title="还没有可用的内容生成模型">
           请先到设置页创建并启用一个内容生成模型。
         </NAlert>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton @click="showGenerateDialog = false">
-            {{ t('common.cancel') }}
-          </NButton>
-          <NButton
-            type="primary"
-            :disabled="!selectedAiConfigId"
-            @click="generateChapter"
-          >
-            <template #icon>
-              <Icon icon="lucide:sparkles" />
-            </template>
+          <NButton @click="showGenerateDialog = false">{{ t('common.cancel') }}</NButton>
+          <NButton type="primary" :disabled="!selectedAiConfigId" @click="generateChapter">
+            <template #icon><Icon icon="lucide:sparkles" /></template>
             {{ t('chapter.generate') }}
           </NButton>
         </div>

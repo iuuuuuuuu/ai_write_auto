@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { wrap } from '@mikro-orm/core'
+import { NovelSchema, ChapterSchema, ChapterVersionSchema } from '../../../../database/entities'
 
 const updateChapterSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -18,10 +19,10 @@ export default defineEventHandler(async (event) => {
   const data = updateChapterSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
   if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
 
-  const chapter = await em.findOne('Chapter', { id: chapterId, novel: novelId, deletedAt: null })
+  const chapter = await em.findOne(ChapterSchema, { id: chapterId, novel: novelId, deletedAt: null })
   if (!chapter) throw createError({ statusCode: 404, message: 'Chapter not found' })
 
   if (data.expectedUpdatedAt) {
@@ -42,9 +43,9 @@ export default defineEventHandler(async (event) => {
   await em.flush()
 
   if (data.content !== undefined) {
-    const versions = await em.find('ChapterVersion', { chapter: chapterId }, { orderBy: { versionNumber: 'ASC' } })
+    const versions = await em.find(ChapterVersionSchema, { chapter: chapterId }, { orderBy: { versionNumber: 'ASC' } })
 
-    em.create('ChapterVersion', {
+    em.create(ChapterVersionSchema, {
       chapter: chapterId,
       versionNumber: versions.length + 1,
       content: data.content,

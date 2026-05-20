@@ -1,3 +1,5 @@
+import { ChapterSchema, NovelSchema, CharacterSchema } from '../database/entities'
+
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const query = getQuery(event)
@@ -21,7 +23,7 @@ export default defineEventHandler(async (event) => {
     chapterFilter.novel.id = novelId
   }
 
-  const chapterResults = await em.find('Chapter', chapterFilter, {
+  const chapterResults = await em.find(ChapterSchema, chapterFilter, {
     populate: ['novel'],
     limit: 50,
   })
@@ -42,7 +44,7 @@ export default defineEventHandler(async (event) => {
   })
 
   // Search novels
-  const novelResults = await em.find('Novel', {
+  const novelResults = await em.find(NovelSchema, {
     user: auth.userId,
     deletedAt: null,
     title: { $like: searchPattern },
@@ -57,11 +59,11 @@ export default defineEventHandler(async (event) => {
     characterFilter.novel.id = novelId
   }
 
-  const characterResults = await em.find('Character', characterFilter, { limit: 20 })
+  const characterResults = await em.find(CharacterSchema, characterFilter, { limit: 20 })
 
   return {
     chapters: highlights,
-    novels: novelResults.map((n: any) => ({ id: n.id, title: n.title, description: n.description })),
+    novels: novelResults.map((n) => ({ id: n.id, title: n.title, description: n.description })),
     characters: characterResults.map((c: any) => ({ id: c.id, name: c.name, description: c.description, novelId: c.novel?.id || c.novel })),
   }
 })

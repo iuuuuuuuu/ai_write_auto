@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
-import { resolveUserAiConfig } from '../../utils/ai-configs'
+import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { checkRateLimit } from '../../utils/rate-limit'
+import { ChapterSchema } from '../../database/entities'
 
 const rewriteSchema = z.object({
   novelId: z.number().int().positive(),
@@ -26,15 +27,15 @@ export default defineEventHandler(async (event) => {
   const data = rewriteSchema.parse(body)
   const em = useEm(event)
 
-  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
+  const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
 
-  const chapter = await em.findOne('Chapter', {
+  const chapter = await em.findOne(ChapterSchema, {
     id: data.chapterId,
     novel: { user: auth.userId },
     deletedAt: null,
   })
 
-  const chapterContent = (chapter as any)?.content || ''
+  const chapterContent = chapter?.content || ''
 
   const messages = [
     {

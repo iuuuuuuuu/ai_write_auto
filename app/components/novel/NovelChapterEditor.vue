@@ -77,75 +77,60 @@ onBeforeUnmount(() => {
 
 <template>
   <section
-    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) shadow-sm"
+    class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-elevated)"
   >
     <div
       v-if="props.chapter"
       class="flex h-full flex-col"
     >
       <!-- Header -->
-      <div class="shrink-0 border-b border-(--ui-border) px-5 py-4">
-        <div class="flex items-start justify-between gap-4">
+      <div class="shrink-0 border-b border-(--ui-border)/60 px-4 py-3">
+        <div class="flex items-center justify-between gap-3">
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
-              <span
-                class="inline-flex h-5 items-center rounded-md bg-(--ui-bg-accented) px-1.5 text-[11px] font-semibold uppercase tracking-wider text-(--ui-text-dimmed)"
-              >
-                Ch. {{ props.chapter.chapterNumber }}
-              </span>
-              <span class="text-[11px] tabular-nums text-(--ui-text-dimmed)">
+              <h2 class="truncate text-sm font-semibold text-(--ui-text-highlighted)">
+                {{ props.chapter.title }}
+              </h2>
+              <span class="text-[11px] tabular-nums text-(--ui-text-dimmed) shrink-0">
                 {{ wordCount }} 字
               </span>
             </div>
-            <h2
-              class="mt-2 truncate text-lg font-semibold text-(--ui-text-highlighted)"
-            >
-              {{ props.chapter.title }}
-            </h2>
-            <p class="mt-1 text-xs text-(--ui-text-dimmed)">
-              {{ updatedAtText }}
-              <span v-if="saving"> · 保存中...</span>
-              <span v-else-if="lastSaved">
-                · 已保存 {{ lastSaved.toLocaleTimeString('zh-CN') }}
-              </span>
+            <p class="mt-0.5 text-[11px] text-(--ui-text-dimmed)">
+              <span v-if="saving">保存中...</span>
+              <span v-else-if="lastSaved">已保存 {{ lastSaved.toLocaleTimeString('zh-CN') }}</span>
+              <span v-else>{{ updatedAtText }}</span>
             </p>
           </div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1.5">
             <NButton
-              size="small"
-              secondary
+              size="tiny"
+              quaternary
               @click="emit('generate')"
             >
               <template #icon>
                 <Icon icon="lucide:sparkles" />
               </template>
-              AI 生成
             </NButton>
             <NButton
-              size="small"
+              size="tiny"
               type="primary"
               :loading="saving"
               @click="doSave"
             >
-              保存
+              <template #icon>
+                <Icon icon="lucide:save" />
+              </template>
             </NButton>
           </div>
         </div>
-
-        <p
-          v-if="props.chapter.summary"
-          class="mt-3 rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-3 text-sm leading-relaxed text-(--ui-text-muted)"
-        >
-          {{ props.chapter.summary }}
-        </p>
       </div>
 
       <!-- Editor -->
-      <div class="min-h-0 flex-1 overflow-y-auto p-5">
+      <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <textarea
           v-model="content"
-          class="h-full w-full resize-none bg-transparent text-sm leading-[1.85] text-(--ui-text) outline-none placeholder:text-(--ui-text-dimmed)"
-          :placeholder="'开始写作...\n\n快捷键：Ctrl + S 保存'"
+          class="h-full w-full resize-none bg-transparent text-sm leading-[1.9] text-(--ui-text) outline-none placeholder:text-(--ui-text-dimmed)/60"
+          :placeholder="'开始写作...\n\nCtrl + S 保存'"
           @keydown="handleKeydown"
         />
       </div>
@@ -156,20 +141,8 @@ onBeforeUnmount(() => {
       v-else
       class="flex flex-1 flex-col items-center justify-center p-8 text-center"
     >
-      <div
-        class="flex h-14 w-14 items-center justify-center rounded-2xl bg-(--ui-bg-accented)"
-      >
-        <Icon
-          icon="lucide:book-open"
-          class="h-6 w-6 text-(--ui-text-dimmed)"
-        />
-      </div>
-      <p class="mt-4 text-sm font-medium text-(--ui-text-muted)">
-        选择一个章节开始编辑
-      </p>
-      <p class="mt-1 text-xs text-(--ui-text-dimmed)">
-        从左侧列表中点击任意章节
-      </p>
+      <Icon icon="lucide:pen-line" class="h-6 w-6 text-(--ui-text-dimmed)/60" />
+      <p class="mt-3 text-sm text-(--ui-text-muted)">选择章节开始编辑</p>
     </div>
   </section>
 </template>

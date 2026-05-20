@@ -1,3 +1,5 @@
+import { NovelSchema, UserSchema, ChapterSchema, NovelOutlineSchema, CharacterSchema, PlotPointSchema } from '../../../database/entities'
+
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const id = Number(getRouterParam(event, 'id'))
@@ -7,24 +9,24 @@ export default defineEventHandler(async (event) => {
   }
 
   const em = useEm(event)
-  const novel = await em.findOne('Novel', { id })
+  const novel = await em.findOne(NovelSchema, { id })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
   const [owners, chapters, outlines, characters, plotPoints] = await Promise.all([
-    em.find('User', { id: (novel as any).user }, { limit: 1 }),
-    em.find('Chapter', { novel: id }),
-    em.find('NovelOutline', { novel: id }),
-    em.find('Character', { novel: id }),
-    em.find('PlotPoint', { novel: id }),
+    em.find(UserSchema, { id: novel.user as any }, { limit: 1 }),
+    em.find(ChapterSchema, { novel: id }),
+    em.find(NovelOutlineSchema, { novel: id }),
+    em.find(CharacterSchema, { novel: id }),
+    em.find(PlotPointSchema, { novel: id }),
   ])
 
   const activeChapters = chapters.filter(
-    (chapter: any) => chapter.deletedAt === null
+    (chapter) => chapter.deletedAt === null
   )
   const wordCount = activeChapters.reduce(
-    (sum: number, chapter: any) => sum + (chapter.wordCount || 0),
+    (sum, chapter) => sum + (chapter.wordCount || 0),
     0
   )
 
@@ -32,8 +34,8 @@ export default defineEventHandler(async (event) => {
 
   return {
     novel: {
-      ...(novel as any),
-      user: owner ? { id: (owner as any).id, username: (owner as any).username, role: (owner as any).role } : null,
+      ...novel,
+      user: owner ? { id: owner.id, username: owner.username, role: owner.role } : null,
       chapterCount: activeChapters.length,
       wordCount
     },

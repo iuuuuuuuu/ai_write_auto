@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { NovelSchema, CharacterSchema } from '../../../database/entities'
 
 const characterSchema = z.object({
   name: z.string().min(1).max(100),
@@ -16,12 +17,12 @@ export default defineEventHandler(async (event) => {
   const data = characterSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const character = em.create('Character', {
+  const character = em.create(CharacterSchema, {
     novel: novelId,
     name: data.name,
     description: data.description || null,

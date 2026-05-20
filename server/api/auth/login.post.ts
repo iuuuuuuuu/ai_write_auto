@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { verifyPassword, signToken } from '../../utils/auth'
+import { UserSchema } from '../../database/entities'
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -11,7 +12,7 @@ export default defineEventHandler(async (event) => {
   const { username, password } = loginSchema.parse(body)
 
   const em = useEm(event)
-  const user = await em.findOne('User', { username })
+  const user = await em.findOne(UserSchema, { username })
 
   if (!user || !verifyPassword(password, user.passwordHash)) {
     throw createError({ statusCode: 401, message: 'Invalid credentials' })

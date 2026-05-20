@@ -3,6 +3,7 @@ import { streamAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { checkRateLimit } from '../../utils/rate-limit'
+import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, NovelOutlineSchema, GenerationTaskSchema } from '../../database/entities'
 
 const batchSchema = z.object({
   novelId: z.number().int().positive(),
@@ -27,20 +28,20 @@ export default defineEventHandler(async (event) => {
   const data = batchSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne('Novel', { id: data.novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
   const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
 
-  const task = em.create('GenerationTask', {
+  const task = em.create(GenerationTaskSchema, {
     novel: data.novelId,
     type: 'batch_generate',
     status: 'running',
   })
   await em.flush()
-  const taskId = (task as any).id
+  const taskId = task.id
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -57,14 +58,14 @@ export default defineEventHandler(async (event) => {
             )
           )
 
-          const chapters = await em.find('Chapter', { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
-          const characters = await em.find('Character', { novel: data.novelId })
-          const plotPoints = await em.find('PlotPoint', { novel: data.novelId })
-          const storyArcs = await em.find('StoryArc', { novel: data.novelId })
-          const outlines = await em.find('NovelOutline', { novel: data.novelId }, { orderBy: { sortOrder: 'ASC' } })
+          const chapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
+          const characters = await em.find(CharacterSchema, { novel: data.novelId })
+          const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
+          const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
+          const outlines = await em.find(NovelOutlineSchema, { novel: data.novelId }, { orderBy: { sortOrder: 'ASC' } })
 
           const chapterOutline = outlines.find(
-            (o: any) => o.chapterNumber === chapterNum
+            (o) => o.chapterNumber === chapterNum
           )
 
           const prompt = buildGenerationPrompt({
@@ -73,7 +74,7 @@ export default defineEventHandler(async (event) => {
             characters,
             plotPoints,
             storyArcs,
-            currentChapterOutline: (chapterOutline as any)?.description,
+            currentChapterOutline: chapterOutline?.description,
             userDirection: data.direction
           })
 
@@ -83,7 +84,7 @@ export default defineEventHandler(async (event) => {
             apiKey: aiConfig.apiKey,
             model: aiConfig.model,
             temperature:
-              (novel as any).aiTemperature || parseFloat(aiConfig.temperature) || 0.7,
+              novel.aiTemperature ? parseFloat(novel.aiTemperature) : parseFloat(aiConfig.temperature ?? '0.7'),
             maxTokens: aiConfig.maxTokens || 4096,
             messages: prompt
           })) {
@@ -98,17 +99,17 @@ export default defineEventHandler(async (event) => {
           }
 
           const existingChapter = chapters.find(
-            (c: any) => c.chapterNumber === chapterNum
+            (c) => c.chapterNumber === chapterNum
           )
           if (existingChapter) {
-            await em.nativeUpdate('Chapter', { id: (existingChapter as any).id }, {
+            await em.nativeUpdate(ChapterSchema, { id: existingChapter.id }, {
               content: generatedContent,
               wordCount: generatedContent.replace(/\s/g, '').length,
               status: 'generated',
               updatedAt: new Date()
             })
           } else {
-            em.create('Chapter', {
+            em.create(ChapterSchema, {
               novel: data.novelId,
               chapterNumber: chapterNum,
               title: `第${chapterNum}章`,
@@ -126,7 +127,7 @@ export default defineEventHandler(async (event) => {
           )
         }
 
-        await em.nativeUpdate('GenerationTask', { id: taskId }, {
+        await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
           status: 'completed',
           completedAt: new Date()
         })
@@ -135,7 +136,7 @@ export default defineEventHandler(async (event) => {
           encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
         )
       } catch (e: any) {
-        await em.nativeUpdate('GenerationTask', { id: taskId }, {
+        await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
           status: 'failed',
           error: e.message
         })

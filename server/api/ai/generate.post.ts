@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
-import { resolveUserAiConfig } from '../../utils/ai-configs'
+import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { checkRateLimit } from '../../utils/rate-limit'
+import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema } from '../../database/entities'
 
 const generateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -28,17 +29,17 @@ export default defineEventHandler(async (event) => {
   const data = generateSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne('Novel', { id: data.novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
+  const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
 
-  const chapters = await em.find('Chapter', { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
-  const characters = await em.find('Character', { novel: data.novelId })
-  const plotPoints = await em.find('PlotPoint', { novel: data.novelId })
-  const storyArcs = await em.find('StoryArc', { novel: data.novelId })
+  const chapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
+  const characters = await em.find(CharacterSchema, { novel: data.novelId })
+  const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
+  const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
 
   const messages = buildGenerationPrompt({
     novel,
@@ -49,19 +50,19 @@ export default defineEventHandler(async (event) => {
     currentChapterOutline: data.chapterOutline,
     userDirection: data.direction
   })
-  const task = em.create('GenerationTask', {
+  const task = em.create(GenerationTaskSchema, {
     novel: data.novelId,
     chapter: data.chapterId || null,
     type: 'generate',
     status: 'running',
   })
   await em.flush()
-  const taskId = (task as any).id
+  const taskId = task.id
 
   const temperature =
     data.temperature ? parseFloat(String(data.temperature))
-    : (novel as any).aiTemperature ? parseFloat((novel as any).aiTemperature)
-    : parseFloat(aiConfig.temperature || '0.7')
+    : novel.aiTemperature ? parseFloat(novel.aiTemperature)
+    : parseFloat(aiConfig.temperature ?? '0.7')
 
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream',
@@ -99,7 +100,7 @@ export default defineEventHandler(async (event) => {
               (chunk.usage.completion_tokens || 0)
           }
           if (chunk.done) {
-            await em.nativeUpdate('GenerationTask', { id: taskId }, {
+            await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
               status: 'completed',
               result: fullContent,
               tokensUsed: totalTokens,
@@ -107,7 +108,7 @@ export default defineEventHandler(async (event) => {
             })
 
             if (totalTokens > 0) {
-              em.create('TokenUsage', {
+              em.create(TokenUsageSchema, {
                 user: auth.userId,
                 aiConfig: aiConfig.id,
                 tokensInput: chunk.usage?.prompt_tokens || 0,
@@ -126,7 +127,7 @@ export default defineEventHandler(async (event) => {
           }
         }
       } catch (err: any) {
-        await em.nativeUpdate('GenerationTask', { id: taskId }, {
+        await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
           status: 'failed',
           error: err.message
         })

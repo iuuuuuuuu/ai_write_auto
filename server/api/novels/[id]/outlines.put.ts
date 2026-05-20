@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { NovelSchema, NovelOutlineSchema } from '../../../database/entities'
 
 const outlineSchema = z.object({
   outlines: z.array(z.object({
@@ -15,16 +16,16 @@ export default defineEventHandler(async (event) => {
   const data = outlineSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne('Novel', { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  await em.nativeDelete('NovelOutline', { novel: novelId })
+  await em.nativeDelete(NovelOutlineSchema, { novel: novelId })
 
   if (data.outlines.length > 0) {
     for (const o of data.outlines) {
-      em.create('NovelOutline', {
+      em.create(NovelOutlineSchema, {
         novel: novelId,
         chapterNumber: o.chapterNumber,
         description: o.description,

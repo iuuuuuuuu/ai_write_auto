@@ -1,13 +1,15 @@
+import { SiteConfigSchema } from '../../database/entities'
+
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const method = getMethod(event)
   const em = useEm(event)
 
   if (method === 'GET') {
-    const configs = await em.find('SiteConfig', {})
+    const configs = await em.find(SiteConfigSchema, {})
     const result: Record<string, string> = {}
     for (const c of configs) {
-      result[(c as any).key] = (c as any).value
+      result[c.key] = c.value
     }
     return result
   }
@@ -17,11 +19,11 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
 
     for (const [key, value] of Object.entries(body)) {
-      const existing = await em.findOne('SiteConfig', { key })
+      const existing = await em.findOne(SiteConfigSchema, { key })
       if (existing) {
-        await em.nativeUpdate('SiteConfig', { key }, { value: String(value) })
+        await em.nativeUpdate(SiteConfigSchema, { key }, { value: String(value) })
       } else {
-        em.create('SiteConfig', { key, value: String(value) })
+        em.create(SiteConfigSchema, { key, value: String(value) })
         await em.flush()
       }
     }
