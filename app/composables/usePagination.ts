@@ -23,22 +23,25 @@ export function usePagination<T>(options: UsePaginationOptions) {
       const queryParams: Record<string, any> = {
         page: page.value,
         pageSize: currentPageSize.value,
-        ...unref(params),
+        ...unref(params)
       }
 
       const resolvedUrl = unref(url)
       const data = await $fetch<PaginatedResponse<T>>(resolvedUrl, {
-        params: queryParams,
+        params: queryParams
       })
 
       items.value = data.items
       total.value = data.total
       totalPages.value = data.totalPages
-    } catch (e) {
+    } catch (e: any) {
       items.value = []
       total.value = 0
       totalPages.value = 0
-      throw e
+      // Silently ignore 401 errors (not authenticated)
+      if (e?.statusCode !== 401) {
+        console.error('Pagination fetch failed:', e)
+      }
     } finally {
       loading.value = false
     }
@@ -65,10 +68,14 @@ export function usePagination<T>(options: UsePaginationOptions) {
   }
 
   if (params) {
-    watch(params, () => {
-      page.value = 1
-      fetchData()
-    }, { deep: true })
+    watch(
+      params,
+      () => {
+        page.value = 1
+        fetchData()
+      },
+      { deep: true }
+    )
   }
 
   if (immediate) {
@@ -85,6 +92,6 @@ export function usePagination<T>(options: UsePaginationOptions) {
     goToPage,
     updatePageSize,
     refresh,
-    resetAndFetch,
+    resetAndFetch
   }
 }

@@ -5,7 +5,7 @@ interface PromptTemplate {
   id: number
   name: string
   content: string
-  category: 'generation' | 'rewrite' | 'expand' | 'custom'
+  category: 'generation' | 'rewrite' | 'expand' | 'character_generation' | 'custom'
   createdAt: string
 }
 
@@ -15,6 +15,7 @@ const categoryOptions = [
   { label: '生成', value: 'generation' },
   { label: '改写', value: 'rewrite' },
   { label: '扩写', value: 'expand' },
+  { label: '角色生成', value: 'character_generation' },
   { label: '自定义', value: 'custom' }
 ]
 

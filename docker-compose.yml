@@ -2,11 +2,12 @@ services:
   app:
     build: .
     ports:
-      - "3000:3000"
+      - '4530:4530'
     volumes:
       - ./data:/app/data
     environment:
       - JWT_SECRET=change-this-to-a-random-string
+      - PORT=4530
       - DB_TYPE=sqlite
       - DB_SQLITE_PATH=/app/data/novel.db
     restart: unless-stopped

@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
     const data = z.object({
       name: z.string().min(1).max(100).optional(),
       content: z.string().min(1).optional(),
-      category: z.enum(['generation', 'rewrite', 'expand', 'custom']).optional(),
+      category: z.enum(['generation', 'rewrite', 'expand', 'character_generation', 'custom']).optional(),
     }).parse(body)
 
     Object.assign(prompt, data)

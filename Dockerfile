@@ -18,9 +18,9 @@ ENV NODE_ENV=production
 ENV DB_TYPE=sqlite
 ENV DB_SQLITE_PATH=/app/data/novel.db
 ENV HOST=0.0.0.0
-ENV PORT=3000
+ENV PORT=4530
 
-EXPOSE 3000
+EXPOSE 4530
 
 VOLUME ["/app/data"]
 

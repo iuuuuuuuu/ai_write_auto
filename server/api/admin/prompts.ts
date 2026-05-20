@@ -30,7 +30,7 @@ export default defineEventHandler(async (event) => {
     const data = z.object({
       name: z.string().min(1).max(100),
       content: z.string().min(1),
-      category: z.enum(['generation', 'rewrite', 'expand', 'custom']),
+      category: z.enum(['generation', 'rewrite', 'expand', 'character_generation', 'custom']),
     }).parse(body)
 
     const prompt = em.create(PromptTemplateSchema, {

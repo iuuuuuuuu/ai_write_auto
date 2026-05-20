@@ -7,7 +7,8 @@ const characterSchema = z.object({
   traits: z.string().optional(),
   relationships: z.string().optional(),
   currentState: z.string().optional(),
-  firstAppearanceChapter: z.number().int().optional(),
+  firstAppearanceChapter: z.number().int().nullable().optional(),
+  lastAppearanceChapter: z.number().int().nullable().optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -17,7 +18,10 @@ export default defineEventHandler(async (event) => {
   const data = characterSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: novelId,
+    user: auth.userId
+  })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
@@ -30,6 +34,7 @@ export default defineEventHandler(async (event) => {
     relationships: data.relationships || null,
     currentState: data.currentState || null,
     firstAppearanceChapter: data.firstAppearanceChapter || null,
+    lastAppearanceChapter: data.lastAppearanceChapter || null
   })
   await em.flush()
 

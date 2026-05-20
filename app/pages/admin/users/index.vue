@@ -13,7 +13,7 @@ const deletingId = ref<number | null>(null)
 const { confirmDelete } = useConfirmDialog()
 
 const queryParams = computed(() => {
-  const p: Record<string, any> = {}
+  const p: Record<string, string> = {}
   if (search.value.trim()) p.search = search.value.trim()
   return p
 })
@@ -26,6 +26,7 @@ const {
   totalPages,
   pageSize,
   goToPage,
+  updatePageSize,
   refresh
 } = usePagination<AdminUser>({
   url: '/api/admin/users',
@@ -186,15 +187,18 @@ async function deleteUser(user: AdminUser) {
     </div>
 
     <div
-      v-if="totalPages > 1"
-      class="flex items-center justify-between"
+      v-if="total > 0"
+      class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
       <NPagination
         :page="page"
         :page-count="totalPages"
         :page-size="pageSize"
+        :page-sizes="[10, 20, 50, 100]"
+        show-size-picker
         @update:page="goToPage"
+        @update:page-size="updatePageSize"
       />
     </div>
 

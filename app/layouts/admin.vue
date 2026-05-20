@@ -104,8 +104,11 @@ function isActiveNav(to: string) {
       </aside>
 
       <!-- Main -->
-      <main class="min-w-0 flex-1 px-3 py-3 sm:px-4 sm:py-3">
-        <slot />
+      <main class="min-w-0 flex-1 flex flex-col">
+        <TabBar area="admin" class="shrink-0" />
+        <div class="flex-1 min-h-0 overflow-auto px-3 py-3 sm:px-4 sm:py-3">
+          <slot />
+        </div>
       </main>
     </div>
 

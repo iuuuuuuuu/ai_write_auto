@@ -181,6 +181,7 @@
   "settings": {
     "title": "Settings",
     "general": "General",
+    "ai": "AI Config",
     "aiConfig": "AI Config",
     "database": "Database",
     "usage": "Usage Stats",
@@ -197,6 +198,9 @@
     "exportDb": "Export Database",
     "importDb": "Import Database",
     "migrate": "Migrate Data"
+  },
+  "trash": {
+    "title": "Trash"
   },
   "dashboard": {
     "title": "Dashboard",

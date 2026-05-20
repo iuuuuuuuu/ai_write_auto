@@ -181,6 +181,7 @@
   "settings": {
     "title": "设置",
     "general": "通用",
+    "ai": "AI 配置",
     "aiConfig": "AI 配置",
     "database": "数据库",
     "usage": "用量统计",
@@ -197,6 +198,9 @@
     "exportDb": "导出数据库",
     "importDb": "导入数据库",
     "migrate": "数据迁移"
+  },
+  "trash": {
+    "title": "回收站"
   },
   "dashboard": {
     "title": "仪表盘",
