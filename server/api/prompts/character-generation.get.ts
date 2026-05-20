@@ -6,7 +6,7 @@ export default defineEventHandler(async (event) => {
 
   const prompts = await em.find(
     PromptTemplateSchema,
-    { category: 'character_generation', isSystem: true },
+    { category: 'character_generation' as any, isSystem: true },
     { orderBy: { createdAt: 'DESC' } }
   )
 

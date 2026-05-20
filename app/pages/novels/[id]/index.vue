@@ -53,6 +53,7 @@ interface CharacterItem {
   traits: string | null
   relationships: string | null
   currentState: string | null
+  overallArc: string | null
   firstAppearanceChapter: number | null
   lastAppearanceChapter: number | null
   createdAt: string
@@ -409,8 +410,12 @@ async function deleteCharacter(character: CharacterItem) {
     })
     message.success('角色已删除')
     await refreshCharacters()
-  } catch {
-    message.error('角色删除失败')
+  } catch (e: any) {
+    if (e?.statusCode === 409 || e?.data?.statusCode === 409) {
+      message.warning(e?.data?.message || '该角色有出场记录，无法删除')
+    } else {
+      message.error('角色删除失败')
+    }
   }
 }
 
@@ -423,7 +428,7 @@ function getRoleLabel(role: CharacterAppearanceItem['role']) {
 // AI Character Generation
 const showGenerateDialog = ref(false)
 const generateCount = ref(3)
-const generatePromptId = ref<number | null>(null)
+const generatePromptId = ref<number>(0)
 const generating = ref(false)
 
 const { data: characterPrompts } = await useFetch<
@@ -431,13 +436,13 @@ const { data: characterPrompts } = await useFetch<
 >('/api/prompts/character-generation', { default: () => [] })
 
 const promptOptions = computed(() => [
-  { label: '默认提示词', value: null },
+  { label: '默认提示词', value: 0 },
   ...(characterPrompts.value || []).map(p => ({ label: p.name, value: p.id }))
 ])
 
 function openGenerateDialog() {
   generateCount.value = 3
-  generatePromptId.value = null
+  generatePromptId.value = 0
   showGenerateDialog.value = true
 }
 
@@ -1034,6 +1039,18 @@ async function generateCharacters() {
                   </p>
                 </div>
               </div>
+            </div>
+
+            <div
+              v-if="character.overallArc"
+              class="mt-3 rounded-md bg-primary-500/5 px-2 py-1.5 text-xs"
+            >
+              <p class="text-[10px] font-medium text-primary-500/80">故事弧线</p>
+              <p
+                class="mt-0.5 line-clamp-3 leading-relaxed text-(--ui-text-muted)"
+              >
+                {{ character.overallArc }}
+              </p>
             </div>
 
             <div

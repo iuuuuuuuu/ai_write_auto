@@ -6,6 +6,7 @@ export function buildGenerationPrompt(context: {
   currentChapterOutline?: string
   userDirection?: string
   storyArcs?: any[]
+  ragContext?: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }>
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const {
     novel,
@@ -14,7 +15,8 @@ export function buildGenerationPrompt(context: {
     plotPoints,
     currentChapterOutline,
     userDirection,
-    storyArcs
+    storyArcs,
+    ragContext
   } = context
 
   let systemPrompt = `你是一位专业的小说作家。请根据提供的上下文信息，生成高质量的小说章节内容。
@@ -40,12 +42,37 @@ export function buildGenerationPrompt(context: {
     userPrompt += `\n## 世界观设定\n${novel.worldSetting}\n`
 
   // Characters
-  if (characters.length > 0) {
+  if (ragContext?.length) {
+    userPrompt += `\n## 角色档案（基于本章相关性检索）\n`
+    const grouped = new Map<string, typeof ragContext>()
+    for (const item of ragContext) {
+      const list = grouped.get(item.characterName) || []
+      list.push(item)
+      grouped.set(item.characterName, list)
+    }
+    for (const [name, items] of grouped) {
+      const char = characters.find((c: any) => c.name === name)
+      userPrompt += `\n### ${name}\n`
+      if (char?.description) userPrompt += `简介：${char.description}\n`
+      if (char?.traits) userPrompt += `性格：${char.traits}\n`
+      if (char?.relationships) userPrompt += `关系：${char.relationships}\n`
+      if (char?.currentState) userPrompt += `当前状态：${char.currentState}\n`
+      if (char?.overallArc) userPrompt += `整体弧线：${char.overallArc}\n`
+      const stories = items.filter(i => i.contentType === 'chapter_story')
+      if (stories.length) {
+        userPrompt += `相关章节经历：\n`
+        for (const s of stories) {
+          userPrompt += `- ${s.content}\n`
+        }
+      }
+    }
+  } else if (characters.length > 0) {
     userPrompt += `\n## 角色档案\n`
     for (const char of characters) {
       userPrompt += `- ${char.name}`
       if (char.description) userPrompt += `：${char.description}`
       if (char.traits) userPrompt += `（性格：${char.traits}）`
+      if (char.relationships) userPrompt += `（关系：${char.relationships}）`
       if (char.currentState) userPrompt += `【当前状态：${char.currentState}】`
       userPrompt += '\n'
     }
@@ -133,6 +160,60 @@ export function buildSummaryPrompt(
         '你是一位文学编辑。请为以下章节内容生成一段简洁的摘要（100-200字），包含关键事件、角色行为和情节发展。'
     },
     { role: 'user', content: chapterContent }
+  ]
+}
+
+export function buildChapterStoryPrompt(
+  characterName: string,
+  chapterContent: string,
+  appearances: Array<{ snippet: string | null; background: string | null }>
+): Array<{ role: 'system' | 'user'; content: string }> {
+  const snippets = appearances
+    .map(a => a.background || a.snippet)
+    .filter(Boolean)
+    .join('\n')
+
+  return [
+    {
+      role: 'system',
+      content: `你是一位文学分析师。请总结角色「${characterName}」在本章中的经历和状态变化。要求：
+- 150-300字
+- 包含该角色在本章的行为、情绪变化、与他人的互动
+- 用第三人称叙述
+- 只返回纯文本摘要，不要标题或格式`
+    },
+    {
+      role: 'user',
+      content: `## 章节内容\n${chapterContent.slice(0, 6000)}\n\n## 该角色出现的片段\n${snippets}`
+    }
+  ]
+}
+
+export function buildOverallArcPrompt(
+  characterName: string,
+  description: string | null,
+  previousArc: string | null,
+  newChapterStory: string,
+  chapterNumber: number
+): Array<{ role: 'system' | 'user'; content: string }> {
+  return [
+    {
+      role: 'system',
+      content: `你是一位文学编辑。请根据角色「${characterName}」的已有故事弧线和最新章节经历，更新其整体故事弧线摘要。要求：
+- 300-600字
+- 按时间线梳理角色的成长、转变和关键事件
+- 保留之前弧线中的重要信息，融入新章节的发展
+- 用第三人称叙述
+- 只返回纯文本摘要，不要标题或格式`
+    },
+    {
+      role: 'user',
+      content: [
+        description ? `## 角色简介\n${description}` : '',
+        previousArc ? `## 已有故事弧线\n${previousArc}` : '## 已有故事弧线\n（暂无，这是该角色首次出场）',
+        `## 第${chapterNumber}章经历\n${newChapterStory}`
+      ].filter(Boolean).join('\n\n')
+    }
   ]
 }
 

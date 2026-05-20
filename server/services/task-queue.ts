@@ -2,8 +2,12 @@ import { getOrm } from '../database'
 import { callAi } from '../utils/ai-client'
 import {
   buildSummaryPrompt,
-  buildCharacterExtractionPrompt
+  buildCharacterExtractionPrompt,
+  buildChapterStoryPrompt,
+  buildOverallArcPrompt
 } from '../utils/ai-prompts'
+import { isEmbeddingReady } from './embedding'
+import { indexCharacterEvent } from './character-rag'
 import {
   GenerationTaskSchema,
   ChapterSchema,
@@ -231,6 +235,74 @@ async function processTask(task: GenerationTask): Promise<void> {
             }
           }
           await em.flush()
+
+          // Generate chapter stories and update overall arcs
+          const chapterChars = await em.find(ChapterCharacterSchema, {
+            chapter: chapter.id
+          })
+          for (const cc of chapterChars) {
+            const charEntity = await em.findOne(CharacterSchema, {
+              id: getEntityId(cc.character)
+            })
+            if (!charEntity) continue
+
+            const appearances = await em.find(CharacterAppearanceSchema, {
+              chapter: chapter.id,
+              character: charEntity.id
+            })
+
+            try {
+              const storyMessages = buildChapterStoryPrompt(
+                charEntity.name,
+                chapter.content,
+                appearances.map(a => ({ snippet: a.snippet, background: a.background }))
+              )
+              const chapterStory = await callAi({
+                apiUrl: aiConfig.apiUrl,
+                apiKey: aiConfig.apiKey,
+                model: aiConfig.model,
+                messages: storyMessages,
+                temperature: 0.3,
+                maxTokens: 500
+              })
+              cc.chapterStory = chapterStory
+
+              const arcMessages = buildOverallArcPrompt(
+                charEntity.name,
+                charEntity.description,
+                charEntity.overallArc,
+                chapterStory,
+                chapter.chapterNumber
+              )
+              const updatedArc = await callAi({
+                apiUrl: aiConfig.apiUrl,
+                apiKey: aiConfig.apiKey,
+                model: aiConfig.model,
+                messages: arcMessages,
+                temperature: 0.3,
+                maxTokens: 800
+              })
+              charEntity.overallArc = updatedArc
+            } catch {}
+          }
+          await em.flush()
+
+          // Index embeddings for RAG
+          if (isEmbeddingReady()) {
+            for (const cc of chapterChars) {
+              const charEntity = await em.findOne(CharacterSchema, {
+                id: getEntityId(cc.character)
+              })
+              if (!charEntity) continue
+              const novelId = getEntityId(task.novel)
+              if (cc.chapterStory) {
+                await indexCharacterEvent(charEntity.id, chapter.id, novelId, cc.chapterStory, 'chapter_story').catch(() => {})
+              }
+              if (charEntity.overallArc) {
+                await indexCharacterEvent(charEntity.id, null, novelId, charEntity.overallArc, 'overall_arc').catch(() => {})
+              }
+            }
+          }
         }
       }
     }

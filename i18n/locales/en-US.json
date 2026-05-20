@@ -199,6 +199,19 @@
     "importDb": "Import Database",
     "migrate": "Migrate Data"
   },
+  "layoutSettings": {
+    "title": "Layout Settings",
+    "navMode": "Navigation Mode",
+    "layoutSection": "Layout",
+    "expandSidebar": "Expand Sidebar",
+    "showTabs": "Show Tabs",
+    "showBreadcrumb": "Show Breadcrumb",
+    "showLogo": "Show Logo",
+    "showNavButtons": "Show Nav Buttons",
+    "showFooter": "Show Footer",
+    "enableNavTransition": "Navigation Transition",
+    "enableRefreshTransition": "Refresh Transition"
+  },
   "trash": {
     "title": "Trash"
   },

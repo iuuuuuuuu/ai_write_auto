@@ -37,7 +37,7 @@ export default defineEventHandler(async (event) => {
       ...data,
       isSystem: true,
       user: null,
-    })
+    } as any)
     await em.flush()
     return prompt
   }

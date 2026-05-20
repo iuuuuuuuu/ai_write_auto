@@ -199,6 +199,19 @@
     "importDb": "导入数据库",
     "migrate": "数据迁移"
   },
+  "layoutSettings": {
+    "title": "系统设定",
+    "navMode": "导航模式",
+    "layoutSection": "布局相关",
+    "expandSidebar": "展开侧边菜单",
+    "showTabs": "显示标签页",
+    "showBreadcrumb": "显示面包屑",
+    "showLogo": "显示Logo",
+    "showNavButtons": "显示导航按钮",
+    "showFooter": "显示底部",
+    "enableNavTransition": "启用导航过渡效果",
+    "enableRefreshTransition": "启用刷新过渡效果"
+  },
   "trash": {
     "title": "回收站"
   },

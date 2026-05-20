@@ -4,6 +4,8 @@ import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { checkRateLimit } from '../../utils/rate-limit'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema } from '../../database/entities'
+import { isEmbeddingReady } from '../../services/embedding'
+import { retrieveRelevant } from '../../services/character-rag'
 
 const generateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -41,6 +43,14 @@ export default defineEventHandler(async (event) => {
   const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
   const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
 
+  let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
+  if (isEmbeddingReady()) {
+    const query = [data.chapterOutline, data.direction].filter(Boolean).join(' ')
+    if (query) {
+      ragContext = await retrieveRelevant(data.novelId, query, 10)
+    }
+  }
+
   const messages = buildGenerationPrompt({
     novel,
     chapters,
@@ -48,7 +58,8 @@ export default defineEventHandler(async (event) => {
     plotPoints,
     storyArcs,
     currentChapterOutline: data.chapterOutline,
-    userDirection: data.direction
+    userDirection: data.direction,
+    ragContext
   })
   const task = em.create(GenerationTaskSchema, {
     novel: data.novelId,

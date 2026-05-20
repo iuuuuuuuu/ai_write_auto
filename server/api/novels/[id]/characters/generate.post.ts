@@ -10,11 +10,11 @@ import {
 } from '../../../../database/entities'
 
 export default defineEventHandler(async (event) => {
-  const user = requireAuth(event)
+  const auth = requireAuth(event)
   const em = useEm(event)
   const novelId = parseInt(getRouterParam(event, 'id') as string)
 
-  const novel = await em.findOne(NovelSchema, { id: novelId, user: user.id })
+  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   if (promptTemplateId) {
     const template = await em.findOne(PromptTemplateSchema, {
       id: promptTemplateId,
-      category: 'character_generation'
+      category: 'character_generation' as any
     })
     if (template) {
       customPrompt = template.content

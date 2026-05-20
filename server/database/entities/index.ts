@@ -145,6 +145,7 @@ export interface Character {
     | 'currentState'
     | 'firstAppearanceChapter'
     | 'lastAppearanceChapter'
+    | 'overallArc'
     | 'createdAt'
   id: number
   novel: Novel
@@ -155,15 +156,17 @@ export interface Character {
   currentState: string | null
   firstAppearanceChapter: number | null
   lastAppearanceChapter: number | null
+  overallArc: string | null
   createdAt: Date
 }
 
 export interface ChapterCharacter {
-  [OptionalProps]?: 'id' | 'role'
+  [OptionalProps]?: 'id' | 'role' | 'chapterStory'
   id: number
   chapter: Chapter
   character: Character
   role: 'main' | 'supporting' | 'mentioned'
+  chapterStory: string | null
 }
 
 export interface CharacterAppearance {
@@ -249,7 +252,7 @@ export interface PromptTemplate {
   user: User | null
   name: string
   content: string
-  category: 'generation' | 'rewrite' | 'expand' | 'custom'
+  category: 'generation' | 'rewrite' | 'expand' | 'character_generation' | 'custom'
   isSystem: boolean | null
   createdAt: Date
 }
@@ -525,6 +528,11 @@ export const CharacterSchema = new EntitySchema<Character>({
       nullable: true,
       fieldName: 'last_appearance_chapter'
     },
+    overallArc: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'overall_arc'
+    },
     createdAt: {
       type: UnixTimestampType,
       fieldName: 'created_at',
@@ -544,7 +552,12 @@ export const ChapterCharacterSchema = new EntitySchema<ChapterCharacter>({
       entity: () => 'Character',
       fieldName: 'character_id'
     },
-    role: { type: 'string', default: 'supporting' }
+    role: { type: 'string', default: 'supporting' },
+    chapterStory: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'chapter_story'
+    }
   }
 })
 
