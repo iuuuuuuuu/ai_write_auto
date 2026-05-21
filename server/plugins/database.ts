@@ -1,5 +1,11 @@
 import { readDbConfig } from '../database/db-config'
 import { initOrm } from '../database'
+import { syncDatabaseSchema } from '../database/schema-sync'
+import {
+  createStartupBackupIfEnabled,
+  startScheduledBackup,
+  stopScheduledBackup
+} from '../services/database-backup'
 import { ensureVectorTable } from '../services/vector-store'
 
 export default defineNitroPlugin(async (nitroApp) => {
@@ -8,9 +14,24 @@ export default defineNitroPlugin(async (nitroApp) => {
 
   try {
     const orm = await initOrm(fileConfig)
-    const generator = orm.getSchemaGenerator()
-    await generator.updateSchema({ safe: true, dropTables: false })
-    console.log('[db] MikroORM initialized, schema synced')
+    const schema = await syncDatabaseSchema(orm, 'startup')
+    console.log(`[db] MikroORM initialized, schema ${schema.version} synced`)
+
+    try {
+      const backupName = await createStartupBackupIfEnabled(orm)
+      if (backupName) {
+        console.log(`[db] Startup SQLite backup created: ${backupName}`)
+      }
+    } catch (e) {
+      console.warn('[db] Startup SQLite backup skipped:', e)
+    }
+
+    try {
+      startScheduledBackup(orm)
+      console.log('[db] Scheduled backup service started')
+    } catch (e) {
+      console.warn('[db] Scheduled backup service failed to start:', e)
+    }
 
     try {
       await ensureVectorTable()
@@ -20,6 +41,7 @@ export default defineNitroPlugin(async (nitroApp) => {
     }
 
     nitroApp.hooks.hook('close', async () => {
+      stopScheduledBackup()
       await orm.close()
     })
   } catch (e) {

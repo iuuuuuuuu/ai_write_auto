@@ -1,33 +1,51 @@
-import { existsSync, mkdirSync, copyFileSync, readdirSync, unlinkSync, statSync } from 'node:fs'
-import { resolve, join } from 'node:path'
+import { copyFileSync } from 'node:fs'
+import { z } from 'zod'
+import { closeOrm, getOrm, initOrm } from '../../database'
 import { readDbConfig } from '../../database/db-config'
+import { syncDatabaseSchema } from '../../database/schema-sync'
+import {
+  createCurrentDatabaseBackup,
+  createSqliteBackup,
+  getBackupList,
+  getSqliteDbPath,
+  readBackupSettings,
+  resolveBackupPath,
+  restoreMysqlBackup,
+  startScheduledBackup,
+  stopScheduledBackup,
+  triggerScheduledBackupNow,
+  writeBackupSettings,
+  type BackupItem,
+  type BackupSettings
+} from '../../services/database-backup'
 
-const BACKUP_DIR = resolve(process.cwd(), 'data/backups')
-const MAX_BACKUPS = 7
+const restoreSchema = z.object({
+  name: z.string().min(1)
+})
 
-function ensureBackupDir() {
-  if (!existsSync(BACKUP_DIR)) {
-    mkdirSync(BACKUP_DIR, { recursive: true })
-  }
+const settingsSchema = z.object({
+  maxBackups: z.number().int().min(1).max(30),
+  autoBackupOnStartup: z.boolean(),
+  scheduleEnabled: z.boolean(),
+  scheduleCron: z.string().min(1)
+})
+
+interface BackupResponse {
+  backups: BackupItem[]
+  settings: BackupSettings
 }
 
-function getBackupList(): Array<{ name: string; size: number; createdAt: string }> {
-  ensureBackupDir()
-  const files = readdirSync(BACKUP_DIR).filter(f => f.endsWith('.db'))
-  return files.map(name => {
-    const stat = statSync(join(BACKUP_DIR, name))
-    return { name, size: stat.size, createdAt: stat.birthtime.toISOString() }
-  }).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+interface CreateBackupResponse {
+  success: boolean
+  name: string
 }
 
-function cleanOldBackups() {
-  const backups = getBackupList()
-  if (backups.length > MAX_BACKUPS) {
-    const toDelete = backups.slice(MAX_BACKUPS)
-    for (const b of toDelete) {
-      unlinkSync(join(BACKUP_DIR, b.name))
-    }
-  }
+interface RestoreBackupResponse {
+  success: boolean
+  restoredFrom: string
+  safetyBackup: string | null
+  error?: string
+  currentState?: string
 }
 
 export default defineEventHandler(async (event) => {
@@ -35,26 +53,102 @@ export default defineEventHandler(async (event) => {
   const method = getMethod(event)
 
   if (method === 'GET') {
-    return { backups: getBackupList() }
+    const settings = await readBackupSettings(getOrm())
+
+    return { backups: getBackupList(), settings } satisfies BackupResponse
   }
 
   if (method === 'POST') {
-    const config = readDbConfig()
-    if (!config || config.type !== 'sqlite') {
-      throw createError({ statusCode: 400, message: 'Backup only available for SQLite' })
-    }
+    const settings = await readBackupSettings(getOrm())
+    const backupName = await createCurrentDatabaseBackup(getOrm(), {
+      maxBackups: settings.maxBackups
+    })
 
-    const dbPath = resolve(process.cwd(), config.sqlite?.path || './data/novel.db')
-    if (!existsSync(dbPath)) {
-      throw createError({ statusCode: 404, message: 'Database file not found' })
-    }
-
-    ensureBackupDir()
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const backupName = `backup-${timestamp}.db`
-    copyFileSync(dbPath, join(BACKUP_DIR, backupName))
-    cleanOldBackups()
-
-    return { success: true, name: backupName }
+    return { success: true, name: backupName } satisfies CreateBackupResponse
   }
+
+  if (method === 'PATCH') {
+    const body = await readBody(event)
+    const data = settingsSchema.parse(body)
+    const settings = await writeBackupSettings(getOrm(), data)
+
+    // 重新加载定时任务
+    const orm = getOrm()
+    stopScheduledBackup()
+    startScheduledBackup(orm)
+
+    return { success: true, settings }
+  }
+
+  if (method === 'DELETE') {
+    const backupName = await triggerScheduledBackupNow(getOrm())
+    return { success: true, name: backupName } satisfies CreateBackupResponse
+  }
+
+  if (method === 'PUT') {
+    const body = await readBody(event)
+    const data = restoreSchema.parse(body)
+
+    try {
+      if (data.name.endsWith('.mysql.json')) {
+        const settings = await readBackupSettings(getOrm())
+        let safetyBackup: string | null = null
+        try {
+          safetyBackup = await createCurrentDatabaseBackup(getOrm(), {
+            prefix: 'pre-restore',
+            maxBackups: settings.maxBackups
+          })
+        } catch (sbErr: any) {
+          console.warn('[backup] Pre-restore safety backup failed:', sbErr)
+        }
+
+        await restoreMysqlBackup(getOrm(), data.name)
+        const orm = getOrm()
+        await syncDatabaseSchema(orm, 'backup-restore')
+
+        return {
+          success: true,
+          restoredFrom: data.name,
+          safetyBackup,
+          currentState: 'mysql'
+        } satisfies RestoreBackupResponse
+      }
+
+      const { config, dbPath } = getSqliteDbPath()
+      const backupPath = resolveBackupPath(data.name)
+      const settings = await readBackupSettings(getOrm())
+
+      let safetyBackup: string | null = null
+      try {
+        safetyBackup = createSqliteBackup({
+          prefix: 'pre-restore',
+          maxBackups: settings.maxBackups
+        })
+      } catch (sbErr: any) {
+        console.warn('[backup] Pre-restore safety backup failed:', sbErr)
+      }
+
+      await closeOrm()
+      copyFileSync(backupPath, dbPath)
+      const orm = await initOrm(config)
+      await syncDatabaseSchema(orm, 'backup-restore')
+
+      return {
+        success: true,
+        restoredFrom: data.name,
+        safetyBackup,
+        currentState: 'sqlite'
+      } satisfies RestoreBackupResponse
+    } catch (err: any) {
+      return {
+        success: false,
+        restoredFrom: data.name,
+        safetyBackup: null,
+        error: err?.message || '恢复过程中发生未知错误',
+        currentState: readDbConfig()?.type || 'unknown'
+      } satisfies RestoreBackupResponse
+    }
+  }
+
+  throw createError({ statusCode: 405, message: 'Method not allowed' })
 })

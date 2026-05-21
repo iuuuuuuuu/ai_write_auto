@@ -130,6 +130,7 @@
     "batchGenerate": "批量生成",
     "expand": "扩写",
     "rewrite": "重写",
+    "continue": "续写",
     "extract": "提取信息",
     "outline": "大纲",
     "content": "正文",

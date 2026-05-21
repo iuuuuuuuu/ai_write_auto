@@ -33,7 +33,16 @@ export default defineNuxtConfig({
   vite: {
     plugins: [tailwindcss()],
     optimizeDeps: {
-      include: ['@iconify/vue']
+      include: [
+        '@iconify/vue',
+        '@milkdown/core',
+        '@milkdown/plugin-listener',
+        '@milkdown/preset-commonmark',
+        '@milkdown/theme-nord',
+        '@milkdown/utils',
+        '@vue/devtools-core',
+        '@vue/devtools-kit'
+      ]
     }
   },
 

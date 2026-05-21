@@ -1,0 +1,91 @@
+import { z } from 'zod'
+import { callAi } from '../../../../utils/ai-client'
+import { buildCharacterGenerationPrompt } from '../../../../utils/ai-prompts'
+import {
+  NovelSchema,
+  NovelOutlineSchema,
+  CharacterSchema,
+  AiConfigSchema
+} from '../../../../database/entities'
+
+export default defineEventHandler(async (event) => {
+  const auth = requireAuth(event)
+  const em = useEm(event)
+  const novelId = parseInt(getRouterParam(event, 'id') as string)
+
+  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  if (!novel) {
+    throw createError({ statusCode: 404, message: 'Novel not found' })
+  }
+
+  const body = await readBody(event)
+  const { count } = z.object({
+    count: z.number().int().min(1).max(10).default(3)
+  }).parse(body)
+
+  const aiConfig = await em.findOne(AiConfigSchema, { purpose: 'extraction' })
+  if (!aiConfig) {
+    throw createError({ statusCode: 500, message: 'No AI config available for extraction' })
+  }
+
+  const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
+  const outlines = await em.find(NovelOutlineSchema, { novel: novelId }, {
+    orderBy: { chapterNumber: 'ASC' }
+  })
+
+  const messages = buildCharacterGenerationPrompt({
+    novel: {
+      title: novel.title,
+      description: novel.description ?? undefined,
+      genre: novel.genre ?? undefined,
+      worldSetting: novel.worldSetting ?? undefined,
+      styleGuide: novel.styleGuide ?? undefined
+    },
+    existingCharacters: existingCharacters.map(c => ({
+      name: c.name,
+      description: c.description ?? undefined,
+      traits: c.traits ?? undefined,
+      currentState: c.currentState ?? undefined
+    })),
+    outlines: outlines.map(o => ({
+      chapterNumber: o.chapterNumber,
+      description: o.description
+    })),
+    count
+  })
+
+  const result = await callAi({
+    apiUrl: aiConfig.apiUrl,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    messages,
+    temperature: 0.8,
+    maxTokens: 4096
+  })
+
+  const parsed: unknown = JSON.parse(result)
+  if (!Array.isArray(parsed)) {
+    throw createError({ statusCode: 500, message: 'AI returned invalid format' })
+  }
+
+  const suggestions = []
+  const existingNames = new Set(existingCharacters.map(c => c.name))
+
+  for (const item of parsed) {
+    if (!item || typeof item !== 'object') continue
+    const source = item as Record<string, unknown>
+    const name = typeof source.name === 'string' ? source.name.trim() : ''
+    if (!name || existingNames.has(name)) continue
+
+    suggestions.push({
+      name,
+      description: typeof source.description === 'string' ? source.description : null,
+      traits: typeof source.traits === 'string' ? source.traits : null,
+      relationships: typeof source.relationships === 'string' ? source.relationships : null,
+      currentState: typeof source.currentState === 'string' ? source.currentState : null,
+      role: typeof source.role === 'string' ? source.role : 'supporting'
+    })
+  }
+
+  return { suggestions }
+})

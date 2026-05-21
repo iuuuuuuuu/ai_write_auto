@@ -1,4 +1,4 @@
-const PUBLIC_PATHS = ['/api/setup', '/api/auth/login', '/api/auth/register']
+const PUBLIC_PATHS = ['/api/setup', '/api/auth/login', '/api/auth/register', '/api/openapi/spec']
 
 export default defineEventHandler((event) => {
   const path = getRequestURL(event).pathname

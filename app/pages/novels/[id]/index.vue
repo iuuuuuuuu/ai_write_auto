@@ -80,17 +80,60 @@ type ChapterStatusFilter =
 
 type CharacterAppearanceFilter = 'all' | 'appeared' | 'missing'
 
+interface OutlineItem {
+  id: number
+  chapterNumber: number
+  description: string
+  sortOrder: number
+}
+
+interface OutlineFormItem {
+  chapterNumber: number
+  description: string
+  sortOrder: number
+}
+
+interface GenerateOutlineForm {
+  idea: string
+  chapterCount: number
+}
+
+interface GenerateOutlineResponse {
+  outlines: Array<{
+    chapterNumber: number
+    description: string
+    sortOrder?: number
+  }>
+  raw?: string
+}
+
+interface PlotPointItem {
+  id: number
+  description: string
+  type: 'setup' | 'conflict' | 'resolution' | 'twist'
+  status: 'introduced' | 'developing' | 'resolved'
+  chapterId: number | null
+  createdAt: string
+}
+
 const { data: novel } = await useFetch<NovelDetail>(
   `/api/novels/${novelId.value}`
 )
 
-watch(() => novel.value, (n) => {
-  if (n) updateActiveTabTitle(n.title)
-}, { immediate: true })
+watch(
+  () => novel.value,
+  (n) => {
+    if (n) updateActiveTabTitle(n.title)
+  },
+  { immediate: true }
+)
 
 const { data: chapters } = await useFetch<ChapterItem[]>(
   `/api/novels/${novelId.value}/chapters`
 )
+const { data: outlines, refresh: refreshOutlines } = await useFetch<
+  OutlineItem[]
+>(`/api/novels/${novelId.value}/outlines`, { default: () => [] })
 const { data: characters, refresh: refreshCharacters } = await useFetch<
   CharacterItem[]
 >(`/api/novels/${novelId.value}/characters`, { default: () => [] })
@@ -102,9 +145,25 @@ const savingCharacter = ref(false)
 const characterFormRef = ref<{ validate: () => Promise<void> } | null>(null)
 const chapterSearchQuery = shallowRef('')
 const chapterStatusFilter = shallowRef<ChapterStatusFilter>('all')
+const editingOutlines = shallowRef(false)
+const savingOutlines = shallowRef(false)
+const outlineFormItems = ref<OutlineFormItem[]>([])
+const showGenerateOutlineDialog = shallowRef(false)
+const showRegenerateOutlineDialog = shallowRef(false)
+const generatingOutline = shallowRef(false)
+const generateOutlineForm = reactive<GenerateOutlineForm>({
+  idea: '',
+  chapterCount: 20
+})
+const regenerateOutlineForm = reactive({
+  startChapter: 1,
+  chapterCount: 10,
+  idea: ''
+})
 const characterSearchQuery = shallowRef('')
 const characterAppearanceFilter = shallowRef<CharacterAppearanceFilter>('all')
 const expandedCharacterIds = shallowRef<number[]>([])
+const characterViewMode = shallowRef<'cards' | 'graph'>('cards')
 const characterForm = reactive<CharacterFormModel>({
   name: '',
   description: '',
@@ -187,6 +246,232 @@ function clearChapterFilters() {
   chapterSearchQuery.value = ''
   chapterStatusFilter.value = 'all'
 }
+
+const sortedOutlines = computed(() => {
+  return [...(outlines.value || [])].sort((left, right) => {
+    return (
+      left.sortOrder - right.sortOrder ||
+      left.chapterNumber - right.chapterNumber
+    )
+  })
+})
+
+function resetOutlineFormItems() {
+  outlineFormItems.value = sortedOutlines.value.map((outline, index) => ({
+    chapterNumber: outline.chapterNumber,
+    description: outline.description,
+    sortOrder: outline.sortOrder ?? index
+  }))
+}
+
+function startEditOutlines() {
+  resetOutlineFormItems()
+  editingOutlines.value = true
+}
+
+function cancelEditOutlines() {
+  editingOutlines.value = false
+  resetOutlineFormItems()
+}
+
+function addOutlineItem() {
+  const nextChapterNumber = outlineFormItems.value.length + 1
+  outlineFormItems.value = [
+    ...outlineFormItems.value,
+    {
+      chapterNumber: nextChapterNumber,
+      description: '',
+      sortOrder: nextChapterNumber - 1
+    }
+  ]
+}
+
+function removeOutlineItem(index: number) {
+  outlineFormItems.value = outlineFormItems.value
+    .filter((_, itemIndex) => itemIndex !== index)
+    .map((item, itemIndex) => ({
+      ...item,
+      sortOrder: itemIndex
+    }))
+}
+
+const draggingOutlineIndex = ref<number | null>(null)
+
+function handleOutlineDragStart(index: number) {
+  draggingOutlineIndex.value = index
+}
+
+function handleOutlineDragOver(event: DragEvent, index: number) {
+  event.preventDefault()
+  if (
+    draggingOutlineIndex.value === null ||
+    draggingOutlineIndex.value === index
+  )
+    return
+  const items = [...outlineFormItems.value]
+  const [moved] = items.splice(draggingOutlineIndex.value, 1)
+  items.splice(index, 0, moved)
+  outlineFormItems.value = items.map((item, i) => ({
+    ...item,
+    sortOrder: i
+  }))
+  draggingOutlineIndex.value = index
+}
+
+function handleOutlineDragEnd() {
+  draggingOutlineIndex.value = null
+}
+
+function getValidOutlineItems() {
+  return outlineFormItems.value
+    .map((item, index) => ({
+      chapterNumber: item.chapterNumber,
+      description: item.description.trim(),
+      sortOrder: index
+    }))
+    .filter((item) => item.chapterNumber > 0 && item.description.length > 0)
+}
+
+async function saveOutlines() {
+  const validOutlines = getValidOutlineItems()
+  if (!validOutlines.length) {
+    message.warning('请至少填写一条章节大纲')
+    return
+  }
+
+  savingOutlines.value = true
+  try {
+    await $fetch(`/api/novels/${novelId.value}/outlines`, {
+      method: 'PUT',
+      body: { outlines: validOutlines }
+    })
+    message.success('大纲已保存')
+    editingOutlines.value = false
+    await refreshOutlines()
+    resetOutlineFormItems()
+  } catch {
+    message.error('大纲保存失败')
+  } finally {
+    savingOutlines.value = false
+  }
+}
+
+function openGenerateOutlineDialog() {
+  generateOutlineForm.idea =
+    novel.value?.description || novel.value?.title || ''
+  generateOutlineForm.chapterCount = Math.max(chapters.value?.length || 20, 3)
+  showGenerateOutlineDialog.value = true
+}
+
+function openRegenerateOutlineDialog(startChapter?: number) {
+  regenerateOutlineForm.startChapter = startChapter || Math.max((chapters.value?.length || 0) + 1, 1)
+  regenerateOutlineForm.chapterCount = Math.max((sortedOutlines.value.length || 20) - regenerateOutlineForm.startChapter + 1, 3)
+  regenerateOutlineForm.idea = novel.value?.description || novel.value?.title || ''
+  showRegenerateOutlineDialog.value = true
+}
+
+async function regenerateOutlinesFromChapter() {
+  const idea = regenerateOutlineForm.idea.trim()
+  if (!idea) {
+    message.warning('请输入故事核心想法')
+    return
+  }
+
+  generatingOutline.value = true
+  try {
+    const result = await $fetch<GenerateOutlineResponse>(
+      '/api/ai/generate-outline',
+      {
+        method: 'POST',
+        body: {
+          novelId: novelId.value,
+          idea,
+          chapterCount: regenerateOutlineForm.chapterCount,
+          startChapter: regenerateOutlineForm.startChapter,
+          existingOutlines: sortedOutlines.value.map((outline) => ({
+            chapterNumber: outline.chapterNumber,
+            description: outline.description
+          }))
+        }
+      }
+    )
+    if (!result.outlines.length) {
+      message.warning(result.raw || 'AI 未返回可用大纲')
+      return
+    }
+
+    const preserved = sortedOutlines.value
+      .filter((outline) => outline.chapterNumber < regenerateOutlineForm.startChapter)
+      .map((outline, index) => ({
+        chapterNumber: outline.chapterNumber,
+        description: outline.description,
+        sortOrder: index
+      }))
+    const regenerated = result.outlines.map((outline, index) => ({
+      chapterNumber: outline.chapterNumber,
+      description: outline.description,
+      sortOrder: preserved.length + index
+    }))
+
+    outlineFormItems.value = [...preserved, ...regenerated]
+    editingOutlines.value = true
+    showRegenerateOutlineDialog.value = false
+    message.success('后续大纲已重新生成，请确认后保存')
+  } catch (e: any) {
+    message.error(e?.data?.message || 'AI 重新规划大纲失败')
+  } finally {
+    generatingOutline.value = false
+  }
+}
+
+async function generateOutlines() {
+  const idea = generateOutlineForm.idea.trim()
+  if (!idea) {
+    message.warning('请输入故事核心想法')
+    return
+  }
+
+  generatingOutline.value = true
+  try {
+    const result = await $fetch<GenerateOutlineResponse>(
+      '/api/ai/generate-outline',
+      {
+        method: 'POST',
+        body: {
+          novelId: novelId.value,
+          idea,
+          chapterCount: generateOutlineForm.chapterCount
+        }
+      }
+    )
+    if (!result.outlines.length) {
+      message.warning(result.raw || 'AI 未返回可用大纲')
+      return
+    }
+    outlineFormItems.value = result.outlines.map((outline, index) => ({
+      chapterNumber: outline.chapterNumber,
+      description: outline.description,
+      sortOrder: outline.sortOrder ?? index
+    }))
+    editingOutlines.value = true
+    showGenerateOutlineDialog.value = false
+    message.success('AI 大纲已生成，请确认后保存')
+  } catch (e: any) {
+    message.error(e?.data?.message || 'AI 生成大纲失败')
+  } finally {
+    generatingOutline.value = false
+  }
+}
+
+watch(
+  sortedOutlines,
+  () => {
+    if (!editingOutlines.value) {
+      resetOutlineFormItems()
+    }
+  },
+  { immediate: true }
+)
 
 function clearCharacterFilters() {
   characterSearchQuery.value = ''
@@ -431,13 +716,44 @@ const generateCount = ref(3)
 const generatePromptId = ref<number>(0)
 const generating = ref(false)
 
+const showExportDialog = ref(false)
+const exportFormat = ref<'txt' | 'md' | 'epub'>('md')
+const exporting = ref(false)
+
+async function exportNovel() {
+  exporting.value = true
+  try {
+    const response = await $fetch<Blob>(`/api/novels/${novelId.value}/export`, {
+      method: 'GET',
+      params: { format: exportFormat.value },
+      responseType: 'blob'
+    })
+    const url = window.URL.createObjectURL(response)
+    const link = document.createElement('a')
+    link.href = url
+    const ext = exportFormat.value
+    const filename = `${novel.value?.title || 'novel'}.${ext}`
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    message.success(`已导出 ${filename}`)
+    showExportDialog.value = false
+  } catch (e: any) {
+    message.error(e?.data?.message || '导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
 const { data: characterPrompts } = await useFetch<
   Array<{ id: number; name: string; content: string }>
 >('/api/prompts/character-generation', { default: () => [] })
 
 const promptOptions = computed(() => [
   { label: '默认提示词', value: 0 },
-  ...(characterPrompts.value || []).map(p => ({ label: p.name, value: p.id }))
+  ...(characterPrompts.value || []).map((p) => ({ label: p.name, value: p.id }))
 ])
 
 function openGenerateDialog() {
@@ -466,6 +782,83 @@ async function generateCharacters() {
     message.error(e?.data?.message || 'AI 生成角色失败')
   } finally {
     generating.value = false
+  }
+}
+
+const { data: plotPoints, refresh: refreshPlotPoints } = await useFetch<
+  PlotPointItem[]
+>(`/api/novels/${novelId.value}/plot-points`, { default: () => [] })
+
+const showPlotPointDialog = ref(false)
+const addingPlotPoint = ref(false)
+const plotPointForm = reactive({
+  description: '',
+  type: 'setup' as PlotPointItem['type'],
+  status: 'introduced' as PlotPointItem['status'],
+  chapterId: null as number | null
+})
+
+const plotPointTypeOptions = [
+  { label: '铺垫', value: 'setup' },
+  { label: '冲突', value: 'conflict' },
+  { label: '收束', value: 'resolution' },
+  { label: '转折', value: 'twist' }
+]
+
+const plotPointStatusOptions = [
+  { label: '引入', value: 'introduced' },
+  { label: '发展中', value: 'developing' },
+  { label: '已解决', value: 'resolved' }
+]
+
+function getPlotPointTypeLabel(type: string) {
+  const map: Record<string, string> = {
+    setup: '铺垫',
+    conflict: '冲突',
+    resolution: '收束',
+    twist: '转折'
+  }
+  return map[type] || type
+}
+
+function getPlotPointStatusType(status: string) {
+  if (status === 'resolved') return 'success'
+  if (status === 'developing') return 'warning'
+  return 'default'
+}
+
+function openPlotPointDialog() {
+  plotPointForm.description = ''
+  plotPointForm.type = 'setup'
+  plotPointForm.status = 'introduced'
+  plotPointForm.chapterId = null
+  showPlotPointDialog.value = true
+}
+
+async function savePlotPoint() {
+  const description = plotPointForm.description.trim()
+  if (!description) {
+    message.warning('请输入情节描述')
+    return
+  }
+  addingPlotPoint.value = true
+  try {
+    await $fetch(`/api/novels/${novelId.value}/plot-points`, {
+      method: 'POST',
+      body: {
+        description,
+        type: plotPointForm.type,
+        status: plotPointForm.status,
+        chapterId: plotPointForm.chapterId || undefined
+      }
+    })
+    message.success('情节线索已添加')
+    showPlotPointDialog.value = false
+    await refreshPlotPoints()
+  } catch {
+    message.error('添加失败')
+  } finally {
+    addingPlotPoint.value = false
   }
 }
 </script>
@@ -516,6 +909,14 @@ async function generateCharacters() {
               <NButton
                 secondary
                 size="small"
+                @click="navigateTo(`/novels/${novel.id}/read`)"
+              >
+                <template #icon><Icon icon="lucide:book-open" /></template>
+                阅读全文
+              </NButton>
+              <NButton
+                secondary
+                size="small"
                 @click="
                   navigateTo(
                     `/novels/${novel.id}/chapters/${chapters?.[0]?.id || 1}`
@@ -524,6 +925,14 @@ async function generateCharacters() {
               >
                 <template #icon><Icon icon="lucide:pen-tool" /></template>
                 继续写作
+              </NButton>
+              <NButton
+                secondary
+                size="small"
+                @click="showExportDialog = true"
+              >
+                <template #icon><Icon icon="lucide:download" /></template>
+                导出
               </NButton>
               <NButton
                 quaternary
@@ -666,6 +1075,224 @@ async function generateCharacters() {
             {{ novel.worldSetting }}
           </p>
         </section>
+      </div>
+    </section>
+
+    <!-- Outline -->
+    <section class="card-surface p-5">
+      <div
+        class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+      >
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <Icon
+              icon="lucide:list-tree"
+              class="size-4 text-primary-500"
+            />
+            <h2 class="font-semibold text-(--ui-text-highlighted)">章节大纲</h2>
+          </div>
+          <p class="mt-1 text-xs text-(--ui-text-dimmed)">
+            {{ sortedOutlines.length }} 条大纲，可用于后续章节生成
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <NButton
+            size="tiny"
+            @click="openGenerateOutlineDialog"
+          >
+            <template #icon><Icon icon="lucide:sparkles" /></template>
+            AI 生成
+          </NButton>
+          <NButton
+            size="tiny"
+            @click="openRegenerateOutlineDialog"
+          >
+            <template #icon><Icon icon="lucide:refresh-cw" /></template>
+            重新规划后续
+          </NButton>
+          <NButton
+            v-if="!editingOutlines"
+            size="tiny"
+            type="primary"
+            @click="startEditOutlines"
+          >
+            <template #icon><Icon icon="lucide:pencil" /></template>
+            编辑大纲
+          </NButton>
+          <template v-else>
+            <NButton
+              size="tiny"
+              quaternary
+              @click="cancelEditOutlines"
+            >
+              取消
+            </NButton>
+            <NButton
+              size="tiny"
+              type="primary"
+              :loading="savingOutlines"
+              @click="saveOutlines"
+            >
+              保存
+            </NButton>
+          </template>
+        </div>
+      </div>
+
+      <div
+        v-if="editingOutlines"
+        class="space-y-2"
+      >
+        <div
+          v-for="(outline, index) in outlineFormItems"
+          :key="index"
+          draggable="true"
+          class="grid gap-2 rounded-lg bg-(--ui-bg-muted)/35 p-2 md:grid-cols-[auto_120px_minmax(0,1fr)_auto] cursor-move transition-opacity"
+          :class="{ 'opacity-50': draggingOutlineIndex === index }"
+          @dragstart="handleOutlineDragStart(index)"
+          @dragover="handleOutlineDragOver($event, index)"
+          @dragend="handleOutlineDragEnd"
+        >
+          <div class="flex items-center text-(--ui-text-dimmed)">
+            <Icon
+              icon="lucide:grip-vertical"
+              class="size-4"
+            />
+          </div>
+          <NInputNumber
+            v-model:value="outline.chapterNumber"
+            :min="1"
+            size="small"
+            class="w-full"
+          />
+          <NInput
+            v-model:value="outline.description"
+            size="small"
+            placeholder="本章核心事件、冲突或转折"
+          />
+          <NButton
+            size="small"
+            quaternary
+            type="error"
+            @click="removeOutlineItem(index)"
+          >
+            删除
+          </NButton>
+        </div>
+        <NButton
+          size="small"
+          dashed
+          block
+          @click="addOutlineItem"
+        >
+          <template #icon><Icon icon="lucide:plus" /></template>
+          添加章节大纲
+        </NButton>
+      </div>
+
+      <div
+        v-else-if="!sortedOutlines.length"
+        class="rounded-lg bg-(--ui-bg-muted)/30 py-8 text-center text-sm text-(--ui-text-muted)"
+      >
+        暂无章节大纲，可手动编辑或使用 AI 生成。
+      </div>
+
+      <div
+        v-else
+        class="grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+      >
+        <article
+          v-for="outline in sortedOutlines"
+          :key="`${outline.chapterNumber}-${outline.sortOrder}`"
+          class="rounded-lg bg-(--ui-bg-muted)/35 p-3"
+        >
+          <p class="text-xs font-mono text-primary-500">
+            Ch.{{ outline.chapterNumber }}
+          </p>
+          <p
+            class="mt-1 line-clamp-3 text-xs leading-relaxed text-(--ui-text-muted)"
+          >
+            {{ outline.description }}
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Plot Points -->
+    <section class="card-surface p-5">
+      <div
+        class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+      >
+        <div class="min-w-0">
+          <div class="flex items-center gap-2">
+            <Icon
+              icon="lucide:route"
+              class="size-4 text-violet-500"
+            />
+            <h2 class="font-semibold text-(--ui-text-highlighted)">情节线索</h2>
+          </div>
+          <p class="mt-1 text-xs text-(--ui-text-dimmed)">
+            {{ plotPoints?.length || 0 }} 个情节节点
+          </p>
+        </div>
+        <NButton
+          size="tiny"
+          type="primary"
+          @click="openPlotPointDialog"
+        >
+          <template #icon><Icon icon="lucide:plus" /></template>
+          添加线索
+        </NButton>
+      </div>
+
+      <div
+        v-if="!plotPoints?.length"
+        class="rounded-lg bg-(--ui-bg-muted)/30 py-8 text-center text-sm text-(--ui-text-muted)"
+      >
+        暂无情节点，可手动添加以追踪故事中的关键事件。
+      </div>
+
+      <div
+        v-else
+        class="space-y-2"
+      >
+        <div
+          v-for="point in plotPoints"
+          :key="point.id"
+          class="flex items-start gap-3 rounded-lg bg-(--ui-bg-muted)/35 p-3"
+        >
+          <div
+            class="mt-0.5 size-2 shrink-0 rounded-full"
+            :class="{
+              'bg-emerald-500': point.status === 'resolved',
+              'bg-amber-500': point.status === 'developing',
+              'bg-(--ui-text-dimmed)': point.status === 'introduced'
+            }"
+          />
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <NTag
+                size="tiny"
+                :type="getPlotPointStatusType(point.status)"
+              >
+                {{ getPlotPointTypeLabel(point.type) }}
+              </NTag>
+              <span
+                v-if="point.chapterId"
+                class="text-[11px] text-(--ui-text-dimmed)"
+              >
+                关联章节
+                {{
+                  chapters?.find((c) => c.id === point.chapterId)
+                    ?.chapterNumber || point.chapterId
+                }}
+              </span>
+            </div>
+            <p class="mt-1 text-xs leading-relaxed text-(--ui-text-muted)">
+              {{ point.description }}
+            </p>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -836,7 +1463,31 @@ async function generateCharacters() {
                 {{ characterFilterText }}
               </p>
             </div>
-            <div class="flex gap-2">
+            <div class="flex items-center gap-2">
+              <div class="flex rounded-md bg-(--ui-bg-muted)/60 p-0.5 gap-0.5">
+                <button
+                  class="rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
+                  :class="
+                    characterViewMode === 'cards' ?
+                      'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
+                    : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+                  "
+                  @click="characterViewMode = 'cards'"
+                >
+                  卡片
+                </button>
+                <button
+                  class="rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
+                  :class="
+                    characterViewMode === 'graph' ?
+                      'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
+                    : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+                  "
+                  @click="characterViewMode = 'graph'"
+                >
+                  关系图
+                </button>
+              </div>
               <NButton
                 size="tiny"
                 @click="openGenerateDialog"
@@ -855,7 +1506,10 @@ async function generateCharacters() {
             </div>
           </div>
 
-          <div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_150px_auto]">
+          <div
+            v-show="characterViewMode === 'cards'"
+            class="grid gap-2 md:grid-cols-[minmax(0,1fr)_150px_auto]"
+          >
             <NInput
               v-model:value="characterSearchQuery"
               clearable
@@ -888,220 +1542,237 @@ async function generateCharacters() {
           </div>
         </div>
 
-        <div
-          v-if="!sortedCharacters.length"
-          class="flex flex-1 items-center justify-center py-10 text-center text-sm text-(--ui-text-muted)"
-        >
-          还没有角色，点击上方按钮创建角色档案
-        </div>
-        <div
-          v-else-if="!filteredCharacters.length"
-          class="flex flex-1 flex-col items-center justify-center py-10 text-center"
-        >
-          <Icon
-            icon="lucide:search-x"
-            class="size-8 text-(--ui-text-dimmed)"
-          />
-          <p class="mt-2 text-sm text-(--ui-text-muted)">没有匹配的角色</p>
-          <NButton
-            class="mt-3"
-            size="tiny"
-            quaternary
-            @click="clearCharacterFilters"
+        <div v-show="characterViewMode === 'cards'">
+          <div
+            v-if="!sortedCharacters.length"
+            class="flex flex-1 items-center justify-center py-10 text-center text-sm text-(--ui-text-muted)"
           >
-            清空筛选
-          </NButton>
-        </div>
-        <div
-          v-else
-          class="mt-4 grid max-h-[calc(100dvh-260px)] min-h-0 gap-3 overflow-y-auto pr-1 md:grid-cols-2 2xl:grid-cols-3"
-        >
-          <article
-            v-for="character in filteredCharacters"
-            :key="character.id"
-            class="flex min-h-[250px] flex-col rounded-lg border border-(--ui-border)/55 bg-(--ui-bg-muted)/25 p-3 transition-colors hover:bg-(--ui-bg-muted)/40"
+            还没有角色，点击上方按钮创建角色档案
+          </div>
+          <div
+            v-else-if="!filteredCharacters.length"
+            class="flex flex-1 flex-col items-center justify-center py-10 text-center"
           >
-            <div class="flex items-start gap-2.5">
-              <div
-                class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 text-sm text-primary-600"
-              >
-                {{ getCharacterInitial(character) }}
-              </div>
-              <div class="min-w-0 flex-1">
-                <div class="flex items-start justify-between gap-2">
-                  <div class="min-w-0">
-                    <h3
-                      class="truncate text-sm font-semibold text-(--ui-text-highlighted)"
-                    >
-                      {{ character.name || '未命名角色' }}
-                    </h3>
-                    <div class="mt-1 flex flex-wrap gap-1 text-[10px]">
-                      <span
-                        v-if="character.firstAppearanceChapter"
-                        class="rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-(--ui-text-muted)"
+            <Icon
+              icon="lucide:search-x"
+              class="size-8 text-(--ui-text-dimmed)"
+            />
+            <p class="mt-2 text-sm text-(--ui-text-muted)">没有匹配的角色</p>
+            <NButton
+              class="mt-3"
+              size="tiny"
+              quaternary
+              @click="clearCharacterFilters"
+            >
+              清空筛选
+            </NButton>
+          </div>
+          <div
+            v-else
+            class="mt-4 grid max-h-[calc(100dvh-260px)] min-h-0 gap-3 overflow-y-auto pr-1 md:grid-cols-2 2xl:grid-cols-3"
+          >
+            <article
+              v-for="character in filteredCharacters"
+              :key="character.id"
+              class="flex min-h-[250px] flex-col rounded-lg border border-(--ui-border)/55 bg-(--ui-bg-muted)/25 p-3 transition-colors hover:bg-(--ui-bg-muted)/40"
+            >
+              <div class="flex items-start gap-2.5">
+                <div
+                  class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-500/10 text-sm text-primary-600"
+                >
+                  {{ getCharacterInitial(character) }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <h3
+                        class="truncate text-sm font-semibold text-(--ui-text-highlighted)"
                       >
-                        首次 Ch.{{ character.firstAppearanceChapter }}
-                      </span>
-                      <span
-                        v-if="character.lastAppearanceChapter"
-                        class="rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-(--ui-text-muted)"
-                      >
-                        最近 Ch.{{ character.lastAppearanceChapter }}
-                      </span>
-                      <span
-                        class="rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-(--ui-text-muted)"
-                      >
-                        {{ getCharacterAppearanceCount(character) }} 章出场
-                      </span>
+                        {{ character.name || '未命名角色' }}
+                      </h3>
+                      <div class="mt-1 flex flex-wrap gap-1 text-[10px]">
+                        <span
+                          v-if="character.firstAppearanceChapter"
+                          class="rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-(--ui-text-muted)"
+                        >
+                          首次 Ch.{{ character.firstAppearanceChapter }}
+                        </span>
+                        <span
+                          v-if="character.lastAppearanceChapter"
+                          class="rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-(--ui-text-muted)"
+                        >
+                          最近 Ch.{{ character.lastAppearanceChapter }}
+                        </span>
+                        <span
+                          class="rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-(--ui-text-muted)"
+                        >
+                          {{ getCharacterAppearanceCount(character) }} 章出场
+                        </span>
+                      </div>
+                    </div>
+                    <div class="flex shrink-0 items-center gap-1">
+                      <NTooltip>
+                        <template #trigger>
+                          <button
+                            class="flex size-7 items-center justify-center rounded-md text-(--ui-text-dimmed) transition-colors hover:bg-(--ui-bg-elevated) hover:text-(--ui-text)"
+                            @click="openEditCharacterDialog(character)"
+                          >
+                            <Icon
+                              icon="lucide:pencil"
+                              class="size-3.5"
+                            />
+                          </button>
+                        </template>
+                        编辑角色
+                      </NTooltip>
+                      <NTooltip>
+                        <template #trigger>
+                          <button
+                            class="flex size-7 items-center justify-center rounded-md text-(--ui-text-dimmed) transition-colors hover:bg-red-500/10 hover:text-red-500"
+                            @click="deleteCharacter(character)"
+                          >
+                            <Icon
+                              icon="lucide:trash-2"
+                              class="size-3.5"
+                            />
+                          </button>
+                        </template>
+                        删除角色
+                      </NTooltip>
                     </div>
                   </div>
-                  <div class="flex shrink-0 items-center gap-1">
-                    <NTooltip>
-                      <template #trigger>
-                        <button
-                          class="flex size-7 items-center justify-center rounded-md text-(--ui-text-dimmed) transition-colors hover:bg-(--ui-bg-elevated) hover:text-(--ui-text)"
-                          @click="openEditCharacterDialog(character)"
-                        >
-                          <Icon
-                            icon="lucide:pencil"
-                            class="size-3.5"
-                          />
-                        </button>
-                      </template>
-                      编辑角色
-                    </NTooltip>
-                    <NTooltip>
-                      <template #trigger>
-                        <button
-                          class="flex size-7 items-center justify-center rounded-md text-(--ui-text-dimmed) transition-colors hover:bg-red-500/10 hover:text-red-500"
-                          @click="deleteCharacter(character)"
-                        >
-                          <Icon
-                            icon="lucide:trash-2"
-                            class="size-3.5"
-                          />
-                        </button>
-                      </template>
-                      删除角色
-                    </NTooltip>
+                </div>
+              </div>
+
+              <p
+                v-if="character.description"
+                class="mt-2 line-clamp-2 text-xs leading-relaxed text-(--ui-text-muted)"
+              >
+                {{ character.description }}
+              </p>
+
+              <div
+                v-if="
+                  character.traits ||
+                  character.currentState ||
+                  character.relationships
+                "
+                class="mt-3 grid gap-2 text-xs"
+              >
+                <div
+                  v-if="character.traits"
+                  class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                >
+                  <p class="text-[10px] text-(--ui-text-dimmed)">特征</p>
+                  <p
+                    class="mt-0.5 line-clamp-2 leading-relaxed text-(--ui-text-muted)"
+                  >
+                    {{ character.traits }}
+                  </p>
+                </div>
+                <div class="grid gap-2 sm:grid-cols-2">
+                  <div
+                    v-if="character.currentState"
+                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                  >
+                    <p class="text-[10px] text-(--ui-text-dimmed)">状态</p>
+                    <p
+                      class="mt-0.5 line-clamp-2 leading-relaxed text-(--ui-text-muted)"
+                    >
+                      {{ character.currentState }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="character.relationships"
+                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                  >
+                    <p class="text-[10px] text-(--ui-text-dimmed)">关系</p>
+                    <p
+                      class="mt-0.5 line-clamp-2 leading-relaxed text-(--ui-text-muted)"
+                    >
+                      {{ character.relationships }}
+                    </p>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <p
-              v-if="character.description"
-              class="mt-2 line-clamp-2 text-xs leading-relaxed text-(--ui-text-muted)"
-            >
-              {{ character.description }}
-            </p>
-
-            <div
-              v-if="
-                character.traits ||
-                character.currentState ||
-                character.relationships
-              "
-              class="mt-3 grid gap-2 text-xs"
-            >
               <div
-                v-if="character.traits"
-                class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                v-if="character.overallArc"
+                class="mt-3 rounded-md bg-primary-500/5 px-2 py-1.5 text-xs"
               >
-                <p class="text-[10px] text-(--ui-text-dimmed)">特征</p>
+                <p class="text-[10px] font-medium text-primary-500/80">
+                  故事弧线
+                </p>
                 <p
-                  class="mt-0.5 line-clamp-2 leading-relaxed text-(--ui-text-muted)"
+                  class="mt-0.5 line-clamp-3 leading-relaxed text-(--ui-text-muted)"
                 >
-                  {{ character.traits }}
+                  {{ character.overallArc }}
                 </p>
               </div>
-              <div class="grid gap-2 sm:grid-cols-2">
-                <div
-                  v-if="character.currentState"
-                  class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
-                >
-                  <p class="text-[10px] text-(--ui-text-dimmed)">状态</p>
-                  <p
-                    class="mt-0.5 line-clamp-2 leading-relaxed text-(--ui-text-muted)"
-                  >
-                    {{ character.currentState }}
-                  </p>
-                </div>
-                <div
-                  v-if="character.relationships"
-                  class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
-                >
-                  <p class="text-[10px] text-(--ui-text-dimmed)">关系</p>
-                  <p
-                    class="mt-0.5 line-clamp-2 leading-relaxed text-(--ui-text-muted)"
-                  >
-                    {{ character.relationships }}
-                  </p>
-                </div>
-              </div>
-            </div>
 
-            <div
-              v-if="character.overallArc"
-              class="mt-3 rounded-md bg-primary-500/5 px-2 py-1.5 text-xs"
-            >
-              <p class="text-[10px] font-medium text-primary-500/80">故事弧线</p>
-              <p
-                class="mt-0.5 line-clamp-3 leading-relaxed text-(--ui-text-muted)"
+              <div
+                v-if="character.appearances.length"
+                class="mt-auto border-t border-(--ui-border)/40 pt-2.5"
               >
-                {{ character.overallArc }}
-              </p>
-            </div>
-
-            <div
-              v-if="character.appearances.length"
-              class="mt-auto border-t border-(--ui-border)/40 pt-2.5"
-            >
-              <div class="mb-1.5 flex items-center justify-between gap-2">
-                <p class="text-[10px] text-(--ui-text-dimmed)">最近出场</p>
-                <button
-                  v-if="character.appearances.length > 2"
-                  class="text-[10px] text-primary-600 transition-colors hover:text-primary-500"
-                  @click="toggleCharacterAppearances(character.id)"
-                >
-                  {{
-                    isCharacterExpanded(character.id) ? '收起' : (
-                      `展开 ${character.appearances.length - 2} 条`
-                    )
-                  }}
-                </button>
-              </div>
-              <div class="space-y-1.5">
-                <NuxtLink
-                  v-for="appearance in character.appearances.slice(
-                    0,
-                    isCharacterExpanded(character.id) ? undefined : 2
-                  )"
-                  :key="`${appearance.chapterId}-${appearance.id}`"
-                  :to="`/novels/${novel.id}/chapters/${appearance.chapterId}`"
-                  class="block rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5 transition-colors hover:bg-(--ui-bg-elevated)"
-                >
-                  <div class="flex items-center justify-between gap-2">
-                    <p class="truncate text-xs text-(--ui-text)">
-                      Ch.{{ appearance.chapterNumber }}
-                      {{ appearance.chapterTitle }}
-                    </p>
-                    <span
-                      class="shrink-0 rounded bg-(--ui-bg-muted) px-1.5 py-0.5 text-[10px] text-(--ui-text-dimmed)"
-                    >
-                      {{ getRoleLabel(appearance.role) }}
-                    </span>
-                  </div>
-                  <p
-                    v-if="appearance.background || appearance.snippet"
-                    class="mt-0.5 line-clamp-1 text-[11px] leading-relaxed text-(--ui-text-muted)"
+                <div class="mb-1.5 flex items-center justify-between gap-2">
+                  <p class="text-[10px] text-(--ui-text-dimmed)">最近出场</p>
+                  <button
+                    v-if="character.appearances.length > 2"
+                    class="text-[10px] text-primary-600 transition-colors hover:text-primary-500"
+                    @click="toggleCharacterAppearances(character.id)"
                   >
-                    {{ appearance.background || appearance.snippet }}
-                  </p>
-                </NuxtLink>
+                    {{
+                      isCharacterExpanded(character.id) ? '收起' : (
+                        `展开 ${character.appearances.length - 2} 条`
+                      )
+                    }}
+                  </button>
+                </div>
+                <div class="space-y-1.5">
+                  <NuxtLink
+                    v-for="appearance in character.appearances.slice(
+                      0,
+                      isCharacterExpanded(character.id) ? undefined : 2
+                    )"
+                    :key="`${appearance.chapterId}-${appearance.id}`"
+                    :to="`/novels/${novel.id}/chapters/${appearance.chapterId}`"
+                    class="block rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5 transition-colors hover:bg-(--ui-bg-elevated)"
+                  >
+                    <div class="flex items-center justify-between gap-2">
+                      <p class="truncate text-xs text-(--ui-text)">
+                        Ch.{{ appearance.chapterNumber }}
+                        {{ appearance.chapterTitle }}
+                      </p>
+                      <span
+                        class="shrink-0 rounded bg-(--ui-bg-muted) px-1.5 py-0.5 text-[10px] text-(--ui-text-dimmed)"
+                      >
+                        {{ getRoleLabel(appearance.role) }}
+                      </span>
+                    </div>
+                    <p
+                      v-if="appearance.background || appearance.snippet"
+                      class="mt-0.5 line-clamp-1 text-[11px] leading-relaxed text-(--ui-text-muted)"
+                    >
+                      {{ appearance.background || appearance.snippet }}
+                    </p>
+                  </NuxtLink>
+                </div>
               </div>
-            </div>
-          </article>
+            </article>
+          </div>
+        </div>
+
+        <NovelCharacterRelationGraph
+          v-show="characterViewMode === 'graph'"
+          :characters="sortedCharacters"
+          class="flex-1 min-h-0 mt-2"
+        />
+
+        <div class="mt-4 border-t border-(--ui-border)/40 pt-4">
+          <NovelCharacterSuggestions
+            :novel-id="novelId"
+            @adopted="refreshCharacters()"
+          />
         </div>
       </section>
     </div>
@@ -1192,6 +1863,106 @@ async function generateCharacters() {
       </template>
     </NModal>
 
+    <!-- AI Generate Outline Dialog -->
+    <NModal
+      v-model:show="showGenerateOutlineDialog"
+      preset="card"
+      title="AI 生成大纲"
+      class="max-w-md"
+    >
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)"
+            >故事核心想法</label
+          >
+          <NInput
+            v-model:value="generateOutlineForm.idea"
+            type="textarea"
+            :autosize="{ minRows: 4, maxRows: 8 }"
+            placeholder="输入主线目标、核心冲突、结局方向等"
+          />
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">章节数量</label>
+          <NInputNumber
+            v-model:value="generateOutlineForm.chapterCount"
+            :min="3"
+            :max="200"
+            class="w-full"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showGenerateOutlineDialog = false">取消</NButton>
+          <NButton
+            type="primary"
+            :loading="generatingOutline"
+            @click="generateOutlines"
+          >
+            <template #icon><Icon icon="lucide:sparkles" /></template>
+            开始生成
+          </NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- AI Regenerate Later Outlines Dialog -->
+    <NModal
+      v-model:show="showRegenerateOutlineDialog"
+      preset="card"
+      title="重新规划后续大纲"
+      class="max-w-md"
+    >
+      <div class="space-y-4">
+        <NAlert type="info" title="仅替换起始章节及之后的大纲">
+          起始章节之前的大纲会被保留，生成结果需要你确认后手动保存。
+        </NAlert>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium text-(--ui-text)">起始章节</label>
+            <NInputNumber
+              v-model:value="regenerateOutlineForm.startChapter"
+              :min="1"
+              :max="200"
+              class="w-full"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium text-(--ui-text)">生成数量</label>
+            <NInputNumber
+              v-model:value="regenerateOutlineForm.chapterCount"
+              :min="3"
+              :max="200"
+              class="w-full"
+            />
+          </div>
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">后续规划方向</label>
+          <NInput
+            v-model:value="regenerateOutlineForm.idea"
+            type="textarea"
+            :autosize="{ minRows: 4, maxRows: 8 }"
+            placeholder="描述从这一章开始的剧情目标、转折、结局方向等"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showRegenerateOutlineDialog = false">取消</NButton>
+          <NButton
+            type="primary"
+            :loading="generatingOutline"
+            @click="regenerateOutlinesFromChapter"
+          >
+            <template #icon><Icon icon="lucide:refresh-cw" /></template>
+            重新生成
+          </NButton>
+        </div>
+      </template>
+    </NModal>
+
     <!-- AI Generate Characters Dialog -->
     <NModal
       v-model:show="showGenerateDialog"
@@ -1231,6 +2002,126 @@ async function generateCharacters() {
           >
             <template #icon><Icon icon="lucide:sparkles" /></template>
             开始生成
+          </NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <NModal
+      v-model:show="showPlotPointDialog"
+      preset="card"
+      title="添加情节线索"
+      style="max-width: 480px"
+    >
+      <div class="space-y-3">
+        <NFormItem label="描述">
+          <NInput
+            v-model:value="plotPointForm.description"
+            type="textarea"
+            placeholder="发生了什么关键事件？"
+            :rows="3"
+          />
+        </NFormItem>
+        <div class="grid grid-cols-2 gap-3">
+          <NFormItem label="类型">
+            <NSelect
+              v-model:value="plotPointForm.type"
+              :options="plotPointTypeOptions"
+            />
+          </NFormItem>
+          <NFormItem label="状态">
+            <NSelect
+              v-model:value="plotPointForm.status"
+              :options="plotPointStatusOptions"
+            />
+          </NFormItem>
+        </div>
+        <NFormItem label="关联章节（可选）">
+          <NSelect
+            v-model:value="plotPointForm.chapterId"
+            :options="
+              (chapters || []).map((c) => ({
+                label: `Ch.${c.chapterNumber} ${c.title}`,
+                value: c.id
+              }))
+            "
+            clearable
+            placeholder="选择关联章节"
+          />
+        </NFormItem>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton
+            size="small"
+            @click="showPlotPointDialog = false"
+            >取消</NButton
+          >
+          <NButton
+            type="primary"
+            size="small"
+            :loading="addingPlotPoint"
+            :disabled="!plotPointForm.description.trim()"
+            @click="savePlotPoint"
+          >
+            添加
+          </NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- Export Dialog -->
+    <NModal
+      v-model:show="showExportDialog"
+      preset="card"
+      title="导出小说"
+      style="max-width: 400px"
+    >
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">导出格式</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              class="rounded-lg border px-3 py-3 text-center transition-colors"
+              :class="exportFormat === 'txt' ? 'border-primary-500 bg-primary-500/5 text-primary-600' : 'border-(--ui-border)/40 text-(--ui-text-muted) hover:bg-(--ui-bg-elevated)'"
+              @click="exportFormat = 'txt'"
+            >
+              <Icon icon="lucide:file-text" class="mx-auto mb-1 size-5" />
+              <p class="text-xs">TXT</p>
+            </button>
+            <button
+              class="rounded-lg border px-3 py-3 text-center transition-colors"
+              :class="exportFormat === 'md' ? 'border-primary-500 bg-primary-500/5 text-primary-600' : 'border-(--ui-border)/40 text-(--ui-text-muted) hover:bg-(--ui-bg-elevated)'"
+              @click="exportFormat = 'md'"
+            >
+              <Icon icon="lucide:file-code" class="mx-auto mb-1 size-5" />
+              <p class="text-xs">Markdown</p>
+            </button>
+            <button
+              class="rounded-lg border px-3 py-3 text-center transition-colors"
+              :class="exportFormat === 'epub' ? 'border-primary-500 bg-primary-500/5 text-primary-600' : 'border-(--ui-border)/40 text-(--ui-text-muted) hover:bg-(--ui-bg-elevated)'"
+              @click="exportFormat = 'epub'"
+            >
+              <Icon icon="lucide:book-open" class="mx-auto mb-1 size-5" />
+              <p class="text-xs">EPUB</p>
+            </button>
+          </div>
+        </div>
+        <p class="text-xs text-(--ui-text-dimmed)">
+          导出内容包含小说标题、简介、所有章节正文。EPUB 格式可在电子书阅读器中打开。
+        </p>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton size="small" @click="showExportDialog = false">取消</NButton>
+          <NButton
+            type="primary"
+            size="small"
+            :loading="exporting"
+            @click="exportNovel"
+          >
+            <template #icon><Icon icon="lucide:download" /></template>
+            导出
           </NButton>
         </div>
       </template>

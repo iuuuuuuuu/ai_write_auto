@@ -226,7 +226,7 @@ export interface GenerationTask {
   novel: Novel
   chapter: Chapter | null
   type: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'paused' | 'cancelled' | 'completed' | 'failed'
   result: string | null
   error: string | null
   retryCount: number | null
@@ -252,7 +252,12 @@ export interface PromptTemplate {
   user: User | null
   name: string
   content: string
-  category: 'generation' | 'rewrite' | 'expand' | 'character_generation' | 'custom'
+  category:
+    | 'generation'
+    | 'rewrite'
+    | 'expand'
+    | 'character_generation'
+    | 'custom'
   isSystem: boolean | null
   createdAt: Date
 }
@@ -277,6 +282,24 @@ export interface UserPreference {
   user: User
   key: string
   value: string
+}
+
+export interface SchemaMigration {
+  [OptionalProps]?: 'id' | 'appliedAt'
+  id: number
+  version: string
+  source: string
+  appliedAt: Date
+}
+
+export interface ApiToken {
+  [OptionalProps]?: 'id' | 'lastUsedAt' | 'createdAt'
+  id: number
+  user: User
+  name: string
+  tokenHash: string
+  lastUsedAt: Date | null
+  createdAt: Date
 }
 
 // ─── Entity Schemas ───
@@ -756,6 +779,42 @@ export const UserPreferenceSchema = new EntitySchema<UserPreference>({
   }
 })
 
+export const SchemaMigrationSchema = new EntitySchema<SchemaMigration>({
+  name: 'SchemaMigration',
+  tableName: 'schema_migrations',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    version: { type: 'string', unique: true },
+    source: { type: 'string' },
+    appliedAt: {
+      type: UnixTimestampType,
+      fieldName: 'applied_at',
+      onCreate: () => new Date()
+    }
+  }
+})
+
+export const ApiTokenSchema = new EntitySchema<ApiToken>({
+  name: 'ApiToken',
+  tableName: 'api_tokens',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    name: { type: 'string' },
+    tokenHash: { type: 'string', fieldName: 'token_hash' },
+    lastUsedAt: {
+      type: UnixTimestampType,
+      nullable: true,
+      fieldName: 'last_used_at'
+    },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    }
+  }
+})
+
 export const allEntities = [
   UserSchema,
   SiteConfigSchema,
@@ -775,5 +834,7 @@ export const allEntities = [
   TokenUsageSchema,
   PromptTemplateSchema,
   WritingStatSchema,
-  UserPreferenceSchema
+  UserPreferenceSchema,
+  SchemaMigrationSchema,
+  ApiTokenSchema
 ]

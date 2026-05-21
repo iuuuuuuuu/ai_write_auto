@@ -41,6 +41,9 @@ export function getTokenFromEvent(event: any): string | null {
 }
 
 export function requireAuth(event: any): JwtPayload {
+  if (event.context?.auth) {
+    return event.context.auth as JwtPayload
+  }
   const token = getTokenFromEvent(event)
   if (!token) {
     throw createError({ statusCode: 401, message: 'Unauthorized' })

@@ -13,7 +13,8 @@ const updateChapterSchema = z.object({
   summary: z.string().optional(),
   status: z.enum(['draft', 'generated', 'edited', 'final']).optional(),
   chapterNumber: z.number().int().positive().optional(),
-  expectedUpdatedAt: z.string().optional()
+  expectedUpdatedAt: z.string().optional(),
+  source: z.enum(['ai_generated', 'user_edited']).optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -59,7 +60,12 @@ export default defineEventHandler(async (event) => {
   wrap(chapter).assign(updates)
   await em.flush()
 
-  if (data.content !== undefined) {
+  const normalizeText = (text: string | null | undefined) =>
+    (text ?? '').replace(/\s/g, '')
+  if (
+    data.content !== undefined &&
+    normalizeText(data.content) !== normalizeText(chapter.content)
+  ) {
     const versions = await em.find(
       ChapterVersionSchema,
       { chapter: chapterId },
@@ -70,7 +76,7 @@ export default defineEventHandler(async (event) => {
       chapter: chapterId,
       versionNumber: versions.length + 1,
       content: data.content,
-      source: 'user_edited'
+      source: data.source || 'user_edited'
     })
     await em.flush()
 

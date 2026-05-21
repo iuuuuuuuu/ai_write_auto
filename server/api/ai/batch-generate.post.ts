@@ -42,6 +42,23 @@ export default defineEventHandler(async (event) => {
   })
   await em.flush()
   const taskId = task.id
+  const totalChapters = data.toChapter - data.fromChapter + 1
+
+  async function readTaskStatus() {
+    const currentTask = await em.findOne(GenerationTaskSchema, { id: taskId })
+    return currentTask?.status || 'running'
+  }
+
+  async function waitWhilePaused(controller: ReadableStreamDefaultController<Uint8Array>, encoder: TextEncoder) {
+    while ((await readTaskStatus()) === 'paused') {
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({ type: 'paused', taskId })}\n\n`
+        )
+      )
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    }
+  }
 
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
@@ -52,9 +69,20 @@ export default defineEventHandler(async (event) => {
           chapterNum <= data.toChapter;
           chapterNum++
         ) {
+          await waitWhilePaused(controller, encoder)
+          const currentStatus = await readTaskStatus()
+          if (currentStatus === 'cancelled') {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: 'cancelled', taskId })}\n\n`
+              )
+            )
+            return
+          }
+
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ type: 'progress', current: chapterNum, total: data.toChapter - data.fromChapter + 1 })}\n\n`
+              `data: ${JSON.stringify({ type: 'progress', taskId, current: chapterNum, completed: chapterNum - data.fromChapter, total: totalChapters })}\n\n`
             )
           )
 
@@ -88,11 +116,21 @@ export default defineEventHandler(async (event) => {
             maxTokens: aiConfig.maxTokens || 4096,
             messages: prompt
           })) {
+            const liveStatus = await readTaskStatus()
+            if (liveStatus === 'cancelled') {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ type: 'cancelled', taskId })}\n\n`
+                )
+              )
+              return
+            }
+
             if (chunk.content) {
               generatedContent += chunk.content
               controller.enqueue(
                 encoder.encode(
-                  `data: ${JSON.stringify({ type: 'chunk', chapter: chapterNum, content: chunk.content })}\n\n`
+                  `data: ${JSON.stringify({ type: 'chunk', taskId, chapter: chapterNum, content: chunk.content })}\n\n`
                 )
               )
             }
@@ -122,7 +160,7 @@ export default defineEventHandler(async (event) => {
 
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ type: 'chapter_done', chapter: chapterNum })}\n\n`
+              `data: ${JSON.stringify({ type: 'chapter_done', taskId, chapter: chapterNum, completed: chapterNum - data.fromChapter + 1, total: totalChapters })}\n\n`
             )
           )
         }
@@ -133,7 +171,7 @@ export default defineEventHandler(async (event) => {
         })
 
         controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`)
+          encoder.encode(`data: ${JSON.stringify({ type: 'done', taskId, completed: totalChapters, total: totalChapters })}\n\n`)
         )
       } catch (e: any) {
         await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
@@ -143,7 +181,7 @@ export default defineEventHandler(async (event) => {
 
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ type: 'error', message: e.message })}\n\n`
+            `data: ${JSON.stringify({ type: 'error', taskId, message: e.message })}\n\n`
           )
         )
       } finally {

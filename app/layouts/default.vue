@@ -17,6 +17,8 @@ function isActive(to: string) {
 }
 
 const settingsDrawerOpen = useState('layout-settings-drawer', () => false)
+
+useBackupNotification()
 </script>
 
 <template>
@@ -76,6 +78,7 @@ const settingsDrawerOpen = useState('layout-settings-drawer', () => false)
           </div>
           <span class="text-sm font-semibold text-(--ui-text)">{{ t('common.appName') }}</span>
         </div>
+        <NotificationCenter />
         <button
           class="flex items-center justify-center w-7 h-7 rounded-md text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/60 transition-colors"
           @click="settingsDrawerOpen = true"

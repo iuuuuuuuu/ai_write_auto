@@ -50,11 +50,27 @@ const { t } = useI18n()
         </div>
       </NTabPane>
       <NTabPane
+        name="writing"
+        tab="写作目标"
+      >
+        <div class="mt-4">
+          <SettingsWritingGoals />
+        </div>
+      </NTabPane>
+      <NTabPane
         name="usage"
         tab="用量"
       >
         <div class="mt-4">
           <SettingsUsage />
+        </div>
+      </NTabPane>
+      <NTabPane
+        name="openapi"
+        tab="Open API"
+      >
+        <div class="mt-4">
+          <SettingsOpenApi />
         </div>
       </NTabPane>
     </NTabs>

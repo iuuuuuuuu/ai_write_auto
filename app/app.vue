@@ -10,6 +10,15 @@ const naiveTheme = computed(() => ({
       "'Geist', 'PingFang SC', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif"
   }
 }))
+
+// 全局 AI 连通性检测，启动时检测一次，之后每 5 分钟轮询
+if (import.meta.client) {
+  useAiConnectivity({
+    immediate: true,
+    checkConnectivity: true,
+    pollInterval: 5 * 60 * 1000
+  })
+}
 </script>
 
 <template>

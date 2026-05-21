@@ -58,6 +58,7 @@ function toggleDarkMode() {
 
       <!-- Right: Action Buttons -->
       <div class="flex items-center gap-1">
+        <NotificationCenter />
         <button
           class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/70 transition-colors"
           @click="toggleDarkMode"

@@ -7,6 +7,11 @@ const outlineGenSchema = z.object({
   novelId: z.number().int().positive(),
   idea: z.string().min(1),
   chapterCount: z.number().int().min(3).max(200).default(20),
+  startChapter: z.number().int().min(1).optional(),
+  existingOutlines: z.array(z.object({
+    chapterNumber: z.number().int().positive(),
+    description: z.string()
+  })).optional(),
   aiConfigId: z.number().int().positive().optional()
 })
 
@@ -23,17 +28,26 @@ export default defineEventHandler(async (event) => {
 
   const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
 
+  const startChapter = data.startChapter || 1
+  const existingContext = data.existingOutlines?.length ?
+      `\n\n已有大纲（保留参考）：\n${data.existingOutlines
+        .filter((item) => item.chapterNumber < startChapter)
+        .map((item) => `第${item.chapterNumber}章：${item.description}`)
+        .join('\n')}`
+    : ''
+
   const messages = [
     {
       role: 'system' as const,
-      content: `你是一位专业的小说策划师。请根据用户提供的故事核心想法，生成一个${data.chapterCount}章的章节大纲。
+      content: `你是一位专业的小说策划师。请根据用户提供的故事核心想法，生成章节大纲。
+从第 ${startChapter} 章开始，连续生成 ${data.chapterCount} 章。
 每章用一句话描述核心内容。
-返回 JSON 数组格式：[{"chapterNumber": 1, "description": "..."}]
+返回 JSON 数组格式：[{"chapterNumber": ${startChapter}, "description": "..."}]
 只返回 JSON，不要其他内容。`
     },
     {
       role: 'user' as const,
-      content: `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}\n故事核心想法：${data.idea}`
+      content: `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}\n故事核心想法：${data.idea}${existingContext}`
     }
   ]
 

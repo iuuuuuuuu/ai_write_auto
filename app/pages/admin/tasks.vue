@@ -1,10 +1,19 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
+type TaskStatus = 'pending' | 'running' | 'paused' | 'cancelled' | 'completed' | 'failed'
+type TaskAction = 'retry' | 'cancel' | 'pause' | 'resume'
+
+type TaskStatusCounts = Record<TaskStatus, number>
+
+type TasksResponse = {
+  statusCounts?: Partial<TaskStatusCounts>
+}
+
 interface TaskItem {
   id: number
   type: string
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: TaskStatus
   error: string | null
   retryCount: number | null
   tokensUsed: number | null
@@ -13,11 +22,12 @@ interface TaskItem {
   completedAt: string | null
 }
 
+const message = useMessage()
 const statusFilter = ref('all')
 const typeFilter = ref('all')
 
 const queryParams = computed(() => {
-  const p: Record<string, any> = {}
+  const p: Record<string, string> = {}
   if (statusFilter.value !== 'all') p.status = statusFilter.value
   if (typeFilter.value !== 'all') p.type = typeFilter.value
   return p
@@ -37,29 +47,55 @@ const {
   params: queryParams
 })
 
-const statusCounts = ref({ pending: 0, running: 0, completed: 0, failed: 0 })
+const statusCounts = ref<TaskStatusCounts>({
+  pending: 0,
+  running: 0,
+  paused: 0,
+  cancelled: 0,
+  completed: 0,
+  failed: 0
+})
 
 watch(
   tasks,
   async () => {
-    const data = await $fetch<any>('/api/admin/tasks', {
+    const data = await $fetch<TasksResponse>('/api/admin/tasks', {
       params: { page: 1, pageSize: 1 }
     })
-    if (data.statusCounts) statusCounts.value = data.statusCounts
+    if (data.statusCounts) {
+      statusCounts.value = { ...statusCounts.value, ...data.statusCounts }
+    }
   },
   { immediate: true }
 )
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : '任务操作失败'
+}
+
+function actionLabel(action: TaskAction) {
+  const labels: Record<TaskAction, string> = {
+    retry: '重试',
+    cancel: '取消',
+    pause: '暂停',
+    resume: '继续'
+  }
+  return labels[action]
+}
+
 const operating = ref<number | null>(null)
 
-async function handleAction(taskId: number, action: 'retry' | 'cancel') {
+async function handleAction(taskId: number, action: TaskAction) {
   operating.value = taskId
   try {
     await $fetch(`/api/admin/tasks/${taskId}`, {
       method: 'PUT',
       body: { action }
     })
-    refresh()
+    await refresh()
+    message.success(`任务已${actionLabel(action)}`)
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
   } finally {
     operating.value = null
   }
@@ -69,6 +105,8 @@ const statusOptions = [
   { label: '全部状态', value: 'all' },
   { label: '等待中', value: 'pending' },
   { label: '运行中', value: 'running' },
+  { label: '已暂停', value: 'paused' },
+  { label: '已取消', value: 'cancelled' },
   { label: '已完成', value: 'completed' },
   { label: '失败', value: 'failed' }
 ]
@@ -76,14 +114,15 @@ const statusOptions = [
 const typeOptions = [
   { label: '全部类型', value: 'all' },
   { label: '生成', value: 'generate' },
+  { label: '批量生成', value: 'batch_generate' },
   { label: '摘要提取', value: 'extract_summary' },
   { label: '角色提取', value: 'extract_characters' }
 ]
 
-function statusColor(status: string) {
+function statusColor(status: TaskStatus) {
   if (status === 'completed') return 'success'
   if (status === 'running') return 'info'
-  if (status === 'failed') return 'error'
+  if (status === 'failed' || status === 'cancelled') return 'error'
   return 'warning'
 }
 </script>
@@ -101,7 +140,7 @@ function statusColor(status: string) {
     </div>
 
     <!-- Status Summary -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div class="grid grid-cols-2 lg:grid-cols-6 gap-3">
       <div class="card-surface p-3">
         <div class="flex items-center gap-2">
           <span class="size-2 rounded-full bg-amber-400" />
@@ -122,6 +161,28 @@ function statusColor(status: string) {
           class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
         >
           {{ statusCounts.running }}
+        </p>
+      </div>
+      <div class="card-surface p-3">
+        <div class="flex items-center gap-2">
+          <span class="size-2 rounded-full bg-yellow-400" />
+          <p class="text-xs text-(--ui-text-dimmed)">已暂停</p>
+        </div>
+        <p
+          class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
+        >
+          {{ statusCounts.paused }}
+        </p>
+      </div>
+      <div class="card-surface p-3">
+        <div class="flex items-center gap-2">
+          <span class="size-2 rounded-full bg-slate-400" />
+          <p class="text-xs text-(--ui-text-dimmed)">已取消</p>
+        </div>
+        <p
+          class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
+        >
+          {{ statusCounts.cancelled }}
         </p>
       </div>
       <div class="card-surface p-3">
@@ -217,7 +278,7 @@ function statusColor(status: string) {
           </div>
           <div class="flex gap-2">
             <NButton
-              v-if="task.status === 'failed'"
+              v-if="task.status === 'failed' || task.status === 'cancelled'"
               size="small"
               secondary
               :loading="operating === task.id"
@@ -226,7 +287,29 @@ function statusColor(status: string) {
               重试
             </NButton>
             <NButton
-              v-if="task.status === 'pending' || task.status === 'running'"
+              v-if="task.status === 'running'"
+              size="small"
+              secondary
+              :loading="operating === task.id"
+              @click="handleAction(task.id, 'pause')"
+            >
+              暂停
+            </NButton>
+            <NButton
+              v-if="task.status === 'paused'"
+              size="small"
+              secondary
+              :loading="operating === task.id"
+              @click="handleAction(task.id, 'resume')"
+            >
+              继续
+            </NButton>
+            <NButton
+              v-if="
+                task.status === 'pending' ||
+                task.status === 'running' ||
+                task.status === 'paused'
+              "
               size="small"
               quaternary
               type="error"

@@ -27,3 +27,5 @@ logs
 data/
 *.db
 .playwright-mcp
+*-plan.md
+*plan*.md

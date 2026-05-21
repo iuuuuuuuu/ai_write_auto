@@ -22,11 +22,14 @@ export function buildOrmConfig(dbConfig?: DbConfig): Options {
       dbName: mysql.database,
       entities: allEntities,
       discovery: { disableDynamicFileAccess: true },
-      allowGlobalContext: true,
+      allowGlobalContext: true
     }
   }
 
-  const dbPath = resolve(process.cwd(), config.sqlite?.path || './data/novel.db')
+  const dbPath = resolve(
+    process.cwd(),
+    config.sqlite?.path || './data/novel.db'
+  )
   const dir = dirname(dbPath)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true })
@@ -37,7 +40,7 @@ export function buildOrmConfig(dbConfig?: DbConfig): Options {
     dbName: dbPath,
     entities: allEntities,
     discovery: { disableDynamicFileAccess: true },
-    allowGlobalContext: true,
+    allowGlobalContext: true
   }
 }
 
@@ -64,14 +67,19 @@ export function resetOrm(): void {
   _orm = null
 }
 
-export async function testConnection(config: DbConfig): Promise<{ success: boolean; error?: string }> {
+export async function testConnection(
+  config: DbConfig
+): Promise<{ success: boolean; error?: string }> {
   try {
     const orm = await MikroORM.init(buildOrmConfig(config))
     const conn = orm.em.getConnection()
     await conn.execute('SELECT 1')
     await orm.close()
     return { success: true }
-  } catch (e: any) {
-    return { success: false, error: e.message || 'Connection failed' }
+  } catch (error: unknown) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Connection failed'
+    }
   }
 }

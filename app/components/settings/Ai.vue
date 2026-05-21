@@ -19,8 +19,18 @@ interface AiConfigItem {
   enabled: boolean
 }
 
+type AiStatusResponse = {
+  available: boolean
+  checkedAt: string
+  checkedConnectivity: boolean
+  reason: string | null
+}
+
 const { t } = useI18n()
 const message = useMessage()
+
+const checkingConnectivity = ref(false)
+const connectivityStatus = ref<AiStatusResponse | null>(null)
 
 const purposeOptions = computed(() => [
   { label: t('ai.purpose.generation'), value: 'generation' },
@@ -45,6 +55,50 @@ const editingId = ref<number | null>(null)
 const showForm = ref(false)
 const saving = ref(false)
 const deletingId = ref<number | null>(null)
+const applyingPreset = ref<string | null>(null)
+
+const defaultGenerationConfig = computed(() => {
+  return configs.value.find((c) => c.purpose === 'generation' && c.isDefault)
+})
+
+async function applyPreset(preset: 'creative' | 'balanced' | 'precise') {
+  const config = defaultGenerationConfig.value
+  if (!config) {
+    message.warning('请先添加一个内容生成模型并设为默认')
+    return
+  }
+
+  applyingPreset.value = preset
+  try {
+    const presets = {
+      creative: { temperature: '0.9', maxTokens: 4096 },
+      balanced: { temperature: '0.7', maxTokens: 4096 },
+      precise: { temperature: '0.3', maxTokens: 2048 }
+    }
+    const p = presets[preset]
+
+    await $fetch('/api/ai/config', {
+      method: 'POST',
+      body: {
+        id: config.id,
+        name: config.name,
+        purpose: config.purpose,
+        apiUrl: config.apiUrl,
+        model: config.model,
+        temperature: p.temperature,
+        maxTokens: p.maxTokens,
+        isDefault: true,
+        enabled: config.enabled
+      }
+    })
+    message.success(`已切换至${preset === 'creative' ? '创意' : preset === 'balanced' ? '平衡' : '精确'}模式`)
+    await refresh()
+  } catch {
+    message.error('切换预设失败')
+  } finally {
+    applyingPreset.value = null
+  }
+}
 
 const form = reactive({
   id: undefined as number | undefined,
@@ -104,6 +158,31 @@ function startEdit(config: AiConfigItem) {
   showForm.value = true
 }
 
+async function checkConnectivity(showSuccess = true) {
+  checkingConnectivity.value = true
+  try {
+    const result = await $fetch<AiStatusResponse>('/api/ai/status', {
+      params: { check: true }
+    })
+    connectivityStatus.value = result
+    if (result.available) {
+      if (showSuccess) message.success('AI 连通性检测通过')
+    } else {
+      message.error(result.reason || 'AI 当前不可用')
+    }
+  } catch {
+    connectivityStatus.value = {
+      available: false,
+      checkedAt: new Date().toISOString(),
+      checkedConnectivity: true,
+      reason: 'AI 连通性检测失败'
+    }
+    message.error('AI 连通性检测失败')
+  } finally {
+    checkingConnectivity.value = false
+  }
+}
+
 async function saveConfig() {
   if (!form.name.trim() || !form.apiUrl.trim() || !form.model.trim()) {
     message.error('请填写必填字段')
@@ -134,6 +213,7 @@ async function saveConfig() {
     message.success(editingId.value ? '配置已更新' : '配置已创建')
     showForm.value = false
     await refresh()
+    await checkConnectivity(false)
   } catch (error) {
     message.error('保存失败')
   } finally {
@@ -159,6 +239,7 @@ async function setDefault(config: AiConfigItem) {
     })
     message.success('默认模型已更新')
     await refresh()
+    await checkConnectivity(false)
   } catch {
     message.error('更新失败')
   }
@@ -173,6 +254,7 @@ async function deleteConfig(config: AiConfigItem) {
     })
     message.success('配置已删除')
     await refresh()
+    await checkConnectivity(false)
   } catch {
     message.error('删除失败')
   } finally {
@@ -195,11 +277,63 @@ async function deleteConfig(config: AiConfigItem) {
       </div>
       <NButton
         size="small"
+        secondary
+        :loading="checkingConnectivity"
+        @click="checkConnectivity()"
+      >
+        <template #icon><Icon icon="lucide:wifi" /></template>
+        检测连通性
+      </NButton>
+      <NButton
+        size="small"
         type="primary"
         @click="startCreate()"
       >
         <template #icon><Icon icon="lucide:plus" /></template>
         新增
+      </NButton>
+    </div>
+
+    <NAlert
+      v-if="connectivityStatus"
+      :type="connectivityStatus.available ? 'success' : 'warning'"
+      :title="connectivityStatus.available ? 'AI 连接可用' : 'AI 当前不可用'"
+    >
+      {{ connectivityStatus.reason || '内容生成模型连通性正常。' }}
+      <span class="ml-2 text-xs text-(--ui-text-dimmed)">
+        {{ new Date(connectivityStatus.checkedAt).toLocaleString() }}
+      </span>
+    </NAlert>
+
+    <!-- Presets -->
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-(--ui-text-dimmed)">快速切换：</span>
+      <NButton
+        size="tiny"
+        :loading="applyingPreset === 'creative'"
+        :type="defaultGenerationConfig?.temperature === '0.9' ? 'primary' : 'default'"
+        @click="applyPreset('creative')"
+      >
+        <template #icon><Icon icon="lucide:flame" /></template>
+        创意模式
+      </NButton>
+      <NButton
+        size="tiny"
+        :loading="applyingPreset === 'balanced'"
+        :type="defaultGenerationConfig?.temperature === '0.7' ? 'primary' : 'default'"
+        @click="applyPreset('balanced')"
+      >
+        <template #icon><Icon icon="lucide:scale" /></template>
+        平衡模式
+      </NButton>
+      <NButton
+        size="tiny"
+        :loading="applyingPreset === 'precise'"
+        :type="defaultGenerationConfig?.temperature === '0.3' ? 'primary' : 'default'"
+        @click="applyPreset('precise')"
+      >
+        <template #icon><Icon icon="lucide:crosshair" /></template>
+        精确模式
       </NButton>
     </div>
 

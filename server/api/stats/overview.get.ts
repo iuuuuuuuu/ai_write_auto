@@ -1,4 +1,4 @@
-import { NovelSchema, ChapterSchema, WritingStatSchema } from '../../database/entities'
+import { NovelSchema, ChapterSchema, WritingStatSchema, UserPreferenceSchema } from '../../database/entities'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -10,9 +10,17 @@ export default defineEventHandler(async (event) => {
 
   const today: string = new Date().toISOString().split('T')[0]!
   const todayStats = await em.findOne(WritingStatSchema, { user: auth.userId, date: today })
+  const prefs = await em.find(UserPreferenceSchema, { user: auth.userId })
+  const prefMap = new Map(prefs.map((pref) => [pref.key, pref.value]))
+  const dailyGoal = Number(prefMap.get('writing_daily_goal') || 2000)
+  const chapterGoal = Number(prefMap.get('writing_chapter_goal') || 3000)
+  const todayWords = todayStats?.wordsWritten || 0
 
   return {
-    todayWords: todayStats?.wordsWritten || 0,
+    todayWords,
+    dailyGoal,
+    dailyProgress: dailyGoal > 0 ? Math.min(Math.round((todayWords / dailyGoal) * 100), 100) : 0,
+    chapterGoal,
     streak: 0,
     totalNovels: novels.length,
     totalWords,

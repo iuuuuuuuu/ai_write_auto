@@ -130,6 +130,7 @@
     "batchGenerate": "Batch Generate",
     "expand": "Expand",
     "rewrite": "Rewrite",
+    "continue": "Continue",
     "extract": "Extract Info",
     "outline": "Outline",
     "content": "Content",

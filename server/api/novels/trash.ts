@@ -70,4 +70,54 @@ export default defineEventHandler(async (event) => {
 
     throw createError({ statusCode: 400, message: 'Invalid type' })
   }
+
+  if (method === 'DELETE') {
+    const body = await readBody(event)
+    const { type, id } = body
+
+    if (type === 'novel') {
+      const novel = await em.findOne(NovelSchema, {
+        id,
+        user: auth.userId,
+      })
+
+      if (!novel) {
+        throw createError({ statusCode: 404, message: 'Not found' })
+      }
+
+      // 永久删除该小说的所有章节版本、笔记、角色关联等
+      await em.nativeDelete('ChapterVersion', { chapter: { novel: id } })
+      await em.nativeDelete('ChapterNote', { chapter: { novel: id } })
+      await em.nativeDelete('ChapterCharacter', { chapter: { novel: id } })
+      await em.nativeDelete('CharacterAppearance', { novel: id })
+      await em.nativeDelete('PlotPoint', { novel: id })
+      await em.nativeDelete('StoryArc', { novel: id })
+      await em.nativeDelete('NovelOutline', { novel: id })
+      await em.nativeDelete('Chapter', { novel: id })
+      await em.nativeDelete('Character', { novel: id })
+      await em.nativeDelete('GenerationTask', { novel: id })
+      await em.removeAndFlush(novel)
+      return { success: true }
+    }
+
+    if (type === 'chapter') {
+      const chapter = await em.findOne(ChapterSchema, {
+        id,
+        novel: { user: auth.userId },
+      })
+
+      if (!chapter) {
+        throw createError({ statusCode: 404, message: 'Not found' })
+      }
+
+      await em.nativeDelete('ChapterVersion', { chapter: id })
+      await em.nativeDelete('ChapterNote', { chapter: id })
+      await em.nativeDelete('ChapterCharacter', { chapter: id })
+      await em.nativeDelete('CharacterAppearance', { chapter: id })
+      await em.removeAndFlush(chapter)
+      return { success: true }
+    }
+
+    throw createError({ statusCode: 400, message: 'Invalid type' })
+  }
 })

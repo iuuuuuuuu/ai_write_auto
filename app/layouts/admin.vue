@@ -4,6 +4,8 @@ const route = useRoute()
 const { user, logout } = useAuth()
 const sidebarOpen = ref(false)
 
+useBackupNotification()
+
 const adminNavGroups = computed(() => [
   {
     title: '数据管理',
