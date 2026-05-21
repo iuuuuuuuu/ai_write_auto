@@ -1,4 +1,7 @@
-import { NovelSchema, ChapterNoteSchema } from '../../../../../../database/entities'
+import {
+  NovelSchema,
+  ChapterNoteSchema
+} from '../../../../../database/entities'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -6,7 +9,10 @@ export default defineEventHandler(async (event) => {
   const chapterId = Number(getRouterParam(event, 'chapterId'))
   const em = useEm(event)
 
-  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: novelId,
+    user: auth.userId
+  })
   if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
 
   const { content } = await readBody(event)
@@ -18,7 +24,7 @@ export default defineEventHandler(async (event) => {
   } else {
     note = em.create(ChapterNoteSchema, {
       chapter: chapterId,
-      content: content || '',
+      content: content || ''
     })
     em.persist(note)
   }

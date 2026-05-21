@@ -18,7 +18,9 @@ function getNovelTo() {
 }
 
 /* ─────────────── 左侧边栏状态 ─────────────── */
-const leftSidebarTab = ref<'chapters' | 'characters' | 'versions' | 'notes'>('chapters')
+const leftSidebarTab = ref<'chapters' | 'characters' | 'versions' | 'notes'>(
+  'chapters'
+)
 const sidebarCollapsed = ref(false)
 
 /* ─────────────── 版本管理 ─────────────── */
@@ -55,18 +57,25 @@ const noteContent = ref('')
 const savingNote = ref(false)
 const noteDebounceTimer = ref<ReturnType<typeof setTimeout> | null>(null)
 
-watch(() => chapterNote.value, (note) => {
-  if (note) noteContent.value = note.content || ''
-}, { immediate: true })
+watch(
+  () => chapterNote.value,
+  (note) => {
+    if (note) noteContent.value = note.content || ''
+  },
+  { immediate: true }
+)
 
 async function saveNote() {
   if (savingNote.value) return
   savingNote.value = true
   try {
-    await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}/notes`, {
-      method: 'PUT',
-      body: { content: noteContent.value }
-    })
+    await $fetch(
+      `/api/novels/${novelId.value}/chapters/${chapterId.value}/notes`,
+      {
+        method: 'PUT',
+        body: { content: noteContent.value }
+      }
+    )
     await refreshChapterNote()
   } catch (e: any) {
     message.error(e?.data?.message || '笔记保存失败')
@@ -196,9 +205,12 @@ const { data: aiConfigs } = await useFetch<
     enabled: boolean
   }>
 >('/api/ai/config', { default: () => [] })
-const { data: preferences } = await useFetch<Record<string, string>>('/api/settings/preferences', {
-  default: () => ({})
-})
+const { data: preferences } = await useFetch<Record<string, string>>(
+  '/api/settings/preferences',
+  {
+    default: () => ({})
+  }
+)
 const { aiStatus, refresh: refreshAiStatus } = useAiConnectivity()
 const { recordReading } = useReadingHistory()
 
@@ -508,27 +520,42 @@ const generationModelOptions = computed(() =>
 )
 
 const selectedGenerationConfig = computed(() => {
-  return aiConfigs.value.find((config) => config.id === selectedAiConfigId.value)
+  return aiConfigs.value.find(
+    (config) => config.id === selectedAiConfigId.value
+  )
 })
 
-const plainTextContent = computed(() => content.value.replace(/[#>*_`\-[\]()]/g, '').trim())
-const currentWordCount = computed(() => plainTextContent.value.replace(/\s/g, '').length)
-const currentLineCount = computed(() => content.value ? content.value.split('\n').length : 0)
-const chapterGoal = computed(() => Number(preferences.value.writing_chapter_goal || 3000))
+const plainTextContent = computed(() =>
+  content.value.replace(/[#>*_`\-[\]()]/g, '').trim()
+)
+const currentWordCount = computed(
+  () => plainTextContent.value.replace(/\s/g, '').length
+)
+const currentLineCount = computed(() =>
+  content.value ? content.value.split('\n').length : 0
+)
+const chapterGoal = computed(() =>
+  Number(preferences.value.writing_chapter_goal || 3000)
+)
 const chapterProgress = computed(() => {
   if (chapterGoal.value <= 0) return 0
-  return Math.min(Math.round((currentWordCount.value / chapterGoal.value) * 100), 100)
+  return Math.min(
+    Math.round((currentWordCount.value / chapterGoal.value) * 100),
+    100
+  )
 })
 const saveStatusText = computed(() => {
   if (conflictDetected.value) return '保存冲突'
   if (saving.value) return '保存中...'
   if (content.value !== chapter.value?.content) return '待保存'
-  if (lastSaved.value) return `已保存 ${lastSaved.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
+  if (lastSaved.value)
+    return `已保存 ${lastSaved.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
   return '已同步'
 })
 const saveStatusClass = computed(() => {
   if (conflictDetected.value) return 'text-red-500'
-  if (saving.value || content.value !== chapter.value?.content) return 'text-amber-500'
+  if (saving.value || content.value !== chapter.value?.content)
+    return 'text-amber-500'
   return 'text-emerald-500'
 })
 
@@ -686,9 +713,12 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
 
 const showFragmentMenu = ref(false)
 
-async function doFragment(type: 'dialogue' | 'description' | 'action' | 'monologue') {
+async function doFragment(
+  type: 'dialogue' | 'description' | 'action' | 'monologue'
+) {
   if (!aiStatus.value.available) {
-    aiActionResult.value = aiStatus.value.reason || 'AI 当前不可用，仍可手动写作'
+    aiActionResult.value =
+      aiStatus.value.reason || 'AI 当前不可用，仍可手动写作'
     aiActionType.value = 'continue'
     return
   }
@@ -745,7 +775,12 @@ async function doFragment(type: 'dialogue' | 'description' | 'action' | 'monolog
 }
 
 const trackChangesDiff = computed<DiffLine[]>(() => {
-  if (aiActionType.value !== 'rewrite' || !selectedText.value || !aiActionResult.value) return []
+  if (
+    aiActionType.value !== 'rewrite' ||
+    !selectedText.value ||
+    !aiActionResult.value
+  )
+    return []
   return computeLineDiff(selectedText.value, aiActionResult.value)
 })
 
@@ -1641,11 +1676,20 @@ onBeforeUnmount(() => {
           <span class="text-[10px] text-(--ui-text-dimmed)">
             作者笔记（仅自己可见）
           </span>
-          <span v-if="savingNote" class="text-[10px] text-(--ui-text-dimmed)">
-            <NSpin size="tiny" class="inline-block mr-1" />
+          <span
+            v-if="savingNote"
+            class="text-[10px] text-(--ui-text-dimmed)"
+          >
+            <NSpin
+              size="tiny"
+              class="inline-block mr-1"
+            />
             保存中...
           </span>
-          <span v-else-if="chapterNote?.updatedAt" class="text-[10px] text-(--ui-text-dimmed)">
+          <span
+            v-else-if="chapterNote?.updatedAt"
+            class="text-[10px] text-(--ui-text-dimmed)"
+          >
             已保存
           </span>
         </div>
@@ -1665,139 +1709,177 @@ onBeforeUnmount(() => {
       <!-- Editor -->
       <div class="flex-1 min-h-0 flex flex-col">
         <div class="flex-1 overflow-y-auto px-6 py-6">
-        <div class="max-w-3xl mx-auto">
-          <div
-            ref="editorContainerRef"
-            class="w-full min-h-[calc(100vh-160px)] milkdown-editor text-(--ui-text) text-[15px] leading-[2]"
-            :class="zenMode ? 'text-base leading-[2.2]' : ''"
-            @mouseup="handleTextSelect"
-          />
-        </div>
+          <div class="max-w-3xl mx-auto">
+            <div
+              ref="editorContainerRef"
+              class="w-full min-h-[calc(100vh-160px)] milkdown-editor text-(--ui-text) text-[15px] leading-[2]"
+              :class="zenMode ? 'text-base leading-[2.2]' : ''"
+              @mouseup="handleTextSelect"
+            />
+          </div>
 
-        <!-- AI Action Result -->
-        <div
-          v-if="aiActionResult"
-          class="max-w-3xl mx-auto mt-4 p-4 card-surface border-l-2 border-l-primary-400"
-        >
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2">
-              <span
-                class="size-1.5 rounded-full bg-primary-400 animate-pulse"
-              />
-              <p
-                class="text-xs font-medium text-primary-600 dark:text-primary-400"
+          <!-- AI Action Result -->
+          <div
+            v-if="aiActionResult"
+            class="max-w-3xl mx-auto mt-4 p-4 card-surface border-l-2 border-l-primary-400"
+          >
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2">
+                <span
+                  class="size-1.5 rounded-full bg-primary-400 animate-pulse"
+                />
+                <p
+                  class="text-xs font-medium text-primary-600 dark:text-primary-400"
+                >
+                  {{
+                    aiActionType === 'expand' ? t('chapter.expand')
+                    : aiActionType === 'continue' ? t('chapter.continue')
+                    : t('chapter.rewrite')
+                  }}
+                </p>
+              </div>
+              <div class="flex gap-1">
+                <NButton
+                  size="tiny"
+                  type="primary"
+                  @click="applyAiResult"
+                  >应用</NButton
+                >
+                <NButton
+                  size="tiny"
+                  quaternary
+                  @click="discardAiResult"
+                  >放弃</NButton
+                >
+              </div>
+            </div>
+            <!-- Track Changes Diff View for rewrite -->
+            <div
+              v-if="aiActionType === 'rewrite' && trackChangesDiff.length"
+              class="space-y-0.5"
+            >
+              <div
+                v-for="(line, idx) in trackChangesDiff"
+                :key="idx"
+                class="flex items-start gap-2 text-sm leading-relaxed rounded px-1.5 py-0.5"
+                :class="{
+                  'bg-red-500/8': line.type === 'remove',
+                  'bg-emerald-500/8': line.type === 'add'
+                }"
               >
-                {{
-                  aiActionType === 'expand' ? t('chapter.expand')
-                  : aiActionType === 'continue' ? t('chapter.continue')
-                  : t('chapter.rewrite')
-                }}
+                <span
+                  class="shrink-0 text-[10px] font-mono mt-0.5 w-4 text-right"
+                  :class="{
+                    'text-red-500': line.type === 'remove',
+                    'text-emerald-500': line.type === 'add',
+                    'text-(--ui-text-dimmed)': line.type === 'same'
+                  }"
+                >
+                  {{
+                    line.type === 'remove' ? '-'
+                    : line.type === 'add' ? '+'
+                    : ' '
+                  }}
+                </span>
+                <span
+                  :class="{
+                    'text-red-600 dark:text-red-400 line-through opacity-70':
+                      line.type === 'remove',
+                    'text-emerald-600 dark:text-emerald-400':
+                      line.type === 'add',
+                    'text-(--ui-text-muted)': line.type === 'same'
+                  }"
+                >
+                  {{ line.value || ' ' }}
+                </span>
+              </div>
+            </div>
+            <div
+              v-else
+              class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
+            >
+              {{ aiActionResult }}
+            </div>
+          </div>
+
+          <!-- Generated Content Preview -->
+          <div
+            v-if="generating && generatedContent"
+            class="max-w-3xl mx-auto mt-4 p-4 card-surface"
+          >
+            <div class="flex items-center gap-2 mb-2">
+              <span class="size-1.5 rounded-full bg-violet-400 animate-pulse" />
+              <p class="text-xs font-medium text-violet-500">
+                {{ t('ai.generating') }}
               </p>
             </div>
-            <div class="flex gap-1">
-              <NButton
-                size="tiny"
-                type="primary"
-                @click="applyAiResult"
-                >应用</NButton
-              >
-              <NButton
-                size="tiny"
-                quaternary
-                @click="discardAiResult"
-                >放弃</NButton
-              >
-            </div>
-          </div>
-          <!-- Track Changes Diff View for rewrite -->
-          <div v-if="aiActionType === 'rewrite' && trackChangesDiff.length" class="space-y-0.5">
             <div
-              v-for="(line, idx) in trackChangesDiff"
-              :key="idx"
-              class="flex items-start gap-2 text-sm leading-relaxed rounded px-1.5 py-0.5"
-              :class="{
-                'bg-red-500/8': line.type === 'remove',
-                'bg-emerald-500/8': line.type === 'add',
-              }"
+              class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
             >
-              <span class="shrink-0 text-[10px] font-mono mt-0.5 w-4 text-right" :class="{
-                'text-red-500': line.type === 'remove',
-                'text-emerald-500': line.type === 'add',
-                'text-(--ui-text-dimmed)': line.type === 'same',
-              }">
-                {{ line.type === 'remove' ? '-' : line.type === 'add' ? '+' : ' ' }}
-              </span>
-              <span :class="{
-                'text-red-600 dark:text-red-400 line-through opacity-70': line.type === 'remove',
-                'text-emerald-600 dark:text-emerald-400': line.type === 'add',
-                'text-(--ui-text-muted)': line.type === 'same',
-              }">
-                {{ line.value || ' ' }}
-              </span>
+              {{ generatedContent }}
             </div>
           </div>
+
+          <!-- Editor Status Bar -->
           <div
-            v-else
-            class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
+            v-if="!zenMode"
+            class="shrink-0 border-t border-(--ui-border)/40 bg-(--ui-bg)/95 px-4 py-1.5 flex items-center justify-between gap-3 text-[11px] text-(--ui-text-dimmed)"
           >
-            {{ aiActionResult }}
-          </div>
-        </div>
+            <div class="flex items-center gap-3 min-w-0">
+              <span class="flex items-center gap-1">
+                <Icon
+                  icon="lucide:type"
+                  class="size-3"
+                />
+                {{ currentWordCount.toLocaleString() }} 字
+              </span>
+              <span class="hidden sm:flex items-center gap-1">
+                <Icon
+                  icon="lucide:target"
+                  class="size-3"
+                />
+                {{ chapterProgress }}%
+              </span>
+              <span class="hidden sm:flex items-center gap-1">
+                <Icon
+                  icon="lucide:list"
+                  class="size-3"
+                />
+                {{ currentLineCount }} 行
+              </span>
+              <span
+                class="hidden md:flex items-center gap-1"
+                :class="saveStatusClass"
+              >
+                <Icon
+                  :icon="
+                    conflictDetected ? 'lucide:triangle-alert'
+                    : saving ? 'lucide:loader-circle'
+                    : 'lucide:check-circle'
+                  "
+                  class="size-3"
+                  :class="saving ? 'animate-spin' : ''"
+                />
+                {{ saveStatusText }}
+              </span>
+            </div>
 
-        <!-- Generated Content Preview -->
-        <div
-          v-if="generating && generatedContent"
-          class="max-w-3xl mx-auto mt-4 p-4 card-surface"
-        >
-          <div class="flex items-center gap-2 mb-2">
-            <span class="size-1.5 rounded-full bg-violet-400 animate-pulse" />
-            <p class="text-xs font-medium text-violet-500">
-              {{ t('ai.generating') }}
-            </p>
-          </div>
-          <div
-            class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
-          >
-            {{ generatedContent }}
-          </div>
-        </div>
-
-        <!-- Editor Status Bar -->
-        <div
-          v-if="!zenMode"
-          class="shrink-0 border-t border-(--ui-border)/40 bg-(--ui-bg)/95 px-4 py-1.5 flex items-center justify-between gap-3 text-[11px] text-(--ui-text-dimmed)"
-        >
-          <div class="flex items-center gap-3 min-w-0">
-            <span class="flex items-center gap-1">
-              <Icon icon="lucide:type" class="size-3" />
-              {{ currentWordCount.toLocaleString() }} 字
-            </span>
-            <span class="hidden sm:flex items-center gap-1">
-              <Icon icon="lucide:target" class="size-3" />
-              {{ chapterProgress }}%
-            </span>
-            <span class="hidden sm:flex items-center gap-1">
-              <Icon icon="lucide:list" class="size-3" />
-              {{ currentLineCount }} 行
-            </span>
-            <span class="hidden md:flex items-center gap-1" :class="saveStatusClass">
-              <Icon :icon="conflictDetected ? 'lucide:triangle-alert' : saving ? 'lucide:loader-circle' : 'lucide:check-circle'" class="size-3" :class="saving ? 'animate-spin' : ''" />
-              {{ saveStatusText }}
-            </span>
-          </div>
-
-          <div class="flex items-center gap-2 min-w-0">
-            <span class="hidden sm:inline">当前模型</span>
-            <NSelect
-              v-model:value="selectedAiConfigId"
-              size="tiny"
-              :options="generationModelOptions"
-              placeholder="选择模型"
-              class="w-44"
-            />
-            <span class="hidden lg:inline truncate max-w-48" :title="selectedGenerationConfig?.model">
-              {{ selectedGenerationConfig?.model || '未选择' }}
-            </span>
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="hidden sm:inline">当前模型</span>
+              <NSelect
+                v-model:value="selectedAiConfigId"
+                size="tiny"
+                :options="generationModelOptions"
+                placeholder="选择模型"
+                class="w-44"
+              />
+              <span
+                class="hidden lg:inline truncate max-w-48"
+                :title="selectedGenerationConfig?.model"
+              >
+                {{ selectedGenerationConfig?.model || '未选择' }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -1855,10 +1937,26 @@ onBeforeUnmount(() => {
           v-if="!selectedText"
           trigger="hover"
           :options="[
-            { label: '对话', key: 'dialogue', icon: () => h(Icon, { icon: 'lucide:message-circle' }) },
-            { label: '环境描写', key: 'description', icon: () => h(Icon, { icon: 'lucide:mountain' }) },
-            { label: '动作场景', key: 'action', icon: () => h(Icon, { icon: 'lucide:swords' }) },
-            { label: '内心独白', key: 'monologue', icon: () => h(Icon, { icon: 'lucide:brain' }) },
+            {
+              label: '对话',
+              key: 'dialogue',
+              icon: () => h(Icon, { icon: 'lucide:message-circle' })
+            },
+            {
+              label: '环境描写',
+              key: 'description',
+              icon: () => h(Icon, { icon: 'lucide:mountain' })
+            },
+            {
+              label: '动作场景',
+              key: 'action',
+              icon: () => h(Icon, { icon: 'lucide:swords' })
+            },
+            {
+              label: '内心独白',
+              key: 'monologue',
+              icon: () => h(Icon, { icon: 'lucide:brain' })
+            }
           ]"
           @select="(key) => doFragment(key as any)"
         >
