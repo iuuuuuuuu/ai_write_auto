@@ -42,12 +42,12 @@ function isActiveNav(to: string) {
 <template>
   <div class="min-h-screen bg-(--ui-bg)">
     <!-- Top bar -->
-    <header class="sticky top-0 z-40 border-b border-(--ui-border)/40"
+    <header class="sticky top-0 z-40 border-b border-white/15"
             style="background: linear-gradient(180deg, var(--ui-bg) 0%, var(--ui-bg-muted) 100%); backdrop-filter: blur(16px); box-shadow: inset 0 -1px 0 var(--ui-border);">
       <div class="mx-auto flex h-10 max-w-7xl items-center justify-between px-3">
         <div class="flex items-center gap-2">
           <button
-            class="lg:hidden flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+            class="lg:hidden flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-white/10 transition-colors"
             @click="sidebarOpen = true"
           >
             <Icon icon="lucide:menu" class="w-4 h-4" />
@@ -78,7 +78,7 @@ function isActiveNav(to: string) {
       <!-- Desktop Sidebar -->
       <aside class="hidden w-[210px] shrink-0 py-3 lg:block">
         <nav class="space-y-3 px-2">
-          <div v-for="group in adminNavGroups" :key="group.title" class="card-surface p-2">
+          <div v-for="group in adminNavGroups" :key="group.title" class="card-glass p-2">
             <p class="mb-1 px-2 text-[10px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider">{{ group.title }}</p>
             <div class="space-y-0.5">
               <NuxtLink
@@ -89,7 +89,7 @@ function isActiveNav(to: string) {
                 :class="
                   isActiveNav(item.to)
                     ? 'text-primary-600 dark:text-primary-400 bg-primary-500/[0.06]'
-                    : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted)/60 hover:text-(--ui-text)'
+                    : 'text-(--ui-text-muted) hover:bg-white/10 hover:text-(--ui-text)'
                 "
               >
                 <div
@@ -119,7 +119,7 @@ function isActiveNav(to: string) {
       <Transition name="overlay">
         <div v-if="sidebarOpen" class="fixed inset-0 z-50 lg:hidden">
           <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="sidebarOpen = false" />
-          <aside class="absolute inset-y-0 left-0 w-[260px] bg-(--ui-bg-muted) border-r border-(--ui-border)/40 flex flex-col">
+          <aside class="absolute inset-y-0 left-0 w-[260px] bg-white/10 border-r border-white/15 flex flex-col">
             <div class="flex h-10 items-center justify-between px-4 border-b border-(--ui-border)/40">
               <span class="text-sm font-semibold text-(--ui-text)">管理端</span>
               <button
@@ -130,7 +130,7 @@ function isActiveNav(to: string) {
               </button>
             </div>
             <nav class="flex-1 space-y-3 px-2 py-3 overflow-y-auto">
-              <div v-for="group in adminNavGroups" :key="group.title" class="card-surface p-2">
+              <div v-for="group in adminNavGroups" :key="group.title" class="card-glass p-2">
                 <p class="mb-1 px-2 text-[10px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider">{{ group.title }}</p>
                 <div class="space-y-0.5">
                   <NuxtLink

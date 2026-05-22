@@ -127,27 +127,31 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div
-      class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
-    >
-      <div>
-        <p class="text-sm text-(--ui-text-muted)">Admin / Templates</p>
-        <h1 class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)">
-          小说模板
-        </h1>
-        <p class="mt-1 text-sm text-(--ui-text-muted)">
-          管理创建小说时可选的模板。
-        </p>
+  <div class="space-y-5">
+    <section class="card-glass relative overflow-hidden p-6 sm:p-7">
+      <span class="liquid-orb -right-12 -top-16 h-40 w-40" />
+      <span class="liquid-highlight left-8 top-4 h-10 w-56 rotate-[-8deg]" />
+
+      <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Templates</p>
+          <h1 class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">
+            小说模板
+          </h1>
+          <p class="mt-3 text-sm text-(--ui-text-muted)">
+            管理创建小说时可选的模板。
+          </p>
+        </div>
+        <NButton
+          type="primary"
+          round
+          @click="openCreate"
+        >
+          <template #icon><Icon icon="lucide:plus" /></template>
+          新建模板
+        </NButton>
       </div>
-      <NButton
-        type="primary"
-        @click="openCreate"
-      >
-        <template #icon><Icon icon="lucide:plus" /></template>
-        新建模板
-      </NButton>
-    </div>
+    </section>
 
     <div
       v-if="loading"
@@ -156,58 +160,60 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
       <NSkeleton
         v-for="i in 4"
         :key="i"
-        class="h-20 rounded-lg"
+        class="h-20 rounded-[1.4rem]"
         text
       />
     </div>
     <div
       v-else-if="!templates.length"
-      class="card-surface p-10 text-center text-sm text-(--ui-text-muted)"
+      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
     >
       暂无模板，点击上方按钮创建
     </div>
     <template v-else>
       <div class="grid gap-3 lg:grid-cols-2">
-        <div
-          v-for="t in templates"
-          :key="t.id"
-          class="card-surface group p-4"
+        <article
+          v-for="templateItem in templates"
+          :key="templateItem.id"
+          class="liquid-panel group p-4"
         >
-          <div class="flex items-start justify-between">
-            <div>
-              <h3 class="font-semibold text-(--ui-text-highlighted)">
-                {{ t.name }}
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <h3 class="truncate font-semibold text-(--ui-text-highlighted)">
+                {{ templateItem.name }}
               </h3>
               <p class="mt-1 text-sm text-(--ui-text-muted)">
-                {{ t.genre }} · Temperature {{ t.defaultTemperature || '0.7' }}
+                {{ templateItem.genre }} · Temperature {{ templateItem.defaultTemperature || '0.7' }}
               </p>
             </div>
             <div class="flex gap-1">
               <NButton
                 size="small"
                 quaternary
-                @click="openEdit(t)"
+                circle
+                @click="openEdit(templateItem)"
               >
                 <template #icon><Icon icon="lucide:pencil" /></template>
               </NButton>
               <NButton
                 size="small"
                 quaternary
+                circle
                 type="error"
-                :loading="deleting === t.id"
-                @click="deleteTemplate(t.id)"
+                :loading="deleting === templateItem.id"
+                @click="deleteTemplate(templateItem.id)"
               >
                 <template #icon><Icon icon="lucide:trash-2" /></template>
               </NButton>
             </div>
           </div>
           <p
-            v-if="t.defaultStyleGuide"
-            class="mt-2 text-xs text-(--ui-text-dimmed) line-clamp-2"
+            v-if="templateItem.defaultStyleGuide"
+            class="mt-3 line-clamp-2 text-xs leading-5 text-(--ui-text-dimmed)"
           >
-            {{ t.defaultStyleGuide }}
+            {{ templateItem.defaultStyleGuide }}
           </p>
-        </div>
+        </article>
       </div>
 
       <div
@@ -224,7 +230,6 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
       </div>
     </template>
 
-    <!-- Create/Edit Modal -->
     <NModal
       v-model:show="showModal"
       preset="card"
@@ -248,12 +253,11 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
         </div>
         <div class="space-y-1.5">
           <div class="flex items-center justify-between">
-            <label class="text-sm font-medium text-(--ui-text)"
-              >默认风格指南</label
-            >
+            <label class="text-sm font-medium text-(--ui-text)">默认风格指南</label>
             <NButton
               size="tiny"
               quaternary
+              round
               :loading="aiProcessing"
               :disabled="!form.defaultStyleGuide?.trim()"
               @click="aiExpandField('defaultStyleGuide')"
@@ -271,12 +275,11 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
         </div>
         <div class="space-y-1.5">
           <div class="flex items-center justify-between">
-            <label class="text-sm font-medium text-(--ui-text)"
-              >默认 AI 提示词</label
-            >
+            <label class="text-sm font-medium text-(--ui-text)">默认 AI 提示词</label>
             <NButton
               size="tiny"
               quaternary
+              round
               :loading="aiProcessing"
               :disabled="!form.defaultAiPrompt?.trim()"
               @click="aiExpandField('defaultAiPrompt')"
@@ -293,9 +296,7 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
           />
         </div>
         <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)"
-            >默认 Temperature</label
-          >
+          <label class="text-sm font-medium text-(--ui-text)">默认 Temperature</label>
           <NInput
             v-model:value="form.defaultTemperature"
             placeholder="0.7"
@@ -304,9 +305,10 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton @click="showModal = false">取消</NButton>
+          <NButton round @click="showModal = false">取消</NButton>
           <NButton
             type="primary"
+            round
             :loading="saving"
             :disabled="!form.name || !form.genre"
             @click="save"

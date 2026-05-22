@@ -7,10 +7,19 @@ const { settings } = useLayoutSettings()
 const sidebarOpen = ref(false)
 
 const navItems = computed(() => [
-  { label: t('dashboard.title'), icon: 'lucide:layout-dashboard', to: '/dashboard' },
-  { label: '回收站', icon: 'lucide:trash-2', to: '/trash' },
-  { label: t('common.settings'), icon: 'lucide:settings', to: '/settings' }
+  {
+    label: t('dashboard.title'),
+    icon: 'lucide:layout-dashboard',
+    to: '/dashboard'
+  },
+  { label: '回收站', icon: 'lucide:trash-2', to: '/trash' }
 ])
+
+const settingsItem = computed(() => ({
+  label: t('common.settings'),
+  icon: 'lucide:settings',
+  to: '/settings'
+}))
 
 function isActive(to: string) {
   return route.path.startsWith(to)
@@ -28,6 +37,7 @@ useBackupNotification()
       <LayoutDock
         v-if="settings.navMode === 'dock'"
         :nav-items="navItems"
+        :settings-item="settingsItem"
         :is-active="isActive"
         :is-admin="isAdmin"
       >
@@ -37,6 +47,7 @@ useBackupNotification()
       <LayoutClassic
         v-else-if="settings.navMode === 'classic'"
         :nav-items="navItems"
+        :settings-item="settingsItem"
         :is-active="isActive"
         :is-admin="isAdmin"
       >
@@ -46,6 +57,7 @@ useBackupNotification()
       <LayoutBorderless
         v-else-if="settings.navMode === 'borderless'"
         :nav-items="navItems"
+        :settings-item="settingsItem"
         :is-active="isActive"
         :is-admin="isAdmin"
       >
@@ -55,6 +67,7 @@ useBackupNotification()
       <LayoutCard
         v-else-if="settings.navMode === 'card'"
         :nav-items="navItems"
+        :settings-item="settingsItem"
         :is-active="isActive"
         :is-admin="isAdmin"
       >
@@ -63,116 +76,213 @@ useBackupNotification()
     </div>
 
     <!-- Mobile: Always use drawer navigation -->
-    <div class="lg:hidden min-h-screen bg-(--ui-bg)">
+    <div class="liquid-shell lg:hidden min-h-screen">
       <!-- Mobile Floating Header -->
-      <div class="fixed top-2 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-4 py-2 rounded-full card-glass shadow-lg">
-        <button
-          class="flex items-center justify-center w-7 h-7 rounded-md text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/60 transition-colors"
-          @click="sidebarOpen = true"
+      <div
+        class="fixed left-1/2 top-3 z-40 w-[calc(100%-1.5rem)] -translate-x-1/2"
+      >
+        <div
+          class="card-glass flex h-12 items-center gap-2 rounded-full px-2.5"
         >
-          <Icon icon="lucide:menu" class="w-4 h-4" />
-        </button>
-        <div class="flex items-center gap-2">
-          <div class="w-5 h-5 rounded-md bg-primary-500/15 flex items-center justify-center">
-            <Icon icon="lucide:pen-tool" class="w-3 h-3 text-primary-500" />
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-white/50 hover:text-(--ui-text) dark:hover:bg-white/10"
+            @click="sidebarOpen = true"
+          >
+            <Icon
+              icon="lucide:menu"
+              class="h-4 w-4"
+            />
+          </button>
+          <div class="flex min-w-0 flex-1 items-center gap-2">
+            <div
+              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow-[0_8px_24px_-10px_var(--ui-glow-strong)]"
+              style="
+                background: linear-gradient(
+                  135deg,
+                  var(--color-primary-400),
+                  var(--color-primary-600)
+                );
+              "
+            >
+              <Icon
+                icon="lucide:pen-tool"
+                class="h-3.5 w-3.5 text-white"
+              />
+            </div>
+            <span
+              class="truncate text-sm font-medium tracking-[-0.02em] text-(--ui-text-highlighted)"
+              >{{ t('common.appName') }}</span
+            >
           </div>
-          <span class="text-sm font-semibold text-(--ui-text)">{{ t('common.appName') }}</span>
+          <NotificationCenter />
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-white/50 hover:text-(--ui-text) dark:hover:bg-white/10"
+            @click="settingsDrawerOpen = true"
+          >
+            <Icon
+              icon="lucide:settings"
+              class="h-4 w-4"
+            />
+          </button>
         </div>
-        <NotificationCenter />
-        <button
-          class="flex items-center justify-center w-7 h-7 rounded-md text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/60 transition-colors"
-          @click="settingsDrawerOpen = true"
-        >
-          <Icon icon="lucide:settings" class="w-4 h-4" />
-        </button>
       </div>
 
       <!-- Mobile Content -->
-      <div class="pt-14 px-3 py-3">
-        <TabBar v-if="settings.showTabs" area="user" class="mb-2" />
+      <div class="px-3 pb-6 pt-20">
+        <TabBar
+          v-if="settings.showTabs"
+          area="user"
+          class="mb-3"
+        />
         <slot />
       </div>
 
       <!-- Mobile Drawer -->
       <Teleport to="body">
         <Transition name="overlay">
-          <div v-if="sidebarOpen" class="fixed inset-0 z-50">
-            <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="sidebarOpen = false" />
+          <div
+            v-if="sidebarOpen"
+            class="fixed inset-0 z-50"
+          >
+            <div
+              class="absolute inset-0 bg-black/35 backdrop-blur-md"
+              @click="sidebarOpen = false"
+            />
             <Transition name="drawer">
               <aside
                 v-if="sidebarOpen"
-                class="absolute left-0 top-0 bottom-0 w-[270px] flex flex-col bg-(--ui-bg-elevated)"
-                style="box-shadow: 8px 0 32px -4px rgba(0, 0, 0, 0.08);"
+                class="card-glass absolute bottom-3 left-3 top-3 flex w-[min(300px,calc(100%-1.5rem))] flex-col rounded-[1.75rem]"
               >
-                <div class="flex items-center justify-between px-4 h-[52px]">
+                <div class="flex h-[60px] items-center justify-between px-4">
                   <div class="flex items-center gap-2.5">
                     <div
-                      class="w-8 h-8 rounded-[10px] flex items-center justify-center shadow-[0_2px_8px_-1px_var(--ui-glow)]"
-                      style="background: linear-gradient(135deg, var(--color-primary-400), var(--color-primary-600));"
+                      class="flex h-9 w-9 items-center justify-center rounded-full shadow-[0_8px_24px_-10px_var(--ui-glow-strong)]"
+                      style="
+                        background: linear-gradient(
+                          135deg,
+                          var(--color-primary-400),
+                          var(--color-primary-600)
+                        );
+                      "
                     >
-                      <Icon icon="lucide:pen-tool" class="w-4 h-4 text-white" />
+                      <Icon
+                        icon="lucide:pen-tool"
+                        class="h-4 w-4 text-white"
+                      />
                     </div>
-                    <span class="text-[14px] font-semibold text-(--ui-text-highlighted)">{{ t('common.appName') }}</span>
+                    <div>
+                      <p class="text-[12px] text-(--ui-text-dimmed)">
+                        AI Studio
+                      </p>
+                      <p
+                        class="text-[14px] font-medium tracking-[-0.02em] text-(--ui-text-highlighted)"
+                      >
+                        {{ t('common.appName') }}
+                      </p>
+                    </div>
                   </div>
                   <button
-                    class="flex items-center justify-center w-8 h-8 rounded-[10px] text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/70 transition-colors"
+                    class="flex h-9 w-9 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-white/50 hover:text-(--ui-text) dark:hover:bg-white/10"
                     @click="sidebarOpen = false"
                   >
-                    <Icon icon="lucide:x" class="w-4 h-4" />
+                    <Icon
+                      icon="lucide:x"
+                      class="h-4 w-4"
+                    />
                   </button>
                 </div>
 
-                <nav class="flex-1 px-2.5 mt-2 space-y-1">
+                <nav class="flex-1 space-y-1 px-3 pt-2">
                   <NuxtLink
                     v-for="item in navItems"
                     :key="item.to"
                     :to="item.to"
-                    class="group flex items-center h-10 gap-2.5 rounded-[10px] px-3 text-[13px] font-medium transition-all duration-200"
+                    class="flex h-11 items-center gap-3 rounded-[1.1rem] px-3 text-[14px] font-medium transition-all duration-200"
                     :class="[
-                      isActive(item.to)
-                        ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 shadow-[0_1px_3px_-1px_var(--ui-glow)]'
-                        : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/70'
+                      isActive(item.to) ?
+                        'bg-primary-500/12 text-primary-600 shadow-[0_10px_22px_-16px_var(--ui-glow-strong)] dark:text-primary-400'
+                      : 'text-(--ui-text-muted) hover:bg-white/45 hover:text-(--ui-text) dark:hover:bg-white/10'
                     ]"
                     @click="sidebarOpen = false"
                   >
-                    <Icon :icon="item.icon" class="w-[18px] h-[18px]" :class="isActive(item.to) ? 'text-primary-500' : ''" />
+                    <Icon
+                      :icon="item.icon"
+                      class="h-[18px] w-[18px]"
+                      :class="isActive(item.to) ? 'text-primary-500' : ''"
+                    />
                     {{ item.label }}
                   </NuxtLink>
 
                   <template v-if="isAdmin">
-                    <div class="my-2 mx-2.5 h-px bg-(--ui-border)/30" />
+                    <div class="mx-3 my-2 h-px bg-(--ui-border)/40" />
                     <NuxtLink
                       to="/admin"
-                      class="group flex items-center h-10 gap-2.5 rounded-[10px] px-3 text-[13px] font-medium transition-all duration-200"
+                      class="flex h-11 items-center gap-3 rounded-[1.1rem] px-3 text-[14px] font-medium transition-all duration-200"
                       :class="[
-                        isActive('/admin')
-                          ? 'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
-                          : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/70'
+                        isActive('/admin') ?
+                          'bg-primary-500/12 text-primary-600 dark:text-primary-400'
+                        : 'text-(--ui-text-muted) hover:bg-white/45 hover:text-(--ui-text) dark:hover:bg-white/10'
                       ]"
                       @click="sidebarOpen = false"
                     >
-                      <Icon icon="lucide:shield-check" class="w-[18px] h-[18px]" />
+                      <Icon
+                        icon="lucide:shield-check"
+                        class="h-[18px] w-[18px]"
+                      />
                       {{ t('common.admin') }}
                     </NuxtLink>
                   </template>
                 </nav>
 
-                <div class="px-2.5 py-3 border-t border-(--ui-border)/20">
-                  <div class="flex items-center gap-2.5 px-3 py-2">
+                <div class="px-3 py-3">
+                  <NuxtLink
+                    :to="settingsItem.to"
+                    class="mb-2 flex h-11 items-center gap-3 rounded-[1.1rem] px-3 text-[14px] font-medium transition-all duration-200"
+                    :class="[
+                      isActive(settingsItem.to) ?
+                        'bg-primary-500/12 text-primary-600 dark:text-primary-400'
+                      : 'text-(--ui-text-muted) hover:bg-white/45 hover:text-(--ui-text) dark:hover:bg-white/10'
+                    ]"
+                    @click="sidebarOpen = false"
+                  >
+                    <Icon
+                      :icon="settingsItem.icon"
+                      class="h-[18px] w-[18px]"
+                    />
+                    {{ settingsItem.label }}
+                  </NuxtLink>
+                  <div
+                    class="liquid-panel flex items-center gap-2.5 rounded-[1.25rem] px-3 py-2.5"
+                  >
                     <div
-                      class="w-8 h-8 rounded-full flex items-center justify-center ring-2 ring-primary-100 dark:ring-primary-800/30"
-                      style="background: linear-gradient(135deg, var(--color-primary-300), var(--color-primary-500));"
+                      class="flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-white/40 dark:ring-white/10"
+                      style="
+                        background: linear-gradient(
+                          135deg,
+                          var(--color-primary-300),
+                          var(--color-primary-500)
+                        );
+                      "
                     >
-                      <span class="text-xs font-bold text-white">{{ user?.username?.charAt(0).toUpperCase() }}</span>
+                      <span class="text-xs font-medium text-white">{{
+                        user?.username?.charAt(0).toUpperCase()
+                      }}</span>
                     </div>
-                    <div class="flex-1 min-w-0">
-                      <p class="text-[13px] font-medium text-(--ui-text) truncate">{{ user?.username }}</p>
+                    <div class="min-w-0 flex-1">
+                      <p
+                        class="truncate text-[13px] font-medium text-(--ui-text)"
+                      >
+                        {{ user?.username }}
+                      </p>
                     </div>
                     <button
-                      class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                      class="flex h-9 w-9 items-center justify-center rounded-full text-(--ui-text-dimmed) transition-colors hover:bg-red-500/10 hover:text-red-500"
                       @click="logout"
                     >
-                      <Icon icon="lucide:log-out" class="w-4 h-4" />
+                      <Icon
+                        icon="lucide:log-out"
+                        class="h-4 w-4"
+                      />
                     </button>
                   </div>
                 </div>
@@ -189,9 +299,22 @@ useBackupNotification()
 </template>
 
 <style scoped>
-.overlay-enter-active, .overlay-leave-active { transition: opacity 0.25s cubic-bezier(0.32, 0.72, 0, 1); }
-.overlay-enter-from, .overlay-leave-to { opacity: 0; }
-.drawer-enter-active { transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
-.drawer-leave-active { transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1); }
-.drawer-enter-from, .drawer-leave-to { transform: translateX(-100%); }
+.overlay-enter-active,
+.overlay-leave-active {
+  transition: opacity 0.25s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.overlay-enter-from,
+.overlay-leave-to {
+  opacity: 0;
+}
+.drawer-enter-active {
+  transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.drawer-leave-active {
+  transition: transform 0.2s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.drawer-enter-from,
+.drawer-leave-to {
+  transform: translateX(-100%);
+}
 </style>

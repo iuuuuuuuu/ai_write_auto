@@ -15,14 +15,14 @@ interface AdminNovelListItem {
   wordCount: number
 }
 
-const search = ref('')
-const statusFilter = ref('all')
+const search = shallowRef('')
+const statusFilter = shallowRef('all')
 
 const queryParams = computed(() => {
-  const p: Record<string, any> = {}
-  if (search.value.trim()) p.search = search.value.trim()
-  if (statusFilter.value !== 'all') p.status = statusFilter.value
-  return p
+  const params: Record<string, string> = {}
+  if (search.value.trim()) params.search = search.value.trim()
+  if (statusFilter.value !== 'all') params.status = statusFilter.value
+  return params
 })
 
 const {
@@ -58,37 +58,39 @@ const statusItems = [
 
 <template>
   <div class="space-y-4">
-    <div
-      class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"
-    >
-      <div>
-        <p class="text-sm text-(--ui-text-muted)">Admin / Novels</p>
-        <h1 class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)">
-          小说查阅
-        </h1>
-        <p class="mt-1 text-sm text-(--ui-text-muted)">
-          按用户查阅小说、章节数量和字数，不修改用户内容。
-        </p>
+    <section class="card-glass relative overflow-hidden p-5 md:p-6">
+      <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
+      <div class="liquid-highlight" />
+      <div class="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="text-sm text-(--ui-text-muted)">Admin / Novels</p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)">
+            小说查阅
+          </h1>
+          <p class="mt-1 max-w-2xl text-sm text-(--ui-text-muted)">
+            按用户查阅小说、章节数量和字数，不修改用户内容。
+          </p>
+        </div>
+        <div class="grid gap-2 sm:grid-cols-[220px_220px]">
+          <NInput
+            v-model:value="search"
+            placeholder="搜索小说或用户"
+            clearable
+          >
+            <template #prefix>
+              <Icon
+                icon="lucide:search"
+                class="text-(--ui-text-dimmed)"
+              />
+            </template>
+          </NInput>
+          <NSelect
+            v-model:value="statusFilter"
+            :options="statusItems"
+          />
+        </div>
       </div>
-      <div class="grid gap-2 sm:grid-cols-[220px_220px]">
-        <NInput
-          v-model:value="search"
-          placeholder="搜索小说或用户"
-          clearable
-        >
-          <template #prefix>
-            <Icon
-              icon="lucide:search"
-              class="text-(--ui-text-dimmed)"
-            />
-          </template>
-        </NInput>
-        <NSelect
-          v-model:value="statusFilter"
-          :options="statusItems"
-        />
-      </div>
-    </div>
+    </section>
 
     <div
       v-if="pending"
@@ -103,7 +105,7 @@ const statusItems = [
     </div>
     <div
       v-else-if="!novels.length"
-      class="card-surface p-10 text-center text-sm text-(--ui-text-muted)"
+      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
     >
       暂无匹配小说
     </div>
@@ -112,7 +114,7 @@ const statusItems = [
         <div
           v-for="novel in novels"
           :key="novel.id"
-          class="card-surface group p-4 transition-colors hover:bg-(--ui-bg-elevated)/60"
+          class="liquid-panel group p-4 transition-colors hover:bg-white/10"
         >
           <div
             class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"
@@ -162,6 +164,7 @@ const statusItems = [
               <NButton
                 size="small"
                 quaternary
+                circle
                 type="error"
                 @click.prevent="deleteNovel(novel)"
               >

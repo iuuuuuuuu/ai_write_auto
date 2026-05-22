@@ -868,7 +868,7 @@ async function savePlotPoint() {
     v-if="novel"
     class="mx-auto max-w-[1600px] space-y-4 2xl:px-2"
   >
-    <section class="card-surface p-4 lg:p-5">
+    <section class="card-glass p-4 lg:p-5">
       <div
         class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)]"
       >
@@ -948,37 +948,37 @@ async function savePlotPoint() {
           <div
             class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"
           >
-            <div class="rounded-lg bg-(--ui-bg-muted)/55 px-3 py-2">
+            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
               <p class="text-[11px] text-(--ui-text-dimmed)">章节</p>
               <p class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)">
                 {{ chapters?.length || 0 }}
               </p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg-muted)/55 px-3 py-2">
+            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
               <p class="text-[11px] text-(--ui-text-dimmed)">字数</p>
               <p class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)">
                 {{ totalWords.toLocaleString() }}
               </p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg-muted)/55 px-3 py-2">
+            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
               <p class="text-[11px] text-(--ui-text-dimmed)">角色</p>
               <p class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)">
                 {{ sortedCharacters.length }}
               </p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg-muted)/55 px-3 py-2">
+            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
               <p class="text-[11px] text-(--ui-text-dimmed)">出场</p>
               <p class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)">
                 {{ characterChapterCount }}
               </p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg-muted)/55 px-3 py-2">
+            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
               <p class="text-[11px] text-(--ui-text-dimmed)">状态</p>
               <p class="mt-1 truncate text-sm text-(--ui-text-highlighted)">
                 {{ statusLabel }}
               </p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg-muted)/55 px-3 py-2">
+            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
               <p class="text-[11px] text-(--ui-text-dimmed)">更新</p>
               <p class="mt-1 truncate text-sm text-(--ui-text-highlighted)">
                 {{ formatDate(novel.updatedAt) }}
@@ -988,7 +988,7 @@ async function savePlotPoint() {
         </div>
 
         <aside
-          class="rounded-lg border border-(--ui-border)/55 bg-(--ui-bg-muted)/35 p-3.5"
+          class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-3.5 dark:bg-white/6"
         >
           <div class="mb-3 flex items-center gap-2">
             <Icon
@@ -1039,7 +1039,7 @@ async function savePlotPoint() {
       >
         <section
           v-if="novel.styleGuide"
-          class="rounded-lg bg-(--ui-bg-muted)/40 p-3"
+          class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 dark:bg-white/6"
         >
           <div class="mb-1.5 flex items-center gap-2">
             <Icon
@@ -1058,7 +1058,7 @@ async function savePlotPoint() {
         </section>
         <section
           v-if="novel.worldSetting"
-          class="rounded-lg bg-(--ui-bg-muted)/40 p-3"
+          class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 dark:bg-white/6"
         >
           <div class="mb-1.5 flex items-center gap-2">
             <Icon
@@ -1079,7 +1079,7 @@ async function savePlotPoint() {
     </section>
 
     <!-- Outline -->
-    <section class="card-surface p-5">
+    <section class="card-glass p-5">
       <div
         class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
       >
@@ -1147,7 +1147,7 @@ async function savePlotPoint() {
           v-for="(outline, index) in outlineFormItems"
           :key="index"
           draggable="true"
-          class="grid gap-2 rounded-lg bg-(--ui-bg-muted)/35 p-2 md:grid-cols-[auto_120px_minmax(0,1fr)_auto] cursor-move transition-opacity"
+          class="grid gap-2 rounded-2xl bg-white/12 ring-1 ring-white/12 p-2 md:grid-cols-[auto_120px_minmax(0,1fr)_auto] cursor-move transition-opacity dark:bg-white/6"
           :class="{ 'opacity-50': draggingOutlineIndex === index }"
           @dragstart="handleOutlineDragStart(index)"
           @dragover="handleOutlineDragOver($event, index)"
@@ -1192,7 +1192,7 @@ async function savePlotPoint() {
 
       <div
         v-else-if="!sortedOutlines.length"
-        class="rounded-lg bg-(--ui-bg-muted)/30 py-8 text-center text-sm text-(--ui-text-muted)"
+        class="rounded-2xl bg-white/8 ring-1 ring-white/10 py-8 text-center text-sm text-(--ui-text-muted) dark:bg-white/4"
       >
         暂无章节大纲，可手动编辑或使用 AI 生成。
       </div>
@@ -1204,7 +1204,7 @@ async function savePlotPoint() {
         <article
           v-for="outline in sortedOutlines"
           :key="`${outline.chapterNumber}-${outline.sortOrder}`"
-          class="rounded-lg bg-(--ui-bg-muted)/35 p-3"
+          class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 dark:bg-white/6"
         >
           <p class="text-xs font-mono text-primary-500">
             Ch.{{ outline.chapterNumber }}
@@ -1219,7 +1219,7 @@ async function savePlotPoint() {
     </section>
 
     <!-- Plot Points -->
-    <section class="card-surface p-5">
+    <section class="card-glass p-5">
       <div
         class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
       >
@@ -1259,7 +1259,7 @@ async function savePlotPoint() {
         <div
           v-for="point in plotPoints"
           :key="point.id"
-          class="flex items-start gap-3 rounded-lg bg-(--ui-bg-muted)/35 p-3"
+          class="flex items-start gap-3 rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 dark:bg-white/6"
         >
           <div
             class="mt-0.5 size-2 shrink-0 rounded-full"
@@ -1300,7 +1300,7 @@ async function savePlotPoint() {
       class="grid gap-4 xl:grid-cols-[minmax(520px,0.92fr)_minmax(640px,1.08fr)]"
     >
       <!-- Chapters -->
-      <section class="card-surface p-5">
+      <section class="card-glass p-5">
         <div class="mb-4 flex flex-col gap-4">
           <div
             class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
@@ -1443,7 +1443,7 @@ async function savePlotPoint() {
       </section>
 
       <section
-        class="card-surface flex min-h-[620px] flex-col overflow-hidden p-4 lg:p-5"
+        class="card-glass flex min-h-[620px] flex-col overflow-hidden p-4 lg:p-5"
       >
         <div class="flex flex-col gap-3">
           <div
@@ -1464,7 +1464,7 @@ async function savePlotPoint() {
               </p>
             </div>
             <div class="flex items-center gap-2">
-              <div class="flex rounded-md bg-(--ui-bg-muted)/60 p-0.5 gap-0.5">
+              <div class="flex rounded-md bg-white/12 ring-1 ring-white/12 p-0.5 gap-0.5 dark:bg-white/6">
                 <button
                   class="rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
                   :class="
@@ -1574,7 +1574,7 @@ async function savePlotPoint() {
             <article
               v-for="character in filteredCharacters"
               :key="character.id"
-              class="flex min-h-[250px] flex-col rounded-lg border border-(--ui-border)/55 bg-(--ui-bg-muted)/25 p-3 transition-colors hover:bg-(--ui-bg-muted)/40"
+              class="flex min-h-[250px] flex-col rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 transition-colors hover:bg-white/15 dark:bg-white/6"
             >
               <div class="flex items-start gap-2.5">
                 <div
@@ -1712,7 +1712,7 @@ async function savePlotPoint() {
 
               <div
                 v-if="character.appearances.length"
-                class="mt-auto border-t border-(--ui-border)/40 pt-2.5"
+                class="mt-auto border-t border-white/15 pt-2.5"
               >
                 <div class="mb-1.5 flex items-center justify-between gap-2">
                   <p class="text-[10px] text-(--ui-text-dimmed)">最近出场</p>
@@ -1744,7 +1744,7 @@ async function savePlotPoint() {
                         {{ appearance.chapterTitle }}
                       </p>
                       <span
-                        class="shrink-0 rounded bg-(--ui-bg-muted) px-1.5 py-0.5 text-[10px] text-(--ui-text-dimmed)"
+                        class="shrink-0 rounded bg-white/12 ring-1 ring-white/12 px-1.5 py-0.5 text-[10px] text-(--ui-text-dimmed) dark:bg-white/6"
                       >
                         {{ getRoleLabel(appearance.role) }}
                       </span>
@@ -1768,7 +1768,7 @@ async function savePlotPoint() {
           class="flex-1 min-h-0 mt-2"
         />
 
-        <div class="mt-4 border-t border-(--ui-border)/40 pt-4">
+        <div class="mt-4 border-t border-white/15 pt-4">
           <NovelCharacterSuggestions
             :novel-id="novelId"
             @adopted="refreshCharacters()"
@@ -2091,7 +2091,7 @@ async function savePlotPoint() {
             </button>
             <button
               class="rounded-lg border px-3 py-3 text-center transition-colors"
-              :class="exportFormat === 'md' ? 'border-primary-500 bg-primary-500/5 text-primary-600' : 'border-(--ui-border)/40 text-(--ui-text-muted) hover:bg-(--ui-bg-elevated)'"
+              :class="exportFormat === 'md' ? 'border-primary-500 bg-primary-500/5 text-primary-600' : 'border-white/15 text-(--ui-text-muted) hover:bg-white/12'"
               @click="exportFormat = 'md'"
             >
               <Icon icon="lucide:file-code" class="mx-auto mb-1 size-5" />

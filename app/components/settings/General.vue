@@ -18,7 +18,7 @@ const languageOptions = computed(() =>
 
 <template>
   <div class="space-y-4">
-    <div class="card-surface p-3 space-y-3">
+    <div class="card-glass p-3 space-y-3">
       <h3 class="text-sm font-bold text-(--ui-text-highlighted)">
         {{ t('settings.appearance') }}
       </h3>

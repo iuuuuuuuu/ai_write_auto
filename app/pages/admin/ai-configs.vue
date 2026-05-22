@@ -17,12 +17,12 @@ interface AdminAiConfig {
   updatedAt: string
 }
 
-const search = ref('')
+const search = shallowRef('')
 
 const queryParams = computed(() => {
-  const p: Record<string, any> = {}
-  if (search.value.trim()) p.search = search.value.trim()
-  return p
+  const params: Record<string, string> = {}
+  if (search.value.trim()) params.search = search.value.trim()
+  return params
 })
 
 const {
@@ -59,32 +59,34 @@ async function deleteConfig(config: AdminAiConfig) {
 
 <template>
   <div class="space-y-4">
-    <div
-      class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
-    >
-      <div>
-        <p class="text-sm text-(--ui-text-muted)">Admin / AI</p>
-        <h1 class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)">
-          模型配置
-        </h1>
-        <p class="mt-1 text-sm text-(--ui-text-muted)">
-          查阅用户配置的模型、用途和启用状态。密钥仅显示遮蔽结果。
-        </p>
+    <section class="card-glass relative overflow-hidden p-5 md:p-6">
+      <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
+      <div class="liquid-highlight" />
+      <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-sm text-(--ui-text-muted)">Admin / AI</p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)">
+            模型配置
+          </h1>
+          <p class="mt-1 max-w-2xl text-sm text-(--ui-text-muted)">
+            查阅用户配置的模型、用途和启用状态。密钥仅显示遮蔽结果。
+          </p>
+        </div>
+        <NInput
+          v-model:value="search"
+          class="sm:w-80"
+          placeholder="搜索用户、模型或地址"
+          clearable
+        >
+          <template #prefix>
+            <Icon
+              icon="lucide:search"
+              class="text-(--ui-text-dimmed)"
+            />
+          </template>
+        </NInput>
       </div>
-      <NInput
-        v-model:value="search"
-        class="sm:w-80"
-        placeholder="搜索用户、模型或地址"
-        clearable
-      >
-        <template #prefix>
-          <Icon
-            icon="lucide:search"
-            class="text-(--ui-text-dimmed)"
-          />
-        </template>
-      </NInput>
-    </div>
+    </section>
 
     <div
       v-if="pending"
@@ -99,7 +101,7 @@ async function deleteConfig(config: AdminAiConfig) {
     </div>
     <div
       v-else-if="!configs.length"
-      class="card-surface p-10 text-center text-sm text-(--ui-text-muted)"
+      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
     >
       暂无匹配模型配置
     </div>
@@ -108,7 +110,7 @@ async function deleteConfig(config: AdminAiConfig) {
         <section
           v-for="config in configs"
           :key="config.id"
-          class="card-surface group p-4"
+          class="liquid-panel group p-4"
         >
           <div
             class="grid gap-4 lg:grid-cols-[1fr_220px_160px] lg:items-center"
@@ -163,13 +165,13 @@ async function deleteConfig(config: AdminAiConfig) {
           </div>
           <div class="mt-3 flex items-center justify-between">
             <div class="flex flex-wrap gap-2 text-xs text-(--ui-text-muted)">
-              <span class="rounded-md bg-(--ui-bg-elevated) px-2 py-1">{{
+              <span class="rounded-full bg-white/18 px-2 py-1 ring-1 ring-white/15 dark:bg-white/8">{{
                 config.purpose
               }}</span>
-              <span class="rounded-md bg-(--ui-bg-elevated) px-2 py-1"
+              <span class="rounded-full bg-white/18 px-2 py-1 ring-1 ring-white/15 dark:bg-white/8"
                 >Temperature {{ config.temperature || '未设置' }}</span
               >
-              <span class="rounded-md bg-(--ui-bg-elevated) px-2 py-1"
+              <span class="rounded-full bg-white/18 px-2 py-1 ring-1 ring-white/15 dark:bg-white/8"
                 >Max {{ config.maxTokens || '未设置' }}</span
               >
             </div>
@@ -178,6 +180,7 @@ async function deleteConfig(config: AdminAiConfig) {
                 size="small"
                 :type="config.enabled ? 'default' : 'primary'"
                 quaternary
+                round
                 @click="toggleEnabled(config)"
               >
                 {{ config.enabled ? '停用' : '启用' }}
@@ -185,6 +188,7 @@ async function deleteConfig(config: AdminAiConfig) {
               <NButton
                 size="small"
                 quaternary
+                circle
                 type="error"
                 @click="deleteConfig(config)"
               >

@@ -48,7 +48,7 @@ const {
   refresh
 } = await useFetch<AdminUserDetail>(() => `/api/admin/users/${userId.value}`)
 
-const savingRole = ref(false)
+const savingRole = shallowRef(false)
 
 const roleItems = [
   { label: '用户', value: 'user' },
@@ -109,13 +109,15 @@ async function updateRole(role: 'admin' | 'user') {
     </div>
 
     <template v-else-if="detail">
-      <section class="card-surface p-5">
+      <section class="card-glass relative overflow-hidden p-5">
+        <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
+        <div class="liquid-highlight" />
         <div
-          class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+          class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
         >
           <div class="flex items-center gap-4">
             <div
-              class="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-400/15 to-primary-600/5 text-xl font-bold text-primary-500"
+              class="liquid-panel flex size-12 items-center justify-center text-xl font-semibold text-primary-500"
             >
               {{ detail.user.username.charAt(0).toUpperCase() }}
             </div>
@@ -146,33 +148,33 @@ async function updateRole(role: 'admin' | 'user') {
       </section>
 
       <div class="grid gap-3 md:grid-cols-4">
-        <section class="card-surface p-4">
+        <section class="liquid-panel p-4">
           <p class="text-xs text-(--ui-text-dimmed)">小说</p>
-          <p class="mt-2 text-2xl font-bold font-mono">
+          <p class="mt-2 font-mono text-2xl font-semibold">
             {{ detail.stats.novels }}
           </p>
         </section>
-        <section class="card-surface p-4">
+        <section class="liquid-panel p-4">
           <p class="text-xs text-(--ui-text-dimmed)">模型配置</p>
-          <p class="mt-2 text-2xl font-bold font-mono">
+          <p class="mt-2 font-mono text-2xl font-semibold">
             {{ detail.stats.aiConfigs }}
           </p>
         </section>
-        <section class="card-surface p-4">
+        <section class="liquid-panel p-4">
           <p class="text-xs text-(--ui-text-dimmed)">可用模型</p>
-          <p class="mt-2 text-2xl font-bold font-mono">
+          <p class="mt-2 font-mono text-2xl font-semibold">
             {{ detail.stats.enabledAiConfigs }}
           </p>
         </section>
-        <section class="card-surface p-4">
+        <section class="liquid-panel p-4">
           <p class="text-xs text-(--ui-text-dimmed)">Token</p>
-          <p class="mt-2 text-2xl font-bold font-mono">
+          <p class="mt-2 font-mono text-2xl font-semibold">
             {{ detail.stats.totalTokens.toLocaleString() }}
           </p>
         </section>
       </div>
 
-      <section class="card-surface p-5">
+      <section class="card-glass p-5">
         <div class="mb-4 flex items-center justify-between">
           <div class="flex items-center gap-2">
             <Icon
@@ -191,12 +193,12 @@ async function updateRole(role: 'admin' | 'user') {
         </div>
         <div
           v-else
-          class="divide-y divide-(--ui-border)/40"
+          class="space-y-2"
         >
           <div
             v-for="config in detail.aiConfigs"
             :key="config.id"
-            class="grid gap-3 py-4 lg:grid-cols-[1fr_180px_160px] lg:items-center"
+            class="grid gap-3 rounded-2xl bg-white/12 px-3 py-4 ring-1 ring-white/12 lg:grid-cols-[1fr_180px_160px] lg:items-center dark:bg-white/6"
           >
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -229,9 +231,7 @@ async function updateRole(role: 'admin' | 'user') {
         </div>
       </section>
 
-      <section
-        class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-5"
-      >
+      <section class="card-glass p-5">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="font-semibold text-(--ui-text-highlighted)">小说</h2>
           <NTag size="small">{{ detail.novels.length }}</NTag>
@@ -244,12 +244,12 @@ async function updateRole(role: 'admin' | 'user') {
         </div>
         <div
           v-else
-          class="divide-y divide-(--ui-border)"
+          class="space-y-2"
         >
           <div
             v-for="novel in detail.novels"
             :key="novel.id"
-            class="grid gap-3 py-4 md:grid-cols-[1fr_120px_150px_90px] md:items-center"
+            class="grid gap-3 rounded-2xl bg-white/12 px-3 py-4 ring-1 ring-white/12 md:grid-cols-[1fr_120px_150px_90px] md:items-center dark:bg-white/6"
           >
             <div class="min-w-0">
               <NuxtLink
@@ -269,6 +269,7 @@ async function updateRole(role: 'admin' | 'user') {
             <NButton
               size="small"
               secondary
+              round
               @click="navigateTo(`/admin/novels/${novel.id}`)"
             >
               <template #icon>

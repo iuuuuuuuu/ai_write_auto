@@ -1,8 +1,6 @@
 <script setup lang="ts">
 definePageMeta({ layout: 'default' })
 
-const { t } = useI18n()
-
 type SwaggerUiBundle = {
   presets: {
     apis: unknown
@@ -67,10 +65,10 @@ onMounted(() => {
 <template>
   <div class="h-[calc(100vh-36px)] flex flex-col bg-(--ui-bg)">
     <div
-      class="flex items-center gap-2.5 px-4 h-12 border-b border-(--ui-border)/60 bg-(--ui-bg-muted)/60 backdrop-blur-md shrink-0"
+      class="card-glass z-10 mx-3 mt-3 flex h-12 shrink-0 items-center gap-2.5 px-4"
     >
       <button
-        class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+        class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-white/12 hover:text-(--ui-text)"
         @click="navigateTo('/settings')"
       >
         <Icon

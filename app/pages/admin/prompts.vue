@@ -9,7 +9,7 @@ interface PromptTemplate {
   createdAt: string
 }
 
-const categoryFilter = ref('all')
+const categoryFilter = shallowRef('all')
 const categoryOptions = [
   { label: '全部分类', value: 'all' },
   { label: '生成', value: 'generation' },
@@ -20,7 +20,7 @@ const categoryOptions = [
 ]
 
 const queryParams = computed(() => {
-  const p: Record<string, any> = {}
+  const p: Record<string, string> = {}
   if (categoryFilter.value !== 'all') p.category = categoryFilter.value
   return p
 })
@@ -131,34 +131,38 @@ async function aiAction(type: 'expand' | 'rewrite') {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div
-      class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
-    >
-      <div>
-        <p class="text-sm text-(--ui-text-muted)">Admin / Prompts</p>
-        <h1 class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)">
-          提示词模板
-        </h1>
-        <p class="mt-1 text-sm text-(--ui-text-muted)">
-          管理系统级提示词模板，所有用户可见。
-        </p>
+  <div class="space-y-5">
+    <section class="card-glass relative overflow-hidden p-6 sm:p-7">
+      <span class="liquid-orb -right-12 -top-16 h-40 w-40" />
+      <span class="liquid-highlight left-8 top-4 h-10 w-56 rotate-[-8deg]" />
+
+      <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Prompts</p>
+          <h1 class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">
+            提示词模板
+          </h1>
+          <p class="mt-3 text-sm text-(--ui-text-muted)">
+            管理系统级提示词模板，所有用户可见。
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <NSelect
+            v-model:value="categoryFilter"
+            :options="categoryOptions"
+            class="w-36"
+          />
+          <NButton
+            type="primary"
+            round
+            @click="openCreate"
+          >
+            <template #icon><Icon icon="lucide:plus" /></template>
+            新建
+          </NButton>
+        </div>
       </div>
-      <div class="flex gap-2">
-        <NSelect
-          v-model:value="categoryFilter"
-          :options="categoryOptions"
-          class="w-36"
-        />
-        <NButton
-          type="primary"
-          @click="openCreate"
-        >
-          <template #icon><Icon icon="lucide:plus" /></template>
-          新建
-        </NButton>
-      </div>
-    </div>
+    </section>
 
     <div
       v-if="loading"
@@ -167,57 +171,57 @@ async function aiAction(type: 'expand' | 'rewrite') {
       <NSkeleton
         v-for="i in 4"
         :key="i"
-        class="h-20 rounded-lg"
+        class="h-20 rounded-[1.4rem]"
         text
       />
     </div>
     <div
       v-else-if="!prompts.length"
-      class="card-surface p-10 text-center text-sm text-(--ui-text-muted)"
+      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
     >
       暂无提示词模板
     </div>
     <template v-else>
       <div class="space-y-3">
-        <div
-          v-for="p in prompts"
-          :key="p.id"
-          class="card-surface group p-4"
+        <article
+          v-for="prompt in prompts"
+          :key="prompt.id"
+          class="liquid-panel group p-4"
         >
-          <div class="flex items-start justify-between">
+          <div class="flex items-start justify-between gap-4">
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">
-                <h3 class="font-semibold text-(--ui-text-highlighted)">
-                  {{ p.name }}
+                <h3 class="truncate font-semibold text-(--ui-text-highlighted)">
+                  {{ prompt.name }}
                 </h3>
-                <NTag size="small">{{ categoryLabel(p.category) }}</NTag>
+                <NTag size="small">{{ categoryLabel(prompt.category) }}</NTag>
               </div>
-              <p
-                class="mt-2 text-sm text-(--ui-text-muted) line-clamp-2 whitespace-pre-wrap"
-              >
-                {{ p.content }}
+              <p class="mt-3 line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-(--ui-text-muted)">
+                {{ prompt.content }}
               </p>
             </div>
             <div class="ml-4 flex gap-1">
               <NButton
                 size="small"
                 quaternary
-                @click="openEdit(p)"
+                circle
+                @click="openEdit(prompt)"
               >
                 <template #icon><Icon icon="lucide:pencil" /></template>
               </NButton>
               <NButton
                 size="small"
                 quaternary
+                circle
                 type="error"
-                :loading="deleting === p.id"
-                @click="deletePrompt(p.id)"
+                :loading="deleting === prompt.id"
+                @click="deletePrompt(prompt.id)"
               >
                 <template #icon><Icon icon="lucide:trash-2" /></template>
               </NButton>
             </div>
           </div>
-        </div>
+        </article>
       </div>
 
       <div
@@ -234,7 +238,6 @@ async function aiAction(type: 'expand' | 'rewrite') {
       </div>
     </template>
 
-    <!-- Create/Edit Modal -->
     <NModal
       v-model:show="showModal"
       preset="card"
@@ -263,6 +266,7 @@ async function aiAction(type: 'expand' | 'rewrite') {
               <NButton
                 size="tiny"
                 quaternary
+                round
                 :loading="aiProcessing"
                 :disabled="!form.content.trim()"
                 @click="aiAction('expand')"
@@ -273,6 +277,7 @@ async function aiAction(type: 'expand' | 'rewrite') {
               <NButton
                 size="tiny"
                 quaternary
+                round
                 :loading="aiProcessing"
                 :disabled="!form.content.trim()"
                 @click="aiAction('rewrite')"
@@ -292,9 +297,10 @@ async function aiAction(type: 'expand' | 'rewrite') {
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton @click="showModal = false">取消</NButton>
+          <NButton round @click="showModal = false">取消</NButton>
           <NButton
             type="primary"
+            round
             :loading="saving"
             :disabled="!form.name || !form.content"
             @click="save"

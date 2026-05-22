@@ -1,10 +1,10 @@
 <script setup lang="ts">
 const route = useRoute()
-const novelId = computed(() => route.params.id)
+const isChapterWorkspace = computed(() => route.path.includes('/chapters/'))
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto">
+  <div :class="isChapterWorkspace ? 'w-full' : 'mx-auto max-w-7xl'">
     <NuxtPage />
   </div>
 </template>

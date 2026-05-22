@@ -4,9 +4,9 @@ definePageMeta({ layout: 'admin', middleware: 'admin' })
 const { data: siteConfig, refresh } =
   await useFetch<Record<string, string>>('/api/settings/site')
 
-const saving = ref(false)
-const siteName = ref('')
-const siteDescription = ref('')
+const saving = shallowRef(false)
+const siteName = shallowRef('')
+const siteDescription = shallowRef('')
 
 watch(
   siteConfig,
@@ -37,20 +37,23 @@ async function save() {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div>
-      <p class="text-sm text-(--ui-text-muted)">Admin / Settings</p>
-      <h1 class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)">
-        站点设置
-      </h1>
-      <p class="mt-1 text-sm text-(--ui-text-muted)">管理站点基本信息。</p>
-    </div>
+  <div class="space-y-5">
+    <section class="card-glass relative overflow-hidden p-6 sm:p-7">
+      <span class="liquid-orb -right-12 -top-16 h-40 w-40" />
+      <span class="liquid-highlight left-8 top-4 h-10 w-56 rotate-[-8deg]" />
 
-    <div class="card-surface max-w-xl space-y-4 p-6">
-      <div class="flex items-center gap-3 mb-4">
-        <div
-          class="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400/15 to-primary-600/5"
-        >
+      <div class="relative z-10">
+        <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Settings</p>
+        <h1 class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">
+          站点设置
+        </h1>
+        <p class="mt-3 text-sm text-(--ui-text-muted)">管理站点基本信息。</p>
+      </div>
+    </section>
+
+    <section class="card-glass max-w-xl space-y-5 p-6">
+      <div class="flex items-center gap-3">
+        <div class="liquid-panel flex size-10 items-center justify-center rounded-[1.2rem]">
           <Icon
             icon="lucide:settings"
             class="size-4.5 text-primary-500"
@@ -81,15 +84,16 @@ async function save() {
           placeholder="一句话描述你的站点"
         />
       </div>
-      <div class="pt-2">
+      <div class="pt-1">
         <NButton
           type="primary"
+          round
           :loading="saving"
           @click="save"
         >
           保存设置
         </NButton>
       </div>
-    </div>
+    </section>
   </div>
 </template>

@@ -29,9 +29,9 @@ const { data: chapters } = await useFetch<ReadChapterItem[]>(
 
 const { recordReading } = useReadingHistory()
 
-const activeChapterId = ref<number | null>(null)
-const readMode = ref<'scroll' | 'page'>('scroll')
-const currentPage = ref(1)
+const activeChapterId = shallowRef<number | null>(null)
+const readMode = shallowRef<'scroll' | 'page'>('scroll')
+const currentPage = shallowRef(1)
 const charsPerPage = 1200
 const historyKey = computed(() => `novel_read_history_${novelId.value}`)
 
@@ -171,12 +171,15 @@ watch(activeChapterId, (chapterId) => {
 
 <template>
   <div class="mx-auto max-w-6xl space-y-4">
-    <section class="card-surface p-4">
-      <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+    <section class="card-glass relative overflow-hidden p-4 md:p-5">
+      <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
+      <div class="liquid-highlight" />
+      <div class="relative z-10 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div class="min-w-0">
           <NButton
             size="tiny"
             quaternary
+            round
             @click="navigateTo(`/novels/${novelId}`)"
           >
             <template #icon><Icon icon="lucide:arrow-left" /></template>
@@ -194,7 +197,7 @@ watch(activeChapterId, (chapterId) => {
             <NRadioButton value="scroll">滚动</NRadioButton>
             <NRadioButton value="page">翻页</NRadioButton>
           </NRadioGroup>
-          <div class="min-w-[180px] rounded-lg bg-(--ui-bg-muted)/45 p-3">
+          <div class="liquid-panel min-w-[180px] p-3">
             <p class="text-xs text-(--ui-text-dimmed)">阅读进度</p>
             <p class="mt-1 font-mono text-xl text-(--ui-text-highlighted)">
               {{ readingProgress }}%
@@ -211,7 +214,7 @@ watch(activeChapterId, (chapterId) => {
     </section>
 
     <div class="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-      <aside class="card-surface max-h-[calc(100dvh-160px)] overflow-y-auto p-3">
+      <aside class="card-glass max-h-[calc(100dvh-160px)] overflow-y-auto p-3">
         <div class="mb-2 flex items-center justify-between">
           <h2 class="text-sm font-semibold text-(--ui-text-highlighted)">目录</h2>
           <span class="text-xs text-(--ui-text-dimmed)">{{ sortedChapters.length }} 章</span>
@@ -222,7 +225,7 @@ watch(activeChapterId, (chapterId) => {
             :key="chapter.id"
             type="button"
             class="w-full rounded-lg px-3 py-2 text-left transition-colors"
-            :class="chapter.id === activeChapter?.id ? 'bg-primary-500/10 text-primary-600' : 'text-(--ui-text-muted) hover:bg-(--ui-bg-elevated)/70 hover:text-(--ui-text)'"
+            :class="chapter.id === activeChapter?.id ? 'bg-white/18 text-primary-500 ring-1 ring-white/15' : 'text-(--ui-text-muted) hover:bg-white/10 hover:text-(--ui-text)'"
             @click="selectChapter(chapter.id)"
           >
             <p class="truncate text-xs font-mono">Ch.{{ chapter.chapterNumber }}</p>
@@ -231,9 +234,9 @@ watch(activeChapterId, (chapterId) => {
         </div>
       </aside>
 
-      <article class="card-surface min-h-[640px] p-5 md:p-8">
+      <article class="card-glass min-h-[640px] p-5 md:p-8">
         <template v-if="activeChapter">
-          <div class="mb-6 border-b border-(--ui-border)/55 pb-4">
+          <div class="mb-6 border-b border-white/15 pb-4">
             <p class="text-xs font-mono text-primary-500">
               Chapter {{ activeChapter.chapterNumber }}
             </p>
@@ -250,10 +253,11 @@ watch(activeChapterId, (chapterId) => {
           <div v-if="readMode === 'page'" class="mt-4 text-center text-xs text-(--ui-text-dimmed)">
             第 {{ currentPage }} / {{ pagedContent.length }} 页 · 可使用左右方向键翻页
           </div>
-          <div class="mt-8 flex items-center justify-between border-t border-(--ui-border)/55 pt-4">
+          <div class="mt-8 flex items-center justify-between border-t border-white/15 pt-4">
             <NButton
               :disabled="readMode === 'page' ? (!previousChapter && currentPage <= 1) : !previousChapter"
               secondary
+              round
               @click="readMode === 'page' ? goPreviousPage() : previousChapter && selectChapter(previousChapter.id)"
             >
               <template #icon><Icon icon="lucide:chevron-left" /></template>
@@ -261,6 +265,7 @@ watch(activeChapterId, (chapterId) => {
             </NButton>
             <NButton
               type="primary"
+              round
               @click="navigateTo(`/novels/${novelId}/chapters/${activeChapter.id}`)"
             >
               <template #icon><Icon icon="lucide:pencil" /></template>
@@ -269,6 +274,7 @@ watch(activeChapterId, (chapterId) => {
             <NButton
               :disabled="readMode === 'page' ? (!nextChapter && currentPage >= pagedContent.length) : !nextChapter"
               secondary
+              round
               @click="readMode === 'page' ? goNextPage() : nextChapter && selectChapter(nextChapter.id)"
             >
               {{ readMode === 'page' ? '下一页' : '下一章' }}

@@ -128,100 +128,92 @@ function statusColor(status: TaskStatus) {
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div>
-      <p class="text-sm text-(--ui-text-muted)">Admin / Tasks</p>
-      <h1 class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)">
-        生成任务
-      </h1>
-      <p class="mt-1 text-sm text-(--ui-text-muted)">
-        监控 AI 生成任务状态，重试失败任务。
-      </p>
-    </div>
+  <div class="space-y-5">
+    <section class="card-glass relative overflow-hidden p-6 sm:p-7">
+      <span class="liquid-orb -right-12 -top-16 h-40 w-40" />
+      <span class="liquid-highlight left-8 top-4 h-10 w-56 rotate-[-8deg]" />
 
-    <!-- Status Summary -->
-    <div class="grid grid-cols-2 lg:grid-cols-6 gap-3">
-      <div class="card-surface p-3">
+      <div class="relative z-10">
+        <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Tasks</p>
+        <h1 class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">
+          生成任务
+        </h1>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-(--ui-text-muted)">
+          监控 AI 生成任务状态，重试失败任务。
+        </p>
+      </div>
+    </section>
+
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <span class="size-2 rounded-full bg-amber-400" />
           <p class="text-xs text-(--ui-text-dimmed)">等待中</p>
         </div>
-        <p
-          class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
-        >
+        <p class="mt-1 font-mono text-xl font-semibold text-(--ui-text-highlighted)">
           {{ statusCounts.pending }}
         </p>
       </div>
-      <div class="card-surface p-3">
+      <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <span class="size-2 rounded-full bg-blue-400" />
           <p class="text-xs text-(--ui-text-dimmed)">运行中</p>
         </div>
-        <p
-          class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
-        >
+        <p class="mt-1 font-mono text-xl font-semibold text-(--ui-text-highlighted)">
           {{ statusCounts.running }}
         </p>
       </div>
-      <div class="card-surface p-3">
+      <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <span class="size-2 rounded-full bg-yellow-400" />
           <p class="text-xs text-(--ui-text-dimmed)">已暂停</p>
         </div>
-        <p
-          class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
-        >
+        <p class="mt-1 font-mono text-xl font-semibold text-(--ui-text-highlighted)">
           {{ statusCounts.paused }}
         </p>
       </div>
-      <div class="card-surface p-3">
+      <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <span class="size-2 rounded-full bg-slate-400" />
           <p class="text-xs text-(--ui-text-dimmed)">已取消</p>
         </div>
-        <p
-          class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
-        >
+        <p class="mt-1 font-mono text-xl font-semibold text-(--ui-text-highlighted)">
           {{ statusCounts.cancelled }}
         </p>
       </div>
-      <div class="card-surface p-3">
+      <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <span class="size-2 rounded-full bg-emerald-400" />
           <p class="text-xs text-(--ui-text-dimmed)">已完成</p>
         </div>
-        <p
-          class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
-        >
+        <p class="mt-1 font-mono text-xl font-semibold text-(--ui-text-highlighted)">
           {{ statusCounts.completed }}
         </p>
       </div>
-      <div class="card-surface p-3">
+      <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <span class="size-2 rounded-full bg-red-400" />
           <p class="text-xs text-(--ui-text-dimmed)">失败</p>
         </div>
-        <p
-          class="text-xl font-bold font-mono text-(--ui-text-highlighted) mt-1"
-        >
+        <p class="mt-1 font-mono text-xl font-semibold text-(--ui-text-highlighted)">
           {{ statusCounts.failed }}
         </p>
       </div>
     </div>
 
-    <!-- Filters -->
-    <div class="grid gap-2 sm:grid-cols-[200px_200px]">
-      <NSelect
-        v-model:value="statusFilter"
-        :options="statusOptions"
-      />
-      <NSelect
-        v-model:value="typeFilter"
-        :options="typeOptions"
-      />
-    </div>
+    <section class="card-glass p-3 sm:p-4">
+      <div class="grid gap-2 sm:grid-cols-[200px_200px]">
+        <NSelect
+          v-model:value="statusFilter"
+          :options="statusOptions"
+        />
+        <NSelect
+          v-model:value="typeFilter"
+          :options="typeOptions"
+        />
+      </div>
+    </section>
 
-    <!-- Task List -->
     <div
       v-if="loading"
       class="space-y-3"
@@ -229,22 +221,22 @@ function statusColor(status: TaskStatus) {
       <NSkeleton
         v-for="i in 6"
         :key="i"
-        class="h-16 rounded-lg"
+        class="h-16 rounded-[1.4rem]"
         text
       />
     </div>
     <div
       v-else-if="!tasks.length"
-      class="card-surface p-10 text-center text-sm text-(--ui-text-muted)"
+      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
     >
       暂无任务
     </div>
     <template v-else>
       <div class="space-y-2">
-        <div
+        <article
           v-for="task in tasks"
           :key="task.id"
-          class="card-surface group flex items-center justify-between gap-4 p-4"
+          class="liquid-panel group flex items-center justify-between gap-4 p-4"
         >
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
@@ -262,16 +254,14 @@ function statusColor(status: TaskStatus) {
                 >· {{ task.novel.title }}</span
               >
             </div>
-            <div
-              class="mt-1 flex items-center gap-3 text-xs text-(--ui-text-dimmed)"
-            >
+            <div class="mt-1 flex flex-wrap items-center gap-3 text-xs text-(--ui-text-dimmed)">
               <span>{{ new Date(task.createdAt).toLocaleString() }}</span>
               <span v-if="task.tokensUsed">{{ task.tokensUsed }} tokens</span>
               <span v-if="task.retryCount">重试 {{ task.retryCount }} 次</span>
             </div>
             <p
               v-if="task.error"
-              class="mt-1 text-xs text-red-400 truncate"
+              class="mt-1 truncate text-xs text-red-400"
             >
               {{ task.error }}
             </p>
@@ -281,6 +271,7 @@ function statusColor(status: TaskStatus) {
               v-if="task.status === 'failed' || task.status === 'cancelled'"
               size="small"
               secondary
+              round
               :loading="operating === task.id"
               @click="handleAction(task.id, 'retry')"
             >
@@ -290,6 +281,7 @@ function statusColor(status: TaskStatus) {
               v-if="task.status === 'running'"
               size="small"
               secondary
+              round
               :loading="operating === task.id"
               @click="handleAction(task.id, 'pause')"
             >
@@ -299,6 +291,7 @@ function statusColor(status: TaskStatus) {
               v-if="task.status === 'paused'"
               size="small"
               secondary
+              round
               :loading="operating === task.id"
               @click="handleAction(task.id, 'resume')"
             >
@@ -313,13 +306,14 @@ function statusColor(status: TaskStatus) {
               size="small"
               quaternary
               type="error"
+              round
               :loading="operating === task.id"
               @click="handleAction(task.id, 'cancel')"
             >
               取消
             </NButton>
           </div>
-        </div>
+        </article>
       </div>
 
       <div

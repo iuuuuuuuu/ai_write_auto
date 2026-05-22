@@ -18,16 +18,16 @@ const { data: recentActivity } = await useFetch<Array<{
 
 const { items: novels, loading: novelsLoading, page, total, totalPages, pageSize, goToPage, refresh: refreshNovels } = usePagination<NovelItem>({ url: '/api/novels', pageSize: 12 })
 
-const showCreateModal = ref(false)
-const newNovelTitle = ref('')
-const newNovelDescription = ref('')
-const newNovelGenre = ref<string | null>(null)
-const newNovelWorldSetting = ref('')
-const newNovelStyleGuide = ref('')
-const creatingNovel = ref(false)
-const generatingWorldbuilding = ref(false)
-const creatingSampleNovel = ref(false)
-const showOnboardingTips = ref(false)
+const showCreateModal = shallowRef(false)
+const newNovelTitle = shallowRef('')
+const newNovelDescription = shallowRef('')
+const newNovelGenre = shallowRef<string | null>(null)
+const newNovelWorldSetting = shallowRef('')
+const newNovelStyleGuide = shallowRef('')
+const creatingNovel = shallowRef(false)
+const generatingWorldbuilding = shallowRef(false)
+const creatingSampleNovel = shallowRef(false)
+const showOnboardingTips = shallowRef(false)
 const staggerRef = ref<HTMLElement | null>(null)
 useStaggerAnimation(staggerRef, { staggerDelay: 50 })
 
@@ -193,13 +193,13 @@ function getStatusLabel(status: string) {
 }
 
 /* ─────────────── 导入小说 ─────────────── */
-const showImportModal = ref(false)
-const importTitle = ref('')
-const importFile = ref<File | null>(null)
-const importFormat = ref<'txt' | 'md'>('txt')
-const importLoading = ref(false)
+const showImportModal = shallowRef(false)
+const importTitle = shallowRef('')
+const importFile = shallowRef<File | null>(null)
+const importFormat = shallowRef<'txt' | 'md'>('txt')
+const importLoading = shallowRef(false)
 const importPreview = ref<Array<{ title: string; content: string }>>([])
-const importStep = ref<'upload' | 'preview'>('upload')
+const importStep = shallowRef<'upload' | 'preview'>('upload')
 
 const CHAPTER_PATTERNS = [
   /^第[一二三四五六七八九十百千\d]+章\s*/,
@@ -325,7 +325,7 @@ function resetImport() {
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto">
+  <div class="mx-auto max-w-7xl space-y-5">
     <OnboardingTooltip
       :steps="steps"
       :current-step="currentStep"
@@ -336,59 +336,64 @@ function resetImport() {
     />
 
     <!-- Greeting & Stats -->
-    <div class="flex items-start justify-between gap-3 mb-3">
-      <div>
-        <h1 class="text-lg font-bold text-(--ui-text-highlighted) tracking-tight">
-          {{ getGreeting() }}，<span class="bg-gradient-to-r from-primary-400 to-primary-600 bg-clip-text text-transparent">{{ user?.username }}</span>
-        </h1>
-        <p class="mt-0.5 text-xs text-(--ui-text-muted)">
-          <template v-if="stats?.todayWords">
-            今日 <span class="font-semibold text-(--ui-text)">{{ stats.todayWords.toLocaleString() }}</span> 字
-            <template v-if="stats.streak > 1"> · 连续 <span class="font-semibold text-(--ui-text)">{{ stats.streak }}</span> 天</template>
-          </template>
-          <template v-else>今天还没有开始写作</template>
-        </p>
+    <section class="card-glass overflow-hidden rounded-[2rem] p-5 md:p-7">
+      <span class="liquid-orb -right-10 -top-12 h-40 w-40" />
+      <span class="liquid-orb bottom-4 left-[42%] h-20 w-20 opacity-50" />
+      <span class="liquid-highlight left-8 top-4 h-12 w-56 rotate-[-8deg]" />
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div class="max-w-2xl">
+          <p class="mb-2 text-xs uppercase tracking-[0.24em] text-(--ui-text-dimmed)">Writing Command Center</p>
+          <h1 class="text-3xl font-medium tracking-[-0.05em] text-(--ui-text-highlighted) md:text-5xl">
+            {{ getGreeting() }}，<span class="bg-gradient-to-r from-primary-400 to-primary-600 bg-clip-text text-transparent">{{ user?.username }}</span>
+          </h1>
+          <p class="mt-3 text-sm leading-6 text-(--ui-text-muted)">
+            <template v-if="stats?.todayWords">
+              今日已写 <span class="font-medium text-(--ui-text)">{{ stats.todayWords.toLocaleString() }}</span> 字
+              <template v-if="stats.streak > 1"> · 连续 <span class="font-medium text-(--ui-text)">{{ stats.streak }}</span> 天保持创作节奏</template>
+            </template>
+            <template v-else>今天还没有开始写作，先创建作品或继续最近章节。</template>
+          </p>
+        </div>
+        <div class="flex shrink-0 gap-2">
+          <NButton size="medium" round @click="showImportModal = true">
+            <template #icon><Icon icon="lucide:upload" class="h-4 w-4" /></template>
+            导入
+          </NButton>
+          <NButton type="primary" size="medium" round @click="showCreateModal = true">
+            <template #icon><Icon icon="lucide:plus" class="h-4 w-4" /></template>
+            {{ t('novel.create') }}
+          </NButton>
+        </div>
       </div>
-      <div class="flex shrink-0 gap-2">
-        <NButton size="small" @click="showImportModal = true">
-          <template #icon><Icon icon="lucide:upload" class="w-3.5 h-3.5" /></template>
-          导入
-        </NButton>
-        <NButton type="primary" size="small" @click="showCreateModal = true">
-          <template #icon><Icon icon="lucide:plus" class="w-3.5 h-3.5" /></template>
-          {{ t('novel.create') }}
-        </NButton>
-      </div>
-    </div>
+    </section>
 
     <!-- Onboarding Tips -->
     <section
       v-if="showOnboardingTips"
-      class="mb-4 rounded-xl border border-(--ui-border)/60 bg-(--ui-bg-muted)/35 p-3"
+      class="liquid-panel p-4"
     >
-      <div class="flex items-start justify-between gap-3">
-        <div>
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div class="flex-1">
           <div class="flex items-center gap-2">
-            <Icon
-              icon="lucide:map"
-              class="size-4 text-primary-500"
-            />
-            <h2 class="text-sm font-semibold text-(--ui-text-highlighted)">新手写作路径</h2>
+            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500/12 text-primary-500">
+              <Icon icon="lucide:map" class="size-4" />
+            </span>
+            <h2 class="text-sm font-medium text-(--ui-text-highlighted)">新手写作路径</h2>
           </div>
-          <div class="mt-3 grid gap-2 text-xs text-(--ui-text-muted) md:grid-cols-4">
-            <div class="rounded-lg bg-(--ui-bg)/60 p-2">
+          <div class="mt-4 grid gap-2 text-xs text-(--ui-text-muted) md:grid-cols-4">
+            <div class="rounded-2xl bg-white/45 p-3 dark:bg-white/8">
               <p class="font-medium text-(--ui-text)">1. 创建作品</p>
               <p class="mt-1">先填写标题、类型和一句故事简介。</p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg)/60 p-2">
+            <div class="rounded-2xl bg-white/45 p-3 dark:bg-white/8">
               <p class="font-medium text-(--ui-text)">2. 补充设定</p>
               <p class="mt-1">在详细设定中写下世界观和写作风格。</p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg)/60 p-2">
+            <div class="rounded-2xl bg-white/45 p-3 dark:bg-white/8">
               <p class="font-medium text-(--ui-text)">3. 规划大纲</p>
               <p class="mt-1">进入作品详情后编辑或 AI 生成章节大纲。</p>
             </div>
-            <div class="rounded-lg bg-(--ui-bg)/60 p-2">
+            <div class="rounded-2xl bg-white/45 p-3 dark:bg-white/8">
               <p class="font-medium text-(--ui-text)">4. 开始写作</p>
               <p class="mt-1">打开章节，使用保存、续写和扩写快捷键。</p>
             </div>
@@ -404,52 +409,54 @@ function resetImport() {
       </div>
     </section>
 
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-      <div class="card-surface p-2.5 flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background: linear-gradient(135deg, var(--ui-primary-300), var(--ui-primary-500));">
-          <Icon icon="lucide:book-open" class="w-4 h-4 text-white" />
+    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div class="liquid-panel flex items-center gap-3 p-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, var(--ui-primary-400), var(--ui-primary-600));">
+          <Icon icon="lucide:book-open" class="h-5 w-5 text-white" />
         </div>
         <div>
-          <p class="text-lg font-bold font-mono text-(--ui-text) leading-none">{{ stats?.totalNovels || 0 }}</p>
-          <p class="text-[10px] text-(--ui-text-dimmed) mt-0.5">部作品</p>
+          <p class="font-mono text-xl font-medium leading-none text-(--ui-text)">{{ stats?.totalNovels || 0 }}</p>
+          <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">部作品</p>
         </div>
       </div>
-      <div class="card-surface p-2.5 flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background: linear-gradient(135deg, var(--ui-primary-300), var(--ui-primary-500));">
-          <Icon icon="lucide:type" class="w-4 h-4 text-white" />
+      <div class="liquid-panel flex items-center gap-3 p-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, var(--ui-primary-400), var(--ui-primary-600));">
+          <Icon icon="lucide:type" class="h-5 w-5 text-white" />
         </div>
         <div>
-          <p class="text-lg font-bold font-mono text-(--ui-text) leading-none">{{ (stats?.totalWords || 0).toLocaleString() }}</p>
-          <p class="text-[10px] text-(--ui-text-dimmed) mt-0.5">总字数</p>
+          <p class="font-mono text-xl font-medium leading-none text-(--ui-text)">{{ (stats?.totalWords || 0).toLocaleString() }}</p>
+          <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">总字数</p>
         </div>
       </div>
-      <div class="card-surface p-2.5 flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
-          <Icon icon="lucide:flame" class="w-4 h-4 text-white" />
+      <div class="liquid-panel flex items-center gap-3 p-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+          <Icon icon="lucide:flame" class="h-5 w-5 text-white" />
         </div>
         <div>
-          <p class="text-lg font-bold font-mono text-(--ui-text) leading-none">{{ stats?.streak || 0 }}</p>
-          <p class="text-[10px] text-(--ui-text-dimmed) mt-0.5">天连续</p>
+          <p class="font-mono text-xl font-medium leading-none text-(--ui-text)">{{ stats?.streak || 0 }}</p>
+          <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">天连续</p>
         </div>
       </div>
-      <div class="card-surface p-2.5 flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style="background: linear-gradient(135deg, var(--ui-primary-300), var(--ui-primary-500));">
-          <Icon icon="lucide:pencil" class="w-4 h-4 text-white" />
+      <div class="liquid-panel flex items-center gap-3 p-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, var(--ui-primary-400), var(--ui-primary-600));">
+          <Icon icon="lucide:pencil" class="h-5 w-5 text-white" />
         </div>
         <div>
-          <p class="text-lg font-bold font-mono text-(--ui-text) leading-none">{{ stats?.todayWords || 0 }}</p>
-          <p class="text-[10px] text-(--ui-text-dimmed) mt-0.5">今日</p>
+          <p class="font-mono text-xl font-medium leading-none text-(--ui-text)">{{ stats?.todayWords || 0 }}</p>
+          <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">今日</p>
         </div>
       </div>
     </div>
 
-    <section v-if="stats?.dailyGoal" class="card-surface p-3 mb-4">
-      <div class="flex items-center justify-between gap-3 mb-2">
+    <section v-if="stats?.dailyGoal" class="liquid-panel p-4">
+      <div class="mb-3 flex items-center justify-between gap-3">
         <div class="flex items-center gap-2">
-          <Icon icon="lucide:target" class="size-4 text-primary-500" />
-          <span class="text-xs font-medium text-(--ui-text)">今日写作目标</span>
+          <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500/12 text-primary-500">
+            <Icon icon="lucide:target" class="size-4" />
+          </span>
+          <span class="text-sm font-medium text-(--ui-text)">今日写作目标</span>
         </div>
-        <span class="text-xs font-mono text-(--ui-text-muted)">
+        <span class="font-mono text-xs text-(--ui-text-muted)">
           {{ (stats.todayWords || 0).toLocaleString() }} / {{ stats.dailyGoal.toLocaleString() }} 字
         </span>
       </div>
@@ -462,65 +469,65 @@ function resetImport() {
     </section>
 
     <!-- Recent Activity -->
-    <section v-if="recentActivity?.length" class="mb-4">
-      <h2 class="text-[11px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider mb-2">继续写作</h2>
-      <div class="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+    <section v-if="recentActivity?.length">
+      <h2 class="mb-3 text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)">继续写作</h2>
+      <div class="flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-none">
         <NuxtLink
           v-for="item in recentActivity"
           :key="item.id"
           :to="`/novels/${item.novelId}/chapters/${item.id}`"
-          class="group flex-none w-48 p-2.5 card-surface hover:border-(--ui-border-accented) transition-all duration-200"
+          class="liquid-panel group w-56 flex-none p-3 transition-transform duration-200 hover:-translate-y-1"
         >
-          <div class="flex items-center gap-1.5 mb-1">
-            <span class="text-[10px] font-semibold text-(--ui-text-dimmed) bg-(--ui-bg-muted) px-1.5 py-0.5 rounded">第{{ item.chapterNumber }}章</span>
+          <div class="mb-2 flex items-center gap-1.5">
+            <span class="rounded-full bg-primary-500/10 px-2 py-0.5 text-[10px] font-medium text-primary-600 dark:text-primary-400">第{{ item.chapterNumber }}章</span>
             <span class="text-[10px] text-(--ui-text-dimmed)">{{ formatRelativeTime(item.updatedAt) }}</span>
           </div>
-          <p class="text-[13px] font-medium text-(--ui-text) truncate group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">{{ item.title }}</p>
-          <p class="text-[11px] text-(--ui-text-dimmed) truncate mt-0.5">{{ item.novelTitle }}</p>
+          <p class="truncate text-[14px] font-medium text-(--ui-text) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400">{{ item.title }}</p>
+          <p class="mt-1 truncate text-[11px] text-(--ui-text-dimmed)">{{ item.novelTitle }}</p>
         </NuxtLink>
       </div>
     </section>
 
     <!-- Reading History -->
-    <ReadingHistory class="mb-4" />
+    <ReadingHistory />
 
     <!-- Novels Grid -->
     <section>
-      <div class="flex items-center justify-between mb-2">
-        <h2 class="text-[11px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider">我的作品</h2>
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)">我的作品</h2>
         <span v-if="total" class="text-[11px] text-(--ui-text-dimmed)">{{ total }} 部</span>
       </div>
 
-      <div v-if="novelsLoading" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
-        <NSkeleton v-for="i in 6" :key="i" class="h-28 rounded-lg" text />
+      <div v-if="novelsLoading" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <NSkeleton v-for="i in 6" :key="i" class="h-36 rounded-[1.5rem]" text />
       </div>
 
       <template v-else-if="novels.length">
-        <div ref="staggerRef" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+        <div ref="staggerRef" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           <NuxtLink
             v-for="novel in novels"
             :key="novel.id"
             :to="`/novels/${novel.id}`"
-            class="group card-surface p-3 hover:border-(--ui-border-accented) transition-all duration-200 overflow-hidden relative"
+            class="liquid-panel group relative overflow-hidden p-4 transition-transform duration-200 hover:-translate-y-1"
           >
-            <div class="absolute top-0 left-0 w-full h-[2px] opacity-60 group-hover:opacity-100 transition-opacity"
-                 :style="{ background: `linear-gradient(90deg, ${getGenreColor(novel.genre)}aa, ${getGenreColor(novel.genre)})` }" />
-            <div class="flex items-start justify-between gap-1.5 mb-1.5">
-              <h3 class="text-[13px] font-semibold text-(--ui-text) group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors truncate leading-snug">{{ novel.title }}</h3>
-              <span class="shrink-0 text-[10px] px-1 py-0.5 rounded font-medium"
-                    :class="novel.status === 'completed' ? 'bg-emerald-500/8 text-emerald-600' : novel.status === 'in_progress' ? 'bg-blue-500/8 text-blue-600' : 'bg-(--ui-bg-muted) text-(--ui-text-dimmed)'">
+            <div class="absolute left-0 top-0 h-full w-1 opacity-70 transition-opacity group-hover:opacity-100"
+                 :style="{ background: `linear-gradient(180deg, ${getGenreColor(novel.genre)}aa, ${getGenreColor(novel.genre)})` }" />
+            <div class="mb-3 flex items-start justify-between gap-2">
+              <h3 class="truncate text-[14px] font-medium leading-snug text-(--ui-text) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400">{{ novel.title }}</h3>
+              <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                    :class="novel.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' : novel.status === 'in_progress' ? 'bg-blue-500/10 text-blue-600' : 'bg-white/15 text-(--ui-text-dimmed) ring-1 ring-white/15'">
                 {{ getStatusLabel(novel.status) }}
               </span>
             </div>
-            <p v-if="novel.description" class="text-[11px] text-(--ui-text-dimmed) line-clamp-2 mb-2 leading-relaxed">{{ novel.description }}</p>
-            <div v-else class="mb-2" />
-            <div class="flex items-center justify-between text-[10px] text-(--ui-text-dimmed)">
+            <p v-if="novel.description" class="mb-4 line-clamp-2 text-[12px] leading-relaxed text-(--ui-text-dimmed)">{{ novel.description }}</p>
+            <div v-else class="mb-4 h-9" />
+            <div class="flex items-center justify-between text-[11px] text-(--ui-text-dimmed)">
               <span class="font-medium" :style="{ color: getGenreColor(novel.genre) }">{{ novel.genre ? t(`novel.genres.${novel.genre}`) : t('novel.genres.other') }}</span>
               <span class="font-mono">{{ (novel.wordCount || 0).toLocaleString() }} 字</span>
             </div>
           </NuxtLink>
         </div>
-        <div v-if="totalPages > 1" class="flex items-center justify-center pt-3">
+        <div v-if="totalPages > 1" class="flex items-center justify-center pt-4">
           <NPagination :page="page" :page-count="totalPages" :page-size="pageSize" @update:page="goToPage" />
         </div>
       </template>
@@ -617,7 +624,7 @@ function resetImport() {
         <div class="space-y-1">
           <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">上传文件</label>
           <div
-            class="rounded-lg border-2 border-dashed border-(--ui-border)/40 p-8 text-center transition-colors hover:border-(--ui-border)/70 cursor-pointer"
+            class="rounded-2xl border-2 border-dashed border-white/20 bg-white/8 p-8 text-center transition-colors hover:border-white/35 hover:bg-white/12 cursor-pointer"
             @click="$refs.fileInput?.click()"
           >
             <input
@@ -649,7 +656,7 @@ function resetImport() {
           <div
             v-for="(ch, idx) in importPreview"
             :key="idx"
-            class="rounded-md border border-(--ui-border)/20 bg-(--ui-bg-muted)/30 p-2.5"
+            class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-2.5 dark:bg-white/6"
           >
             <div class="flex items-center justify-between gap-2 mb-1">
               <div class="flex items-center gap-2 min-w-0">

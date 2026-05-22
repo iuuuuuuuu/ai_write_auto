@@ -43,7 +43,7 @@ async function saveGoals() {
 </script>
 
 <template>
-  <div class="card-surface p-4 space-y-4">
+  <div class="card-glass p-4 space-y-4">
     <div>
       <h3 class="text-sm font-semibold text-(--ui-text-highlighted)">写作目标</h3>
       <p class="mt-1 text-xs text-(--ui-text-dimmed)">

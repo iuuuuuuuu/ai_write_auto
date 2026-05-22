@@ -89,9 +89,11 @@ const {
     </div>
 
     <template v-else-if="detail">
-      <section class="card-surface p-5">
+      <section class="card-glass relative overflow-hidden p-5">
+        <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
+        <div class="liquid-highlight" />
         <div
-          class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+          class="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
         >
           <div class="min-w-0">
             <p class="text-sm text-(--ui-text-muted)">
@@ -106,28 +108,28 @@ const {
             </p>
           </div>
           <div class="grid grid-cols-3 gap-3 lg:w-80">
-            <div class="card-bezel p-3 text-center">
+            <div class="liquid-panel p-3 text-center">
               <p class="text-xs text-(--ui-text-dimmed)">章节</p>
-              <p class="mt-1 font-bold font-mono">
+              <p class="mt-1 font-mono font-semibold">
                 {{ detail.novel.chapterCount }}
               </p>
             </div>
-            <div class="card-bezel p-3 text-center">
+            <div class="liquid-panel p-3 text-center">
               <p class="text-xs text-(--ui-text-dimmed)">字数</p>
-              <p class="mt-1 font-bold font-mono">
+              <p class="mt-1 font-mono font-semibold">
                 {{ detail.novel.wordCount }}
               </p>
             </div>
-            <div class="card-bezel p-3 text-center">
+            <div class="liquid-panel p-3 text-center">
               <p class="text-xs text-(--ui-text-dimmed)">状态</p>
-              <p class="mt-1 font-bold font-mono">{{ detail.novel.status }}</p>
+              <p class="mt-1 font-mono font-semibold">{{ detail.novel.status }}</p>
             </div>
           </div>
         </div>
       </section>
 
       <div class="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <section class="card-surface p-5">
+        <section class="card-glass p-5">
           <h2 class="font-semibold text-(--ui-text-highlighted)">章节</h2>
           <div
             v-if="!detail.chapters.length"
@@ -137,12 +139,12 @@ const {
           </div>
           <div
             v-else
-            class="mt-4 divide-y divide-(--ui-border)"
+            class="mt-4 space-y-2"
           >
             <article
               v-for="chapter in detail.chapters"
               :key="chapter.id"
-              class="py-4"
+              class="liquid-panel p-4"
             >
               <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
@@ -168,7 +170,7 @@ const {
         </section>
 
         <div class="space-y-4">
-          <section class="card-surface p-5">
+          <section class="card-glass p-5">
             <div class="flex items-center gap-2 mb-3">
               <Icon
                 icon="lucide:sparkles"
@@ -194,7 +196,7 @@ const {
             </dl>
           </section>
 
-          <section class="card-surface p-5">
+          <section class="card-glass p-5">
             <div class="flex items-center gap-2 mb-3">
               <Icon
                 icon="lucide:users"
@@ -215,7 +217,7 @@ const {
               <div
                 v-for="character in detail.characters"
                 :key="character.id"
-                class="card-bezel p-3"
+                class="liquid-panel p-3"
               >
                 <p class="font-medium">{{ character.name }}</p>
                 <p class="mt-1 line-clamp-2 text-sm text-(--ui-text-muted)">

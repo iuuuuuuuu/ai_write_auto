@@ -5,9 +5,16 @@ const { t } = useI18n()
 const { login } = useAuth()
 
 const form = reactive({ username: '', password: '' })
-const loading = ref(false)
-const error = ref('')
-const showError = ref(false)
+const loading = shallowRef(false)
+const error = shallowRef('')
+const showError = shallowRef(false)
+
+function getErrorStatusCode(errorValue: unknown) {
+  if (typeof errorValue !== 'object' || errorValue === null || !('data' in errorValue)) return null
+
+  const data = (errorValue as { data?: { statusCode?: unknown } }).data
+  return typeof data?.statusCode === 'number' ? data.statusCode : null
+}
 
 async function handleLogin() {
   loading.value = true
@@ -16,8 +23,8 @@ async function handleLogin() {
   try {
     await login(form.username, form.password)
     navigateTo('/dashboard')
-  } catch (e: any) {
-    error.value = e.data?.statusCode === 401 ? t('auth.invalidCredentials') : t('auth.loginFailed')
+  } catch (errorValue: unknown) {
+    error.value = getErrorStatusCode(errorValue) === 401 ? t('auth.invalidCredentials') : t('auth.loginFailed')
     showError.value = true
     setTimeout(() => { showError.value = false }, 4000)
   } finally {
@@ -28,49 +35,50 @@ async function handleLogin() {
 
 <template>
   <div>
-    <div class="lg:hidden flex items-center gap-2.5 mb-6">
-      <div class="w-9 h-9 rounded-xl flex items-center justify-center"
-           style="background: linear-gradient(135deg, var(--ui-primary-400), var(--ui-primary-600));">
-        <Icon icon="lucide:pen-tool" class="w-4.5 h-4.5 text-white" />
+    <div class="mb-8 flex items-center gap-3 lg:hidden">
+      <div class="liquid-panel flex size-11 items-center justify-center rounded-[1.35rem]">
+        <Icon icon="lucide:pen-tool" class="size-5 text-primary-500" />
       </div>
-      <span class="text-base font-semibold text-(--ui-text)">AI 小说写作</span>
+      <span class="text-base font-semibold text-(--ui-text-highlighted)">AI 小说写作</span>
     </div>
 
-    <div class="mb-5">
-      <h1 class="text-xl font-bold text-(--ui-text-highlighted)">{{ t('auth.loginTitle') }}</h1>
-      <p class="mt-1 text-sm text-(--ui-text-muted)">{{ t('auth.loginSubtitle') }}</p>
+    <div class="mb-6">
+      <p class="mb-2 text-xs uppercase tracking-[0.24em] text-primary-500/80">Welcome back</p>
+      <h1 class="text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">{{ t('auth.loginTitle') }}</h1>
+      <p class="mt-2 text-sm leading-6 text-(--ui-text-muted)">{{ t('auth.loginSubtitle') }}</p>
     </div>
 
     <Transition name="slide-fade">
-      <div v-if="showError"
-           class="mb-3 flex items-center gap-2 p-2.5 rounded-lg text-sm animate-pulse-glow"
-           style="background: rgba(239, 68, 68, 0.06); border: 1px solid rgba(239, 68, 68, 0.15);">
-        <Icon icon="lucide:alert-circle" class="w-4 h-4 shrink-0 text-red-500" />
-        <span class="text-red-600 dark:text-red-400">{{ error }}</span>
+      <div
+        v-if="showError"
+        class="liquid-panel mb-4 flex items-center gap-2.5 p-3 text-sm text-red-600 dark:text-red-400"
+      >
+        <Icon icon="lucide:alert-circle" class="size-4 shrink-0" />
+        <span>{{ error }}</span>
       </div>
     </Transition>
 
-    <form class="space-y-3" @submit.prevent="handleLogin">
-      <div class="space-y-1">
-        <label class="block text-[11px] font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('auth.username') }}</label>
+    <form class="space-y-4" @submit.prevent="handleLogin">
+      <div class="space-y-1.5">
+        <label class="block text-[11px] uppercase tracking-[0.18em] text-(--ui-text-muted)">{{ t('auth.username') }}</label>
         <NInput v-model:value="form.username" :placeholder="t('auth.usernamePlaceholder')" size="large">
           <template #prefix><Icon icon="lucide:user" class="text-(--ui-text-dimmed)" /></template>
         </NInput>
       </div>
-      <div class="space-y-1">
-        <label class="block text-[11px] font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('auth.password') }}</label>
+      <div class="space-y-1.5">
+        <label class="block text-[11px] uppercase tracking-[0.18em] text-(--ui-text-muted)">{{ t('auth.password') }}</label>
         <NInput v-model:value="form.password" type="password" show-password-on="click" :placeholder="t('auth.passwordPlaceholder')" size="large">
           <template #prefix><Icon icon="lucide:lock" class="text-(--ui-text-dimmed)" /></template>
         </NInput>
       </div>
-      <NButton type="primary" attr-type="submit" block size="large" :loading="loading">
+      <NButton type="primary" attr-type="submit" block size="large" round :loading="loading">
         {{ t('auth.loginButton') }}
       </NButton>
     </form>
 
-    <p class="mt-4 text-center text-xs text-(--ui-text-dimmed)">
+    <p class="mt-5 text-center text-xs text-(--ui-text-dimmed)">
       {{ t('auth.noAccount') }}
-      <NuxtLink to="/register" class="text-primary-600 dark:text-primary-400 hover:underline font-medium">{{ t('auth.registerButton') }}</NuxtLink>
+      <NuxtLink to="/register" class="text-primary-600 hover:underline dark:text-primary-400">{{ t('auth.registerButton') }}</NuxtLink>
     </p>
   </div>
 </template>

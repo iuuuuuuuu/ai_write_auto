@@ -84,8 +84,8 @@ async function restore(type: 'novel' | 'chapter', id: number) {
     })
     message.success(type === 'novel' ? '小说已恢复' : '章节已恢复')
     await fetchTrash()
-  } catch (e: any) {
-    message.error(e?.data?.message || '恢复失败')
+  } catch (errorValue: unknown) {
+    message.error(getErrorMessage(errorValue, '恢复失败'))
   }
 }
 
@@ -104,8 +104,8 @@ function confirmDelete(type: 'novel' | 'chapter', item: TrashNovel | TrashChapte
         })
         message.success('已永久删除')
         await fetchTrash()
-      } catch (e: any) {
-        message.error(e?.data?.message || '删除失败')
+      } catch (errorValue: unknown) {
+        message.error(getErrorMessage(errorValue, '删除失败'))
       }
     }
   })
@@ -123,124 +123,130 @@ function getStatusLabel(status: string) {
 </script>
 
 <template>
-  <div class="max-w-6xl mx-auto">
-    <div class="flex items-center gap-3 mb-5">
-      <div
-        class="flex size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-red-400/15 to-red-500/5"
-      >
-        <Icon
-          icon="lucide:trash-2"
-          class="size-5 text-red-500"
-        />
-      </div>
-      <div>
-        <h1 class="text-xl font-bold text-(--ui-text-highlighted)">
-          {{ t('trash.title') }}
-        </h1>
-        <p class="text-xs text-(--ui-text-muted)">
-          已删除的小说和章节，30 天后将自动清理
-        </p>
-      </div>
-    </div>
+  <div class="mx-auto max-w-6xl space-y-5">
+    <section class="card-glass relative overflow-hidden p-6 sm:p-7">
+      <span class="liquid-orb -right-10 -top-14 h-36 w-36 opacity-70" />
+      <span class="liquid-highlight left-8 top-4 h-10 w-52 rotate-[-8deg]" />
 
-    <NTabs v-model:value="activeTab" type="line" class="mb-4" @update:value="page = 1; fetchTrash()">
-      <NTabPane name="novels" tab="小说">
-        <div v-if="loading && !novels.length" class="py-12 flex justify-center">
-          <NSpin size="medium" />
+      <div class="relative z-10 flex items-center gap-4">
+        <div class="liquid-panel flex size-12 items-center justify-center rounded-[1.35rem]">
+          <Icon
+            icon="lucide:trash-2"
+            class="size-5 text-red-500"
+          />
         </div>
-        <NEmpty v-else-if="!novels.length" description="没有已删除的小说" class="py-12" />
-        <div v-else class="grid gap-3">
-          <div
-            v-for="novel in novels"
-            :key="novel.id"
-            class="card-surface p-4 flex items-start justify-between gap-4"
-          >
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 mb-1">
-                <h3 class="text-sm font-semibold text-(--ui-text-highlighted) truncate">
-                  {{ novel.title }}
-                </h3>
-                <span class="shrink-0 px-1.5 py-0.5 text-[10px] rounded-full bg-(--ui-bg-elevated) text-(--ui-text-muted)">
-                  {{ getStatusLabel(novel.status) }}
-                </span>
-              </div>
-              <p v-if="novel.description" class="text-xs text-(--ui-text-muted) line-clamp-1 mb-1.5">
-                {{ novel.description }}
-              </p>
-              <div class="flex items-center gap-3 text-[11px] text-(--ui-text-dimmed)">
-                <span class="flex items-center gap-1">
-                  <Icon icon="lucide:clock" class="size-3" />
-                  {{ formatDeletedAt(novel.deletedAt) }}删除
-                </span>
-                <span v-if="novel.wordCount" class="flex items-center gap-1">
-                  <Icon icon="lucide:type" class="size-3" />
-                  {{ novel.wordCount.toLocaleString() }} 字
-                </span>
-                <span v-if="novel.genre" class="flex items-center gap-1">
-                  <Icon icon="lucide:tag" class="size-3" />
-                  {{ novel.genre }}
-                </span>
-              </div>
-            </div>
-            <div class="shrink-0 flex items-center gap-2">
-              <NButton size="small" @click="restore('novel', novel.id)">
-                <template #icon><Icon icon="lucide:rotate-ccw" class="size-3.5" /></template>
-                恢复
-              </NButton>
-              <NButton size="small" type="error" ghost @click="confirmDelete('novel', novel)">
-                <template #icon><Icon icon="lucide:trash-2" class="size-3.5" /></template>
-              </NButton>
-            </div>
-          </div>
+        <div>
+          <p class="mb-1 text-xs uppercase tracking-[0.22em] text-red-500/75">Recovery vault</p>
+          <h1 class="text-2xl font-semibold tracking-[-0.04em] text-(--ui-text-highlighted)">
+            {{ t('trash.title') }}
+          </h1>
+          <p class="mt-1 text-sm text-(--ui-text-muted)">
+            已删除的小说和章节，30 天后将自动清理
+          </p>
         </div>
-      </NTabPane>
+      </div>
+    </section>
 
-      <NTabPane name="chapters" tab="章节">
-        <div v-if="loading && !chapters.length" class="py-12 flex justify-center">
-          <NSpin size="medium" />
-        </div>
-        <NEmpty v-else-if="!chapters.length" description="没有已删除的章节" class="py-12" />
-        <div v-else class="grid gap-3">
-          <div
-            v-for="chapter in chapters"
-            :key="chapter.id"
-            class="card-surface p-4 flex items-start justify-between gap-4"
-          >
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="shrink-0 text-xs text-(--ui-text-dimmed)">第{{ chapter.chapterNumber }}章</span>
-                <h3 class="text-sm font-semibold text-(--ui-text-highlighted) truncate">
-                  {{ chapter.title }}
-                </h3>
-              </div>
-              <div class="flex items-center gap-3 text-[11px] text-(--ui-text-dimmed)">
-                <span class="flex items-center gap-1">
-                  <Icon icon="lucide:book-open" class="size-3" />
-                  {{ chapter.novel.title }}
-                </span>
-                <span class="flex items-center gap-1">
-                  <Icon icon="lucide:clock" class="size-3" />
-                  {{ formatDeletedAt(chapter.deletedAt) }}删除
-                </span>
-                <span v-if="chapter.wordCount" class="flex items-center gap-1">
-                  <Icon icon="lucide:type" class="size-3" />
-                  {{ chapter.wordCount.toLocaleString() }} 字
-                </span>
-              </div>
-            </div>
-            <div class="shrink-0 flex items-center gap-2">
-              <NButton size="small" @click="restore('chapter', chapter.id)">
-                <template #icon><Icon icon="lucide:rotate-ccw" class="size-3.5" /></template>
-                恢复
-              </NButton>
-              <NButton size="small" type="error" ghost @click="confirmDelete('chapter', chapter)">
-                <template #icon><Icon icon="lucide:trash-2" class="size-3.5" /></template>
-              </NButton>
-            </div>
+    <section class="card-glass p-3 sm:p-4">
+      <NTabs v-model:value="activeTab" type="segment" animated @update:value="page = 1; fetchTrash()">
+        <NTabPane name="novels" tab="小说">
+          <div v-if="loading && !novels.length" class="py-12 flex justify-center">
+            <NSpin size="medium" />
           </div>
-        </div>
-      </NTabPane>
-    </NTabs>
+          <NEmpty v-else-if="!novels.length" description="没有已删除的小说" class="py-12" />
+          <div v-else class="mt-4 grid gap-3">
+            <article
+              v-for="novel in novels"
+              :key="novel.id"
+              class="liquid-panel flex items-start justify-between gap-4 p-4"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="mb-1.5 flex items-center gap-2">
+                  <h3 class="truncate text-sm font-semibold text-(--ui-text-highlighted)">
+                    {{ novel.title }}
+                  </h3>
+                  <span class="shrink-0 rounded-full bg-white/18 px-2 py-0.5 text-[10px] text-(--ui-text-muted) ring-1 ring-white/15 dark:bg-white/8">
+                    {{ getStatusLabel(novel.status) }}
+                  </span>
+                </div>
+                <p v-if="novel.description" class="mb-2 line-clamp-1 text-xs text-(--ui-text-muted)">
+                  {{ novel.description }}
+                </p>
+                <div class="flex flex-wrap items-center gap-3 text-[11px] text-(--ui-text-dimmed)">
+                  <span class="flex items-center gap-1">
+                    <Icon icon="lucide:clock" class="size-3" />
+                    {{ formatDeletedAt(novel.deletedAt) }}删除
+                  </span>
+                  <span v-if="novel.wordCount" class="flex items-center gap-1">
+                    <Icon icon="lucide:type" class="size-3" />
+                    {{ novel.wordCount.toLocaleString() }} 字
+                  </span>
+                  <span v-if="novel.genre" class="flex items-center gap-1">
+                    <Icon icon="lucide:tag" class="size-3" />
+                    {{ novel.genre }}
+                  </span>
+                </div>
+              </div>
+              <div class="shrink-0 flex items-center gap-2">
+                <NButton size="small" round @click="restore('novel', novel.id)">
+                  <template #icon><Icon icon="lucide:rotate-ccw" class="size-3.5" /></template>
+                  恢复
+                </NButton>
+                <NButton size="small" type="error" ghost circle @click="confirmDelete('novel', novel)">
+                  <template #icon><Icon icon="lucide:trash-2" class="size-3.5" /></template>
+                </NButton>
+              </div>
+            </article>
+          </div>
+        </NTabPane>
+
+        <NTabPane name="chapters" tab="章节">
+          <div v-if="loading && !chapters.length" class="py-12 flex justify-center">
+            <NSpin size="medium" />
+          </div>
+          <NEmpty v-else-if="!chapters.length" description="没有已删除的章节" class="py-12" />
+          <div v-else class="mt-4 grid gap-3">
+            <article
+              v-for="chapter in chapters"
+              :key="chapter.id"
+              class="liquid-panel flex items-start justify-between gap-4 p-4"
+            >
+              <div class="min-w-0 flex-1">
+                <div class="mb-1.5 flex items-center gap-2">
+                  <span class="shrink-0 text-xs text-(--ui-text-dimmed)">第{{ chapter.chapterNumber }}章</span>
+                  <h3 class="truncate text-sm font-semibold text-(--ui-text-highlighted)">
+                    {{ chapter.title }}
+                  </h3>
+                </div>
+                <div class="flex flex-wrap items-center gap-3 text-[11px] text-(--ui-text-dimmed)">
+                  <span class="flex items-center gap-1">
+                    <Icon icon="lucide:book-open" class="size-3" />
+                    {{ chapter.novel.title }}
+                  </span>
+                  <span class="flex items-center gap-1">
+                    <Icon icon="lucide:clock" class="size-3" />
+                    {{ formatDeletedAt(chapter.deletedAt) }}删除
+                  </span>
+                  <span v-if="chapter.wordCount" class="flex items-center gap-1">
+                    <Icon icon="lucide:type" class="size-3" />
+                    {{ chapter.wordCount.toLocaleString() }} 字
+                  </span>
+                </div>
+              </div>
+              <div class="shrink-0 flex items-center gap-2">
+                <NButton size="small" round @click="restore('chapter', chapter.id)">
+                  <template #icon><Icon icon="lucide:rotate-ccw" class="size-3.5" /></template>
+                  恢复
+                </NButton>
+                <NButton size="small" type="error" ghost circle @click="confirmDelete('chapter', chapter)">
+                  <template #icon><Icon icon="lucide:trash-2" class="size-3.5" /></template>
+                </NButton>
+              </div>
+            </article>
+          </div>
+        </NTabPane>
+      </NTabs>
+    </section>
 
     <div v-if="currentTotalPages > 1" class="flex justify-center mt-6">
       <NPagination

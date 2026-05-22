@@ -50,19 +50,19 @@ watch(days, () => refresh())
     </div>
 
     <div class="grid grid-cols-3 gap-2">
-      <div class="card-surface p-3 text-center">
+      <div class="card-glass p-3 text-center">
         <p class="text-xl font-bold font-mono text-(--ui-text-highlighted)">
           {{ formatNumber(totalInput) }}
         </p>
         <p class="text-[11px] text-(--ui-text-dimmed) mt-1">Input Tokens</p>
       </div>
-      <div class="card-surface p-3 text-center">
+      <div class="card-glass p-3 text-center">
         <p class="text-xl font-bold font-mono text-(--ui-text-highlighted)">
           {{ formatNumber(totalOutput) }}
         </p>
         <p class="text-[11px] text-(--ui-text-dimmed) mt-1">Output Tokens</p>
       </div>
-      <div class="card-surface p-3 text-center">
+      <div class="card-glass p-3 text-center">
         <p class="text-xl font-bold font-mono text-primary-600">
           {{ formatNumber(totalTokens) }}
         </p>
@@ -72,10 +72,10 @@ watch(days, () => refresh())
 
     <div
       v-if="records.length"
-      class="card-surface overflow-hidden"
+      class="card-glass overflow-hidden"
     >
       <table class="w-full text-sm">
-        <thead class="bg-(--ui-bg-muted)/50">
+        <thead class="bg-white/12">
           <tr>
             <th
               class="px-3 py-2 text-left text-[11px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider"
@@ -99,11 +99,11 @@ watch(days, () => refresh())
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-(--ui-border)/40">
+        <tbody class="divide-y divide-white/15">
           <tr
             v-for="record in records"
             :key="record.id"
-            class="hover:bg-(--ui-bg-muted)/30 transition-colors"
+            class="hover:bg-white/10 transition-colors"
           >
             <td class="px-3 py-2 text-(--ui-text) text-[12px]">
               {{ new Date(record.createdAt).toLocaleDateString() }}

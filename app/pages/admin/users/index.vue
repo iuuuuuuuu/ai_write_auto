@@ -8,8 +8,8 @@ interface AdminUser {
   createdAt: string
 }
 
-const search = ref('')
-const deletingId = ref<number | null>(null)
+const search = shallowRef('')
+const deletingId = shallowRef<number | null>(null)
 const { confirmDelete } = useConfirmDialog()
 
 const queryParams = computed(() => {
@@ -79,43 +79,46 @@ async function deleteUser(user: AdminUser) {
 
 <template>
   <div class="space-y-4">
-    <div
-      class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
-    >
-      <div>
-        <p class="text-sm text-(--ui-text-muted)">Admin / Users</p>
-        <h1 class="mt-1 text-2xl font-semibold text-(--ui-text-highlighted)">
-          用户管理
-        </h1>
-        <p class="mt-1 text-sm text-(--ui-text-muted)">
-          查阅用户的模型配置、小说和基础权限。
-        </p>
+    <section class="card-glass relative overflow-hidden p-5 md:p-6">
+      <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
+      <div class="liquid-highlight" />
+      <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p class="text-sm text-(--ui-text-muted)">Admin / Users</p>
+          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)">
+            用户管理
+          </h1>
+          <p class="mt-1 max-w-2xl text-sm text-(--ui-text-muted)">
+            查阅用户的模型配置、小说和基础权限。
+          </p>
+        </div>
+        <div class="flex gap-2">
+          <NInput
+            v-model:value="search"
+            class="sm:w-60"
+            placeholder="搜索用户名"
+            clearable
+          >
+            <template #prefix>
+              <Icon
+                icon="lucide:search"
+                class="text-(--ui-text-dimmed)"
+              />
+            </template>
+          </NInput>
+          <NButton
+            type="primary"
+            round
+            @click="showCreateModal = true"
+          >
+            <template #icon><Icon icon="lucide:plus" /></template>
+            创建用户
+          </NButton>
+        </div>
       </div>
-      <div class="flex gap-2">
-        <NInput
-          v-model:value="search"
-          class="sm:w-60"
-          placeholder="搜索用户名"
-          clearable
-        >
-          <template #prefix>
-            <Icon
-              icon="lucide:search"
-              class="text-(--ui-text-dimmed)"
-            />
-          </template>
-        </NInput>
-        <NButton
-          type="primary"
-          @click="showCreateModal = true"
-        >
-          <template #icon><Icon icon="lucide:plus" /></template>
-          创建用户
-        </NButton>
-      </div>
-    </div>
+    </section>
 
-    <div class="card-surface overflow-hidden">
+    <div class="card-glass overflow-hidden">
       <div
         v-if="pending"
         class="space-y-2 p-4"
@@ -135,12 +138,12 @@ async function deleteUser(user: AdminUser) {
       </div>
       <div
         v-else
-        class="divide-y divide-(--ui-border)/40"
+        class="space-y-2"
       >
         <div
           v-for="item in users"
           :key="item.id"
-          class="group grid gap-3 p-4 transition-colors hover:bg-(--ui-bg-elevated)/60 md:grid-cols-[1fr_130px_180px_220px] md:items-center"
+          class="group grid gap-3 rounded-2xl bg-white/12 px-3 py-4 ring-1 ring-white/12 transition-colors hover:bg-white/10 md:grid-cols-[1fr_130px_180px_220px] md:items-center dark:bg-white/6"
         >
           <div class="min-w-0">
             <NuxtLink
@@ -161,6 +164,7 @@ async function deleteUser(user: AdminUser) {
             <NButton
               size="small"
               secondary
+              round
               @click="navigateTo(`/admin/users/${item.id}`)"
             >
               <template #icon>
@@ -171,6 +175,7 @@ async function deleteUser(user: AdminUser) {
             <NButton
               size="small"
               quaternary
+              round
               type="error"
               :disabled="item.id === 1"
               :loading="deletingId === item.id"
@@ -238,9 +243,15 @@ async function deleteUser(user: AdminUser) {
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton @click="showCreateModal = false">取消</NButton>
+          <NButton
+            round
+            @click="showCreateModal = false"
+          >
+            取消
+          </NButton>
           <NButton
             type="primary"
+            round
             :loading="creating"
             :disabled="!newUsername.trim() || newPassword.length < 6"
             @click="createUser"

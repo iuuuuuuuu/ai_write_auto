@@ -1020,13 +1020,13 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="h-[calc(100vh-36px)] flex flex-col bg-(--ui-bg)"
+    class="h-[calc(100vh-36px)] flex flex-col overflow-hidden bg-(--ui-bg)"
     :class="{ 'fixed inset-0 z-50 !h-screen': zenMode }"
   >
     <!-- Toolbar -->
     <div
       v-if="!zenMode"
-      class="flex items-center gap-2.5 px-4 h-12 border-b border-(--ui-border)/60 bg-(--ui-bg-muted)/60 backdrop-blur-md shrink-0"
+      class="flex items-center gap-2.5 px-4 h-12 border-b border-white/15 bg-white/12 backdrop-blur-md shrink-0 dark:bg-white/6"
     >
       <button
         class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
@@ -1227,12 +1227,12 @@ onBeforeUnmount(() => {
       <!-- Left Sidebar -->
       <div
         v-if="!zenMode"
-        class="shrink-0 border-r border-(--ui-border)/40 flex flex-col transition-all duration-200"
-        :class="sidebarCollapsed ? 'w-10' : 'w-72'"
+        class="shrink-0 border-r border-white/15 bg-white/10 flex flex-col transition-all duration-200 dark:bg-white/5"
+        :class="sidebarCollapsed ? 'w-10' : 'w-64'"
       >
         <!-- Collapse toggle -->
         <button
-          class="flex items-center justify-center h-8 border-b border-(--ui-border)/40 text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/60 transition-colors"
+          class="flex items-center justify-center h-8 border-b border-white/15 text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-white/10 transition-colors"
           @click="sidebarCollapsed = !sidebarCollapsed"
         >
           <Icon
@@ -1392,7 +1392,7 @@ onBeforeUnmount(() => {
             class="flex-1 overflow-y-auto px-2 pb-2 space-y-3"
           >
             <div
-              class="rounded-md border border-(--ui-border)/30 bg-(--ui-bg-muted)/30 p-2"
+              class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-2 dark:bg-white/6"
             >
               <div class="flex items-center justify-between gap-2">
                 <span class="text-[10px] font-medium text-(--ui-text-muted)">
@@ -1501,7 +1501,7 @@ onBeforeUnmount(() => {
                 v-for="char in detectedCharacters"
                 :key="char.id"
                 type="button"
-                class="w-full text-left rounded-md px-2.5 py-2 text-xs transition-colors hover:bg-(--ui-bg-elevated)/60 group border border-transparent hover:border-(--ui-border)/30"
+                class="w-full text-left rounded-md px-2.5 py-2 text-xs transition-colors hover:bg-white/10 group border border-transparent hover:border-white/20"
                 @click="toggleChapterCharacter(char.id)"
               >
                 <div class="flex items-center gap-2">
@@ -1563,7 +1563,7 @@ onBeforeUnmount(() => {
 
             <div
               v-if="allCharacters?.length"
-              class="pt-2 border-t border-(--ui-border)/20"
+              class="pt-2 border-t border-white/15"
             >
               <p class="text-[10px] text-(--ui-text-dimmed) mb-1.5">全部角色</p>
               <div class="flex flex-wrap gap-1">
@@ -1575,7 +1575,7 @@ onBeforeUnmount(() => {
                   :class="
                     selectedCharacterIds.has(char.id) ?
                       'bg-(--ui-primary-500)/10 text-(--ui-primary-500)'
-                    : 'bg-(--ui-bg-muted) text-(--ui-text-muted) hover:bg-(--ui-bg-elevated)/80 hover:text-(--ui-text)'
+                    : 'bg-white/12 text-(--ui-text-muted) hover:bg-white/15 hover:text-(--ui-text) ring-1 ring-white/12 dark:bg-white/6'
                   "
                   @click="toggleChapterCharacter(char.id)"
                 >
@@ -1584,136 +1584,210 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </div>
+
+          <!-- Versions Tab -->
+          <div
+            v-show="leftSidebarTab === 'versions'"
+            class="flex-1 overflow-y-auto px-2 pb-2 space-y-2"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-[10px] text-(--ui-text-dimmed)">
+                共 {{ versions.length }} 个版本
+              </span>
+              <button
+                class="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[10px] text-(--ui-text-dimmed) hover:bg-(--ui-bg-elevated)/70 hover:text-(--ui-text) transition-colors"
+                @click="refreshVersions()"
+              >
+                <Icon
+                  icon="lucide:refresh-cw"
+                  class="w-3 h-3"
+                />
+                刷新
+              </button>
+            </div>
+
+            <div
+              v-for="v in versions.slice().reverse()"
+              :key="v.id"
+              class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-2 text-xs transition-colors hover:ring-white/20 dark:bg-white/6"
+            >
+              <div class="flex items-center justify-between gap-1 mb-1">
+                <span class="font-medium text-(--ui-text-highlighted)">
+                  V{{ v.versionNumber }}
+                </span>
+                <span
+                  class="text-[10px] px-1 rounded"
+                  :class="
+                    v.source === 'ai_generated' ?
+                      'bg-violet-500/10 text-violet-500'
+                    : 'bg-(--ui-primary-500)/10 text-(--ui-primary-500)'
+                  "
+                >
+                  {{ v.source === 'ai_generated' ? 'AI生成' : '用户编辑' }}
+                </span>
+              </div>
+              <p class="text-[10px] text-(--ui-text-dimmed) mb-1.5">
+                {{ new Date(v.createdAt).toLocaleString() }}
+              </p>
+              <div class="flex items-center gap-1">
+                <NButton
+                  size="tiny"
+                  quaternary
+                  @click="viewVersionDiff(v)"
+                >
+                  <template #icon><Icon icon="lucide:git-compare" /></template>
+                  对比
+                </NButton>
+                <NButton
+                  size="tiny"
+                  quaternary
+                  :loading="rollingBack"
+                  @click="rollbackVersion(v)"
+                >
+                  <template #icon><Icon icon="lucide:undo-2" /></template>
+                  回滚
+                </NButton>
+              </div>
+            </div>
+
+            <div
+              v-if="!versions.length"
+              class="text-center py-6 text-xs text-(--ui-text-dimmed)"
+            >
+              <div class="flex flex-col items-center gap-1">
+                <Icon
+                  icon="lucide:history"
+                  class="w-5 h-5 opacity-40"
+                />
+                <p>暂无历史版本</p>
+                <p class="text-[10px] opacity-60">每次保存后会自动生成版本</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notes Tab -->
+          <div
+            v-show="leftSidebarTab === 'notes'"
+            class="flex-1 overflow-y-auto px-2 pb-2 flex flex-col"
+          >
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <span class="text-[10px] text-(--ui-text-dimmed)">
+                作者笔记（仅自己可见）
+              </span>
+              <span
+                v-if="savingNote"
+                class="text-[10px] text-(--ui-text-dimmed)"
+              >
+                <NSpin
+                  size="tiny"
+                  class="inline-block mr-1"
+                />
+                保存中...
+              </span>
+              <span
+                v-else-if="chapterNote?.updatedAt"
+                class="text-[10px] text-(--ui-text-dimmed)"
+              >
+                已保存
+              </span>
+            </div>
+            <NInput
+              v-model:value="noteContent"
+              type="textarea"
+              :autosize="{ minRows: 6, maxRows: 20 }"
+              placeholder="写下这一章的写作思路、伏笔安排、待修改点..."
+              class="flex-1"
+              @input="onNoteInput"
+            />
+            <p class="mt-2 text-[10px] text-(--ui-text-dimmed)">
+              支持 Markdown 语法，换行即可保存。
+            </p>
+          </div>
         </template>
       </div>
 
-      <!-- Versions Tab -->
-      <div
-        v-show="leftSidebarTab === 'versions'"
-        class="flex-1 overflow-y-auto px-2 pb-2 space-y-2"
-      >
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-[10px] text-(--ui-text-dimmed)">
-            共 {{ versions.length }} 个版本
-          </span>
-          <button
-            class="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[10px] text-(--ui-text-dimmed) hover:bg-(--ui-bg-elevated)/70 hover:text-(--ui-text) transition-colors"
-            @click="refreshVersions()"
-          >
-            <Icon
-              icon="lucide:refresh-cw"
-              class="w-3 h-3"
-            />
-            刷新
-          </button>
-        </div>
-
-        <div
-          v-for="v in versions.slice().reverse()"
-          :key="v.id"
-          class="rounded-md border border-(--ui-border)/20 bg-(--ui-bg-muted)/30 p-2 text-xs transition-colors hover:border-(--ui-border)/40"
-        >
-          <div class="flex items-center justify-between gap-1 mb-1">
-            <span class="font-medium text-(--ui-text-highlighted)">
-              V{{ v.versionNumber }}
-            </span>
-            <span
-              class="text-[10px] px-1 rounded"
-              :class="
-                v.source === 'ai_generated' ?
-                  'bg-violet-500/10 text-violet-500'
-                : 'bg-(--ui-primary-500)/10 text-(--ui-primary-500)'
-              "
-            >
-              {{ v.source === 'ai_generated' ? 'AI生成' : '用户编辑' }}
-            </span>
-          </div>
-          <p class="text-[10px] text-(--ui-text-dimmed) mb-1.5">
-            {{ new Date(v.createdAt).toLocaleString() }}
-          </p>
-          <div class="flex items-center gap-1">
-            <NButton
-              size="tiny"
-              quaternary
-              @click="viewVersionDiff(v)"
-            >
-              <template #icon><Icon icon="lucide:git-compare" /></template>
-              对比
-            </NButton>
-            <NButton
-              size="tiny"
-              quaternary
-              :loading="rollingBack"
-              @click="rollbackVersion(v)"
-            >
-              <template #icon><Icon icon="lucide:undo-2" /></template>
-              回滚
-            </NButton>
-          </div>
-        </div>
-
-        <div
-          v-if="!versions.length"
-          class="text-center py-6 text-xs text-(--ui-text-dimmed)"
-        >
-          <div class="flex flex-col items-center gap-1">
-            <Icon
-              icon="lucide:history"
-              class="w-5 h-5 opacity-40"
-            />
-            <p>暂无历史版本</p>
-            <p class="text-[10px] opacity-60">每次保存后会自动生成版本</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Notes Tab -->
-      <div
-        v-show="leftSidebarTab === 'notes'"
-        class="flex-1 overflow-y-auto px-2 pb-2 flex flex-col"
-      >
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <span class="text-[10px] text-(--ui-text-dimmed)">
-            作者笔记（仅自己可见）
-          </span>
-          <span
-            v-if="savingNote"
-            class="text-[10px] text-(--ui-text-dimmed)"
-          >
-            <NSpin
-              size="tiny"
-              class="inline-block mr-1"
-            />
-            保存中...
-          </span>
-          <span
-            v-else-if="chapterNote?.updatedAt"
-            class="text-[10px] text-(--ui-text-dimmed)"
-          >
-            已保存
-          </span>
-        </div>
-        <NInput
-          v-model:value="noteContent"
-          type="textarea"
-          :autosize="{ minRows: 6, maxRows: 20 }"
-          placeholder="写下这一章的写作思路、伏笔安排、待修改点..."
-          class="flex-1"
-          @input="onNoteInput"
-        />
-        <p class="mt-2 text-[10px] text-(--ui-text-dimmed)">
-          支持 Markdown 语法，换行即可保存。
-        </p>
-      </div>
-
       <!-- Editor -->
-      <div class="flex-1 min-h-0 flex flex-col">
-        <div class="flex-1 overflow-y-auto px-6 py-6">
-          <div class="max-w-3xl mx-auto">
+      <div
+        class="flex-1 min-w-0 min-h-0 flex flex-col bg-white/14 dark:bg-white/5"
+      >
+        <div
+          v-if="!zenMode"
+          class="shrink-0 border-b border-white/15 bg-(--ui-bg-elevated)/82 px-3 py-2 backdrop-blur-xl dark:bg-(--ui-bg-elevated)/70 sm:px-4"
+        >
+          <div
+            class="flex items-center justify-between gap-3 text-[11px] text-(--ui-text-dimmed)"
+          >
+            <div class="flex min-w-0 items-center gap-3">
+              <span
+                class="h-2.5 w-2.5 shrink-0 rounded-sm bg-(--ui-primary-500) shadow-[0_0_18px_var(--ui-glow)]"
+              />
+              <span class="truncate text-(--ui-text-highlighted)"
+                >正文工作台</span
+              >
+              <span class="hidden items-center gap-1 sm:flex">
+                <Icon
+                  icon="lucide:type"
+                  class="size-3"
+                />
+                {{ currentWordCount.toLocaleString() }} 字
+              </span>
+              <span class="hidden items-center gap-1 sm:flex">
+                <Icon
+                  icon="lucide:list"
+                  class="size-3"
+                />
+                {{ currentLineCount }} 行
+              </span>
+              <span
+                class="hidden items-center gap-1 md:flex"
+                :class="saveStatusClass"
+              >
+                <Icon
+                  :icon="
+                    conflictDetected ? 'lucide:triangle-alert'
+                    : saving ? 'lucide:loader-circle'
+                    : 'lucide:check-circle'
+                  "
+                  class="size-3"
+                  :class="saving ? 'animate-spin' : ''"
+                />
+                {{ saveStatusText }}
+              </span>
+            </div>
+
+            <div class="ml-auto flex shrink-0 items-center justify-end gap-2">
+              <span class="hidden shrink-0 lg:inline">模型</span>
+              <div class="w-44 shrink-0">
+                <NSelect
+                  v-model:value="selectedAiConfigId"
+                  size="tiny"
+                  :options="generationModelOptions"
+                  placeholder="选择模型"
+                  class="w-full"
+                />
+              </div>
+              <span
+                class="hidden 2xl:inline max-w-48 truncate"
+                :title="selectedGenerationConfig?.model"
+              >
+                {{ selectedGenerationConfig?.model || '未选择' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex-1 overflow-y-auto px-1.5 py-1.5 sm:px-2 sm:py-2">
+          <div
+            class="min-h-full w-full rounded-xl border border-white/14 bg-white/36 backdrop-blur-xl dark:bg-white/6"
+          >
             <div
               ref="editorContainerRef"
-              class="w-full min-h-[calc(100vh-160px)] milkdown-editor text-(--ui-text) text-[15px] leading-[2]"
-              :class="zenMode ? 'text-base leading-[2.2]' : ''"
+              class="chapter-writing-surface w-full min-h-[calc(100vh-132px)] milkdown-editor px-3 py-3 text-(--ui-text) text-[15px] leading-[1.9] sm:px-4 lg:px-5"
+              :class="
+                zenMode ?
+                  'min-h-screen text-base leading-[2.05] lg:px-[6vw]'
+                : ''
+              "
               @mouseup="handleTextSelect"
             />
           </div>
@@ -1721,7 +1795,7 @@ onBeforeUnmount(() => {
           <!-- AI Action Result -->
           <div
             v-if="aiActionResult"
-            class="max-w-3xl mx-auto mt-4 p-4 card-surface border-l-2 border-l-primary-400"
+            class="mt-2 w-full p-4 card-glass border-l-2 border-l-primary-400"
           >
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-2">
@@ -1805,7 +1879,7 @@ onBeforeUnmount(() => {
           <!-- Generated Content Preview -->
           <div
             v-if="generating && generatedContent"
-            class="max-w-3xl mx-auto mt-4 p-4 card-surface"
+            class="mt-2 w-full p-4 card-glass"
           >
             <div class="flex items-center gap-2 mb-2">
               <span class="size-1.5 rounded-full bg-violet-400 animate-pulse" />
@@ -1817,68 +1891,6 @@ onBeforeUnmount(() => {
               class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
             >
               {{ generatedContent }}
-            </div>
-          </div>
-
-          <!-- Editor Status Bar -->
-          <div
-            v-if="!zenMode"
-            class="shrink-0 border-t border-(--ui-border)/40 bg-(--ui-bg)/95 px-4 py-1.5 flex items-center justify-between gap-3 text-[11px] text-(--ui-text-dimmed)"
-          >
-            <div class="flex items-center gap-3 min-w-0">
-              <span class="flex items-center gap-1">
-                <Icon
-                  icon="lucide:type"
-                  class="size-3"
-                />
-                {{ currentWordCount.toLocaleString() }} 字
-              </span>
-              <span class="hidden sm:flex items-center gap-1">
-                <Icon
-                  icon="lucide:target"
-                  class="size-3"
-                />
-                {{ chapterProgress }}%
-              </span>
-              <span class="hidden sm:flex items-center gap-1">
-                <Icon
-                  icon="lucide:list"
-                  class="size-3"
-                />
-                {{ currentLineCount }} 行
-              </span>
-              <span
-                class="hidden md:flex items-center gap-1"
-                :class="saveStatusClass"
-              >
-                <Icon
-                  :icon="
-                    conflictDetected ? 'lucide:triangle-alert'
-                    : saving ? 'lucide:loader-circle'
-                    : 'lucide:check-circle'
-                  "
-                  class="size-3"
-                  :class="saving ? 'animate-spin' : ''"
-                />
-                {{ saveStatusText }}
-              </span>
-            </div>
-
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="hidden sm:inline">当前模型</span>
-              <NSelect
-                v-model:value="selectedAiConfigId"
-                size="tiny"
-                :options="generationModelOptions"
-                placeholder="选择模型"
-                class="w-44"
-              />
-              <span
-                class="hidden lg:inline truncate max-w-48"
-                :title="selectedGenerationConfig?.model"
-              >
-                {{ selectedGenerationConfig?.model || '未选择' }}
-              </span>
             </div>
           </div>
         </div>
@@ -2067,7 +2079,7 @@ onBeforeUnmount(() => {
         </span>
       </div>
       <div
-        class="max-h-[60vh] overflow-y-auto rounded border border-(--ui-border)/30 bg-(--ui-bg-muted)/30 p-3 text-xs leading-relaxed space-y-0.5"
+        class="max-h-[60vh] overflow-y-auto rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 text-xs leading-relaxed space-y-0.5 dark:bg-white/6"
       >
         <div
           v-for="(line, idx) in diffLines"
@@ -2122,3 +2134,70 @@ onBeforeUnmount(() => {
     </NModal>
   </div>
 </template>
+
+<style scoped>
+.chapter-writing-surface :deep(.milkdown) {
+  min-height: inherit;
+}
+
+.chapter-writing-surface :deep(.ProseMirror) {
+  min-height: calc(100vh - 164px);
+  max-width: none;
+  padding: 0;
+  color: var(--ui-text);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 0.98rem;
+  line-height: 1.92;
+  letter-spacing: 0;
+  caret-color: var(--ui-primary);
+  outline: none;
+}
+
+.chapter-writing-surface :deep(.ProseMirror p) {
+  margin: 0 0 0.72rem;
+  max-width: min(96ch, 100%);
+  text-wrap: pretty;
+}
+
+.chapter-writing-surface :deep(.ProseMirror h1),
+.chapter-writing-surface :deep(.ProseMirror h2),
+.chapter-writing-surface :deep(.ProseMirror h3) {
+  margin: 1rem 0 0.65rem;
+  color: var(--ui-text-highlighted);
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+.chapter-writing-surface :deep(.ProseMirror h1) {
+  font-size: 1.75rem;
+}
+
+.chapter-writing-surface :deep(.ProseMirror h2) {
+  font-size: 1.38rem;
+}
+
+.chapter-writing-surface :deep(.ProseMirror blockquote) {
+  margin: 0.9rem 0;
+  border-left: 3px solid var(--ui-primary);
+  padding: 0.35rem 0 0.35rem 1rem;
+  color: var(--ui-text-toned);
+  background: color-mix(in oklch, var(--ui-primary) 7%, transparent);
+}
+
+.chapter-writing-surface :deep(.ProseMirror-selectednode),
+.chapter-writing-surface :deep(.ProseMirror-focused) {
+  outline: none;
+}
+
+@media (max-width: 768px) {
+  .chapter-writing-surface :deep(.ProseMirror) {
+    min-height: calc(100vh - 152px);
+    font-size: 0.94rem;
+  }
+
+  .chapter-writing-surface :deep(.ProseMirror p) {
+    max-width: none;
+  }
+}
+</style>
