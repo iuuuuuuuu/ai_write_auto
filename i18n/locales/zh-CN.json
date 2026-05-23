@@ -230,5 +230,14 @@
     "continueWriting": "继续写作",
     "createFirst": "创建你的第一本小说",
     "createFirstDesc": "开始你的创作之旅"
+  },
+  "search": {
+    "placeholder": "搜索小说、章节、角色...",
+    "hint": "输入至少 2 个字符开始搜索",
+    "noResults": "未找到匹配结果",
+    "novels": "小说",
+    "chapters": "章节",
+    "characters": "角色",
+    "resultsFound": "条结果"
   }
 }

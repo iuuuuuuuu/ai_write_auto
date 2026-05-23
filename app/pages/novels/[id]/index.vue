@@ -1043,7 +1043,7 @@ async function savePlotPoint() {
                 size="small"
                 @click="
                   chapters?.length
-                    ? navigateTo(`/novels/${novel.id}/chapters/${chapters[0].id}`)
+                    ? navigateTo(`/novels/${novel.id}/chapters/${chapters[0]!.id}`)
                     : openNewChapterDialog()
                 "
               >

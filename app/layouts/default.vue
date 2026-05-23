@@ -5,6 +5,7 @@ const { user, logout, isAdmin } = useAuth()
 const { settings } = useLayoutSettings()
 
 const sidebarOpen = ref(false)
+const globalSearchOpen = useState('global-search-open', () => false)
 
 const navItems = computed(() => [
   {
@@ -28,6 +29,17 @@ function isActive(to: string) {
 const settingsDrawerOpen = useState('layout-settings-drawer', () => false)
 
 useBackupNotification()
+
+onMounted(() => {
+  function onKeydown(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+      e.preventDefault()
+      globalSearchOpen.value = true
+    }
+  }
+  window.addEventListener('keydown', onKeydown)
+  onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
+})
 </script>
 
 <template>
@@ -108,6 +120,15 @@ useBackupNotification()
             >
           </div>
           <NotificationCenter />
+          <button
+            class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
+            @click="globalSearchOpen = true"
+          >
+            <Icon
+              icon="lucide:search"
+              class="h-4 w-4"
+            />
+          </button>
           <button
             class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
             @click="settingsDrawerOpen = true"
@@ -277,6 +298,9 @@ useBackupNotification()
 
     <!-- Settings Drawer (shared across all modes) -->
     <LayoutSettingsDrawer />
+
+    <!-- Global Search Dialog -->
+    <GlobalSearchDialog v-model:show="globalSearchOpen" />
   </div>
 </template>
 

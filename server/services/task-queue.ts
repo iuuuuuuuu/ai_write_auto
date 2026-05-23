@@ -17,7 +17,8 @@ import {
   CharacterSchema,
   ChapterCharacterSchema,
   CharacterAppearanceSchema,
-  StoryArcSchema
+  StoryArcSchema,
+  NovelSchema
 } from '../database/entities'
 import type { GenerationTask } from '../database/entities'
 
@@ -379,6 +380,43 @@ async function processTask(task: GenerationTask): Promise<void> {
           }
           await em.flush()
           result = `Generated ${arcCount} arc summaries`
+        }
+      }
+    }
+
+    if (task.type === 'style_analysis') {
+      const novelId = getEntityId(task.novel)
+      const chapters = await em.find(ChapterSchema, {
+        novel: novelId,
+        deletedAt: null
+      }, { orderBy: { chapterNumber: 'ASC' }, limit: 5 })
+
+      const sampleText = chapters
+        .filter(ch => ch.content)
+        .map(ch => ch.content!.slice(0, 1500))
+        .join('\n\n---\n\n')
+
+      if (sampleText) {
+        const aiConfig = await em.findOne(AiConfigSchema, { purpose: 'style_analysis' })
+          || await em.findOne(AiConfigSchema, { purpose: 'extraction' })
+
+        if (aiConfig) {
+          const messages = [
+            { role: 'system' as const, content: '你是一位文学评论家和写作风格分析师。请分析以下文本的写作风格，包括：叙事视角、句式特点、用词习惯、节奏感、修辞手法、情感基调。输出简洁的风格指南（200字以内），可直接用于指导 AI 续写时保持一致风格。' },
+            { role: 'user' as const, content: `请分析以下小说片段的写作风格：\n\n${sampleText}` }
+          ]
+          const styleGuide = await callAi({
+            apiUrl: aiConfig.apiUrl,
+            apiKey: aiConfig.apiKey,
+            model: aiConfig.model,
+            messages,
+            temperature: 0.3,
+            maxTokens: 500
+          })
+          if (styleGuide) {
+            await em.nativeUpdate(NovelSchema, { id: novelId }, { styleGuide })
+            result = styleGuide
+          }
         }
       }
     }

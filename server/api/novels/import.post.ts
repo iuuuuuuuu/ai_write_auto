@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { NovelSchema, ChapterSchema } from '../../database/entities'
+import { NovelSchema, ChapterSchema, GenerationTaskSchema } from '../../database/entities'
+import { enqueuePostProcessing } from '../../services/task-queue'
 
 const importSchema = z.object({
   title: z.string().min(1),
@@ -81,6 +82,29 @@ export default defineEventHandler(async (event) => {
   }
 
   await em.flush()
+
+  // Enqueue post-processing for each imported chapter (summary + character extraction)
+  const savedChapters = await em.find(ChapterSchema, { novel: novel.id }, { orderBy: { chapterNumber: 'ASC' } })
+  for (const ch of savedChapters) {
+    if (ch.content) {
+      await enqueuePostProcessing(novel.id, ch.id)
+    }
+  }
+
+  // Enqueue style analysis for the whole novel
+  const existingStyleTask = await em.findOne(GenerationTaskSchema, {
+    novel: novel.id,
+    type: 'style_analysis',
+    status: { $in: ['pending', 'running'] }
+  })
+  if (!existingStyleTask) {
+    em.create(GenerationTaskSchema, {
+      novel: novel.id,
+      type: 'style_analysis',
+      status: 'pending'
+    })
+    await em.flush()
+  }
 
   return { novelId: novel.id, chaptersImported: chapters.length }
 })

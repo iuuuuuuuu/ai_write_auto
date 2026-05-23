@@ -12,6 +12,7 @@ const { settings } = useLayoutSettings()
 const colorMode = useNaiveColorMode()
 
 const settingsDrawerOpen = useState('layout-settings-drawer', () => false)
+const globalSearchOpen = useState('global-search-open', () => false)
 
 function toggleDarkMode() {
   const current = colorMode.colorModePreference.get()
@@ -74,6 +75,16 @@ function toggleDarkMode() {
         <div class="flex-1" />
 
         <div class="flex items-center gap-1.5 pr-1">
+          <button
+            class="flex h-9 w-9 items-center justify-center rounded-full text-(--ui-text-dimmed) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
+            title="Ctrl+Shift+F"
+            @click="globalSearchOpen = true"
+          >
+            <Icon
+              icon="lucide:search"
+              class="h-4 w-4"
+            />
+          </button>
           <NotificationCenter />
           <button
             class="flex h-9 w-9 items-center justify-center rounded-full text-(--ui-text-dimmed) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"

@@ -230,5 +230,14 @@
     "continueWriting": "Continue Writing",
     "createFirst": "Create Your First Novel",
     "createFirstDesc": "Start your creative journey"
+  },
+  "search": {
+    "placeholder": "Search novels, chapters, characters...",
+    "hint": "Type at least 2 characters to search",
+    "noResults": "No results found",
+    "novels": "Novels",
+    "chapters": "Chapters",
+    "characters": "Characters",
+    "resultsFound": "results found"
   }
 }

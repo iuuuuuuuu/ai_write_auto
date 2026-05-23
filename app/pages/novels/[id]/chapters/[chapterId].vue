@@ -253,6 +253,30 @@ const selectedAiConfigId = ref<number | undefined>()
 const generateTemperature = ref<number>(0.7)
 const generateMaxTokens = ref<number>(4096)
 const zenMode = ref(false)
+const zenFontSize = ref(Number(preferences.value?.zen_font_size || 18))
+const zenFontFamily = ref(preferences.value?.zen_font_family || 'serif')
+
+let zenPrefTimer: ReturnType<typeof setTimeout> | null = null
+function saveZenPrefs() {
+  if (zenPrefTimer) clearTimeout(zenPrefTimer)
+  zenPrefTimer = setTimeout(async () => {
+    try {
+      await Promise.all([
+        $fetch('/api/settings/preferences', {
+          method: 'PUT',
+          body: { key: 'zen_font_size', value: String(zenFontSize.value) }
+        }),
+        $fetch('/api/settings/preferences', {
+          method: 'PUT',
+          body: { key: 'zen_font_family', value: zenFontFamily.value }
+        })
+      ])
+    } catch {}
+  }, 800)
+}
+watch(zenFontSize, saveZenPrefs)
+watch(zenFontFamily, saveZenPrefs)
+
 const showShortcutHelp = ref(false)
 const conflictDetected = ref(false)
 const serverUpdatedAt = ref(chapter.value?.updatedAt || null)
@@ -1043,6 +1067,12 @@ async function generateChapter() {
   generatedContent.value = ''
   showGenerateDialog.value = false
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => {
+    controller.abort()
+    message.warning('生成超时（60秒），已自动取消')
+  }, 60000)
+
   try {
     const response = await fetch('/api/ai/generate', {
       method: 'POST',
@@ -1054,7 +1084,8 @@ async function generateChapter() {
         aiConfigId: selectedAiConfigId.value,
         temperature: generateTemperature.value,
         maxTokens: generateMaxTokens.value
-      })
+      }),
+      signal: controller.signal
     })
 
     const reader = response.body!.getReader()
@@ -1081,7 +1112,14 @@ async function generateChapter() {
         } catch {}
       }
     }
+  } catch (e: unknown) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      if (generatedContent.value) {
+        saveDraftRecovery(generatedContent.value, 'generate')
+      }
+    }
   } finally {
+    clearTimeout(timeout)
     generating.value = false
   }
 }
@@ -1489,8 +1527,30 @@ onBeforeUnmount(() => {
     <!-- Zen Mode Exit -->
     <div
       v-if="zenMode"
-      class="absolute top-4 right-4 z-10 opacity-0 hover:opacity-100 transition-opacity duration-300"
+      class="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-0 hover:opacity-100 transition-opacity duration-300"
     >
+      <div class="flex items-center gap-1.5 card-glass rounded-xl px-2.5 py-1.5">
+        <button
+          class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+          @click="zenFontSize = Math.max(12, zenFontSize - 2)"
+        >
+          <Icon icon="lucide:minus" class="w-3.5 h-3.5" />
+        </button>
+        <span class="text-xs font-mono text-(--ui-text-muted) w-6 text-center">{{ zenFontSize }}</span>
+        <button
+          class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+          @click="zenFontSize = Math.min(32, zenFontSize + 2)"
+        >
+          <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+        </button>
+        <div class="w-px h-4 bg-(--ui-border)/50 mx-1" />
+        <button
+          class="flex items-center justify-center h-7 px-2 rounded-lg text-xs text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+          @click="zenFontFamily = zenFontFamily === 'serif' ? 'sans-serif' : zenFontFamily === 'sans-serif' ? 'monospace' : 'serif'"
+        >
+          {{ zenFontFamily === 'serif' ? '衬线' : zenFontFamily === 'sans-serif' ? '无衬线' : '等宽' }}
+        </button>
+      </div>
       <button
         class="flex items-center justify-center w-9 h-9 rounded-xl card-glass text-(--ui-text-muted) hover:text-(--ui-text) transition-colors"
         @click="zenMode = false"
@@ -2147,8 +2207,10 @@ onBeforeUnmount(() => {
               class="chapter-writing-surface w-full flex-1 milkdown-editor px-3 py-3 text-(--ui-text) text-[15px] leading-[1.9] sm:px-4 lg:px-5"
               :class="
                 zenMode ?
-                  'min-h-screen text-base leading-[2.05] lg:px-[6vw]'
+                  'min-h-screen leading-[2.05] lg:px-[6vw]'
                 : ''
+              "
+              :style="zenMode ? { fontSize: `${zenFontSize}px`, fontFamily: zenFontFamily } : {}"
               "
               @mouseup="handleTextSelect"
             />

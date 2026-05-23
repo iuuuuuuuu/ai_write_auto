@@ -26,6 +26,7 @@ const newNovelDescription = shallowRef('')
 const newNovelGenre = shallowRef<string | null>(null)
 const newNovelWorldSetting = shallowRef('')
 const newNovelStyleGuide = shallowRef('')
+const selectedTemplateId = shallowRef<number | null>(null)
 const creatingNovel = shallowRef(false)
 const generatingWorldbuilding = shallowRef(false)
 const creatingSampleNovel = shallowRef(false)
@@ -60,6 +61,41 @@ const genreColors: Record<string, string> = {
   urban: '#475569',
   other: '#94a3b8'
 }
+
+interface NovelTemplateItem {
+  id: number
+  name: string
+  genre: string
+  defaultStyleGuide: string | null
+  defaultAiPrompt: string | null
+  defaultTemperature: string | null
+}
+
+const { data: novelTemplates } = await useFetch<NovelTemplateItem[]>('/api/admin/templates', {
+  default: () => []
+})
+
+const templateOptions = computed(() =>
+  (novelTemplates.value || []).map(t => ({ label: `${t.name} (${t.genre})`, value: t.id }))
+)
+
+function applyTemplate(templateId: number | null) {
+  if (!templateId) return
+  const tpl = novelTemplates.value?.find(t => t.id === templateId)
+  if (!tpl) return
+  if (tpl.genre && !newNovelGenre.value) {
+    const match = genreOptions.find(g => g.value === tpl.genre)
+    if (match) newNovelGenre.value = tpl.genre
+  }
+  if (tpl.defaultStyleGuide && !newNovelStyleGuide.value) {
+    newNovelStyleGuide.value = tpl.defaultStyleGuide
+  }
+  if (tpl.defaultAiPrompt && !newNovelWorldSetting.value) {
+    newNovelWorldSetting.value = tpl.defaultAiPrompt
+  }
+}
+
+watch(selectedTemplateId, applyTemplate)
 
 const sampleNovelOutlines = [
   { chapterNumber: 1, description: '主角在废弃观测站醒来，发现天空中多出一轮陌生的蓝色月亮。', sortOrder: 0 },
@@ -160,6 +196,7 @@ async function handleCreateNovel() {
     newNovelGenre.value = null
     newNovelWorldSetting.value = ''
     newNovelStyleGuide.value = ''
+    selectedTemplateId.value = null
     createStep.value = 1
     refreshNovels()
     router.push(`/novels/${novel.id}`)
@@ -593,6 +630,10 @@ function resetImport() {
         <div class="space-y-1">
           <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('novel.genre') }}</label>
           <NSelect v-model:value="newNovelGenre" :options="genreOptions" :placeholder="t('novel.genre')" clearable />
+        </div>
+        <div v-if="templateOptions.length > 0" class="space-y-1">
+          <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">类型模板</label>
+          <NSelect v-model:value="selectedTemplateId" :options="templateOptions" placeholder="选择模板自动填充设定" clearable />
         </div>
       </div>
 
