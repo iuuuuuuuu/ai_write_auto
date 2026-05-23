@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { h } from 'vue'
+
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
 interface TokenUsageItem {
@@ -62,37 +64,71 @@ watch(
   },
   { immediate: true }
 )
+
+const tableColumns = [
+  {
+    title: '用户',
+    key: 'user',
+    render(row: TokenUsageItem) {
+      if (!row.user) return '未知用户'
+      return h(resolveComponent('NuxtLink') as any, { to: `/admin/users/${row.user.id}`, class: 'text-sm font-medium text-primary-500 hover:text-primary-400' }, () => row.user!.username)
+    }
+  },
+  {
+    title: '输入 Tokens',
+    key: 'tokensInput',
+    width: 120,
+    render(row: TokenUsageItem) {
+      return row.tokensInput.toLocaleString()
+    }
+  },
+  {
+    title: '输出 Tokens',
+    key: 'tokensOutput',
+    width: 120,
+    render(row: TokenUsageItem) {
+      return row.tokensOutput.toLocaleString()
+    }
+  },
+  {
+    title: '费用',
+    key: 'estimatedCost',
+    width: 90,
+    render(row: TokenUsageItem) {
+      return `$${row.estimatedCost || '0'}`
+    }
+  },
+  {
+    title: '时间',
+    key: 'createdAt',
+    width: 170,
+    render(row: TokenUsageItem) {
+      return new Date(row.createdAt).toLocaleString()
+    }
+  }
+]
 </script>
 
 <template>
-  <div class="space-y-5">
-    <section class="card-glass relative overflow-hidden p-6 sm:p-7">
+  <div class="flex flex-col gap-4 h-full overflow-hidden">
+    <section class="card-glass relative overflow-hidden p-5 md:p-6 shrink-0">
       <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Token Usage</p>
-          <h1 class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">
+          <h1 class="mt-2 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)">
             Token 用量
           </h1>
-          <p class="mt-3 text-sm text-(--ui-text-muted)">
-            跨用户 token 消耗统计。
-          </p>
+          <p class="mt-2 text-sm text-(--ui-text-muted)">跨用户 token 消耗统计。</p>
         </div>
-        <NSelect
-          v-model:value="days"
-          :options="daysOptions"
-          class="w-40"
-        />
+        <NSelect v-model:value="days" :options="daysOptions" class="w-40" />
       </div>
     </section>
 
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-4 shrink-0">
       <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <div class="flex size-7 items-center justify-center rounded-xl bg-primary-400/10">
-            <Icon
-              icon="lucide:hash"
-              class="size-3.5 text-primary-500"
-            />
+            <Icon icon="lucide:hash" class="size-3.5 text-primary-500" />
           </div>
           <p class="text-xs text-(--ui-text-dimmed)">总 Token</p>
         </div>
@@ -103,10 +139,7 @@ watch(
       <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <div class="flex size-7 items-center justify-center rounded-xl bg-blue-400/10">
-            <Icon
-              icon="lucide:arrow-down"
-              class="size-3.5 text-blue-500"
-            />
+            <Icon icon="lucide:arrow-down" class="size-3.5 text-blue-500" />
           </div>
           <p class="text-xs text-(--ui-text-dimmed)">输入</p>
         </div>
@@ -117,10 +150,7 @@ watch(
       <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <div class="flex size-7 items-center justify-center rounded-xl bg-emerald-400/10">
-            <Icon
-              icon="lucide:arrow-up"
-              class="size-3.5 text-emerald-500"
-            />
+            <Icon icon="lucide:arrow-up" class="size-3.5 text-emerald-500" />
           </div>
           <p class="text-xs text-(--ui-text-dimmed)">输出</p>
         </div>
@@ -131,10 +161,7 @@ watch(
       <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <div class="flex size-7 items-center justify-center rounded-xl bg-amber-400/10">
-            <Icon
-              icon="lucide:dollar-sign"
-              class="size-3.5 text-amber-500"
-            />
+            <Icon icon="lucide:dollar-sign" class="size-3.5 text-amber-500" />
           </div>
           <p class="text-xs text-(--ui-text-dimmed)">预估费用</p>
         </div>
@@ -144,73 +171,17 @@ watch(
       </div>
     </div>
 
-    <div
-      v-if="loading"
-      class="space-y-3"
-    >
-      <NSkeleton
-        v-for="i in 6"
-        :key="i"
-        class="h-12 rounded-[1.2rem]"
-        text
+    <div class="card-glass flex-1 min-h-0 flex flex-col overflow-hidden">
+      <NDataTable
+        :columns="tableColumns"
+        :data="usage"
+        :loading="loading"
+        :bordered="false"
+        :single-line="false"
+        flex-height
+        class="flex-1"
+        style="height: 0"
       />
     </div>
-    <div
-      v-else-if="!usage.length"
-      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
-    >
-      暂无用量记录
-    </div>
-    <template v-else>
-      <div class="card-glass overflow-hidden p-2">
-        <div class="space-y-2">
-          <article
-            v-for="item in usage"
-            :key="item.id"
-            class="liquid-panel grid gap-2 p-3 md:grid-cols-[1fr_100px_100px_80px_160px] md:items-center"
-          >
-            <div>
-              <NuxtLink
-                v-if="item.user"
-                :to="`/admin/users/${item.user.id}`"
-                class="text-sm font-medium text-primary-400 hover:text-primary-300"
-              >
-                {{ item.user.username }}
-              </NuxtLink>
-              <span
-                v-else
-                class="text-sm text-(--ui-text-muted)"
-                >未知用户</span
-              >
-            </div>
-            <span class="text-sm text-(--ui-text-muted)"
-              >{{ item.tokensInput.toLocaleString() }} in</span
-            >
-            <span class="text-sm text-(--ui-text-muted)"
-              >{{ item.tokensOutput.toLocaleString() }} out</span
-            >
-            <span class="text-sm text-(--ui-text-dimmed)"
-              >${{ item.estimatedCost || '0' }}</span
-            >
-            <span class="text-xs text-(--ui-text-dimmed)">{{
-              new Date(item.createdAt).toLocaleString()
-            }}</span>
-          </article>
-        </div>
-      </div>
-
-      <div
-        v-if="totalPages > 1"
-        class="flex items-center justify-between pt-2"
-      >
-        <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
-        <NPagination
-          :page="page"
-          :page-count="totalPages"
-          :page-size="pageSize"
-          @update:page="goToPage"
-        />
-      </div>
-    </template>
   </div>
 </template>

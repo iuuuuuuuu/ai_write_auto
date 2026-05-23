@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { h } from 'vue'
+import { NTag, NButton } from 'naive-ui'
+
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
 type TaskStatus = 'pending' | 'running' | 'paused' | 'cancelled' | 'completed' | 'failed'
@@ -41,6 +44,7 @@ const {
   totalPages,
   pageSize,
   goToPage,
+  updatePageSize,
   refresh
 } = usePagination<TaskItem>({
   url: '/api/admin/tasks',
@@ -125,23 +129,93 @@ function statusColor(status: TaskStatus) {
   if (status === 'failed' || status === 'cancelled') return 'error'
   return 'warning'
 }
+
+const tableColumns = [
+  {
+    title: '状态',
+    key: 'status',
+    width: 100,
+    render(row: TaskItem) {
+      return h(NTag, { type: statusColor(row.status), size: 'small' }, () => row.status)
+    }
+  },
+  {
+    title: '类型',
+    key: 'type',
+    width: 140
+  },
+  {
+    title: '关联小说',
+    key: 'novel',
+    ellipsis: { tooltip: true },
+    render(row: TaskItem) {
+      return row.novel?.title || '-'
+    }
+  },
+  {
+    title: 'Tokens',
+    key: 'tokensUsed',
+    width: 100,
+    render(row: TaskItem) {
+      return row.tokensUsed ? row.tokensUsed.toLocaleString() : '-'
+    }
+  },
+  {
+    title: '重试',
+    key: 'retryCount',
+    width: 60,
+    render(row: TaskItem) {
+      return row.retryCount || 0
+    }
+  },
+  {
+    title: '创建时间',
+    key: 'createdAt',
+    width: 170,
+    render(row: TaskItem) {
+      return new Date(row.createdAt).toLocaleString()
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 150,
+    align: 'right' as const,
+    render(row: TaskItem) {
+      const buttons: any[] = []
+      if (row.status === 'failed' || row.status === 'cancelled') {
+        buttons.push(h(NButton, { size: 'small', secondary: true, round: true, loading: operating.value === row.id, onClick: () => handleAction(row.id, 'retry') }, () => '重试'))
+      }
+      if (row.status === 'running') {
+        buttons.push(h(NButton, { size: 'small', secondary: true, round: true, loading: operating.value === row.id, onClick: () => handleAction(row.id, 'pause') }, () => '暂停'))
+      }
+      if (row.status === 'paused') {
+        buttons.push(h(NButton, { size: 'small', secondary: true, round: true, loading: operating.value === row.id, onClick: () => handleAction(row.id, 'resume') }, () => '继续'))
+      }
+      if (['pending', 'running', 'paused'].includes(row.status)) {
+        buttons.push(h(NButton, { size: 'small', quaternary: true, type: 'error', round: true, loading: operating.value === row.id, onClick: () => handleAction(row.id, 'cancel') }, () => '取消'))
+      }
+      return h('div', { class: 'flex gap-1 justify-end' }, buttons)
+    }
+  }
+]
 </script>
 
 <template>
-  <div class="space-y-5">
-    <section class="card-glass relative overflow-hidden p-6 sm:p-7">
+  <div class="flex flex-col gap-4 h-full overflow-hidden">
+    <section class="card-glass relative overflow-hidden p-5 md:p-6 shrink-0">
       <div class="relative z-10">
         <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Tasks</p>
-        <h1 class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">
+        <h1 class="mt-2 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)">
           生成任务
         </h1>
-        <p class="mt-3 max-w-2xl text-sm leading-6 text-(--ui-text-muted)">
+        <p class="mt-2 max-w-2xl text-sm text-(--ui-text-muted)">
           监控 AI 生成任务状态，重试失败任务。
         </p>
       </div>
     </section>
 
-    <div class="grid grid-cols-2 gap-3 lg:grid-cols-6">
+    <div class="grid grid-cols-2 gap-3 lg:grid-cols-6 shrink-0">
       <div class="liquid-panel p-3">
         <div class="flex items-center gap-2">
           <span class="size-2 rounded-full bg-amber-400" />
@@ -198,133 +272,36 @@ function statusColor(status: TaskStatus) {
       </div>
     </div>
 
-    <section class="card-glass p-3 sm:p-4">
-      <div class="grid gap-2 sm:grid-cols-[200px_200px]">
-        <NSelect
-          v-model:value="statusFilter"
-          :options="statusOptions"
-        />
-        <NSelect
-          v-model:value="typeFilter"
-          :options="typeOptions"
-        />
-      </div>
-    </section>
+    <div class="flex gap-2 shrink-0">
+      <NSelect v-model:value="statusFilter" :options="statusOptions" class="w-40" />
+      <NSelect v-model:value="typeFilter" :options="typeOptions" class="w-40" />
+    </div>
 
-    <div
-      v-if="loading"
-      class="space-y-3"
-    >
-      <NSkeleton
-        v-for="i in 6"
-        :key="i"
-        class="h-16 rounded-[1.4rem]"
-        text
+    <div class="card-glass flex-1 min-h-0 flex flex-col overflow-hidden">
+      <NDataTable
+        :columns="tableColumns"
+        :data="tasks"
+        :loading="loading"
+        :bordered="false"
+        :single-line="false"
+        flex-height
+        class="flex-1"
+        style="height: 0"
       />
-    </div>
-    <div
-      v-else-if="!tasks.length"
-      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
-    >
-      暂无任务
-    </div>
-    <template v-else>
-      <div class="space-y-2">
-        <article
-          v-for="task in tasks"
-          :key="task.id"
-          class="liquid-panel group flex items-center justify-between gap-4 p-4"
-        >
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
-              <NTag
-                :type="statusColor(task.status)"
-                size="small"
-                >{{ task.status }}</NTag
-              >
-              <span class="text-sm font-medium text-(--ui-text-highlighted)">{{
-                task.type
-              }}</span>
-              <span
-                v-if="task.novel"
-                class="text-xs text-(--ui-text-dimmed)"
-                >· {{ task.novel.title }}</span
-              >
-            </div>
-            <div class="mt-1 flex flex-wrap items-center gap-3 text-xs text-(--ui-text-dimmed)">
-              <span>{{ new Date(task.createdAt).toLocaleString() }}</span>
-              <span v-if="task.tokensUsed">{{ task.tokensUsed }} tokens</span>
-              <span v-if="task.retryCount">重试 {{ task.retryCount }} 次</span>
-            </div>
-            <p
-              v-if="task.error"
-              class="mt-1 truncate text-xs text-red-400"
-            >
-              {{ task.error }}
-            </p>
-          </div>
-          <div class="flex gap-2">
-            <NButton
-              v-if="task.status === 'failed' || task.status === 'cancelled'"
-              size="small"
-              secondary
-              round
-              :loading="operating === task.id"
-              @click="handleAction(task.id, 'retry')"
-            >
-              重试
-            </NButton>
-            <NButton
-              v-if="task.status === 'running'"
-              size="small"
-              secondary
-              round
-              :loading="operating === task.id"
-              @click="handleAction(task.id, 'pause')"
-            >
-              暂停
-            </NButton>
-            <NButton
-              v-if="task.status === 'paused'"
-              size="small"
-              secondary
-              round
-              :loading="operating === task.id"
-              @click="handleAction(task.id, 'resume')"
-            >
-              继续
-            </NButton>
-            <NButton
-              v-if="
-                task.status === 'pending' ||
-                task.status === 'running' ||
-                task.status === 'paused'
-              "
-              size="small"
-              quaternary
-              type="error"
-              round
-              :loading="operating === task.id"
-              @click="handleAction(task.id, 'cancel')"
-            >
-              取消
-            </NButton>
-          </div>
-        </article>
-      </div>
-
       <div
-        v-if="totalPages > 1"
-        class="flex items-center justify-between pt-2"
+        class="flex items-center justify-between px-4 py-3 border-t border-(--ui-border)/40 shrink-0"
       >
         <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
         <NPagination
           :page="page"
           :page-count="totalPages"
           :page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          show-size-picker
           @update:page="goToPage"
+          @update:page-size="updatePageSize"
         />
       </div>
-    </template>
+    </div>
   </div>
 </template>

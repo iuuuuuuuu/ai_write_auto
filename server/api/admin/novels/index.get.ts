@@ -37,7 +37,10 @@ export default defineEventHandler(async (event) => {
   const usersById = new Map(users.map((u) => [u.id, { id: u.id, username: u.username, role: u.role }]))
 
   const items = novels.map((novel) => {
-    const novelChapters = chapters.filter((c: any) => c.novel === novel.id)
+    const novelChapters = chapters.filter((c: any) => {
+      const cNovelId = typeof c.novel === 'object' ? c.novel?.id : c.novel
+      return cNovelId === novel.id
+    })
     const wordCount = novelChapters.reduce((sum: number, c: any) => sum + (c.wordCount || 0), 0)
 
     return {

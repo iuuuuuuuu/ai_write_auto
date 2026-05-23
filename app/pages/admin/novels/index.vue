@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { h } from 'vue'
+import { NTag, NButton } from 'naive-ui'
+import { Icon } from '@iconify/vue'
+
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
 interface AdminNovelListItem {
@@ -40,6 +44,7 @@ const {
 })
 
 const { confirmDelete } = useConfirmDialog()
+const { t } = useI18n()
 
 async function deleteNovel(novel: AdminNovelListItem) {
   const confirmed = await confirmDelete(novel.title)
@@ -54,11 +59,112 @@ const statusItems = [
   { label: '连载中', value: 'in_progress' },
   { label: '已完结', value: 'completed' }
 ]
+
+function statusLabel(status: string) {
+  if (status === 'draft') return '草稿'
+  if (status === 'in_progress') return '连载中'
+  if (status === 'completed') return '已完结'
+  return status
+}
+
+function statusType(status: string) {
+  if (status === 'completed') return 'success'
+  if (status === 'in_progress') return 'info'
+  return 'default'
+}
+
+const tableColumns = [
+  {
+    title: '标题',
+    key: 'title',
+    ellipsis: { tooltip: true },
+    render(row: AdminNovelListItem) {
+      const children: any[] = [
+        h(resolveComponent('NuxtLink') as any, { to: `/admin/novels/${row.id}`, class: 'font-medium text-(--ui-text-highlighted) hover:text-primary-500' }, () => row.title)
+      ]
+      if (row.deletedAt) {
+        children.push(h(NTag, { type: 'warning', size: 'tiny', class: 'ml-2' }, () => '回收站'))
+      }
+      return h('div', { class: 'flex items-center gap-1' }, children)
+    }
+  },
+  {
+    title: '作者',
+    key: 'user',
+    width: 110,
+    render(row: AdminNovelListItem) {
+      return row.user?.username || '未知'
+    }
+  },
+  {
+    title: '状态',
+    key: 'status',
+    width: 90,
+    render(row: AdminNovelListItem) {
+      return h(NTag, { type: statusType(row.status), size: 'small' }, () => statusLabel(row.status))
+    }
+  },
+  {
+    title: '类型',
+    key: 'genre',
+    width: 90,
+    render(row: AdminNovelListItem) {
+      if (!row.genre) return '-'
+      const genreMap: Record<string, string> = {
+        fantasy: '奇幻', scifi: '科幻', romance: '言情', mystery: '悬疑',
+        horror: '恐怖', historical: '历史', urban: '都市', wuxia: '武侠', other: '其他'
+      }
+      return genreMap[row.genre] || row.genre
+    }
+  },
+  {
+    title: '章节',
+    key: 'chapterCount',
+    width: 70,
+    align: 'right' as const,
+    render(row: AdminNovelListItem) {
+      return Number(row.chapterCount) || 0
+    }
+  },
+  {
+    title: '字数',
+    key: 'wordCount',
+    width: 90,
+    align: 'right' as const,
+    render(row: AdminNovelListItem) {
+      return (Number(row.wordCount) || 0).toLocaleString()
+    }
+  },
+  {
+    title: '更新时间',
+    key: 'updatedAt',
+    width: 170,
+    render(row: AdminNovelListItem) {
+      return new Date(row.updatedAt).toLocaleString()
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 80,
+    align: 'center' as const,
+    render(row: AdminNovelListItem) {
+      return h('div', { class: 'flex gap-1 justify-center' }, [
+        h(NButton, { size: 'small', quaternary: true, round: true, onClick: () => navigateTo(`/admin/novels/${row.id}`) }, {
+          icon: () => h(Icon, { icon: 'lucide:eye' })
+        }),
+        h(NButton, { size: 'small', quaternary: true, round: true, type: 'error', onClick: () => deleteNovel(row) }, {
+          icon: () => h(Icon, { icon: 'lucide:trash-2' })
+        })
+      ])
+    }
+  }
+]
 </script>
 
 <template>
-  <div class="space-y-4">
-    <section class="card-glass relative overflow-hidden p-5 md:p-6">
+  <div class="flex flex-col gap-4 h-full overflow-hidden">
+    <section class="card-glass relative overflow-hidden p-5 md:p-6 shrink-0">
       <div class="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p class="text-sm text-(--ui-text-muted)">Admin / Novels</p>
@@ -69,122 +175,51 @@ const statusItems = [
             按用户查阅小说、章节数量和字数，不修改用户内容。
           </p>
         </div>
-        <div class="grid gap-2 sm:grid-cols-[220px_220px]">
+        <div class="flex gap-2">
           <NInput
             v-model:value="search"
             placeholder="搜索小说或用户"
             clearable
+            class="w-52"
           >
             <template #prefix>
-              <Icon
-                icon="lucide:search"
-                class="text-(--ui-text-dimmed)"
-              />
+              <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
             </template>
           </NInput>
           <NSelect
             v-model:value="statusFilter"
             :options="statusItems"
+            class="w-36"
           />
         </div>
       </div>
     </section>
 
-    <div
-      v-if="pending"
-      class="space-y-3"
-    >
-      <NSkeleton
-        v-for="item in 6"
-        :key="item"
-        class="h-24 rounded-lg"
-        text
+    <div class="card-glass flex-1 min-h-0 flex flex-col overflow-hidden">
+      <NDataTable
+        :columns="tableColumns"
+        :data="novels"
+        :loading="pending"
+        :bordered="false"
+        :single-line="false"
+        flex-height
+        class="flex-1"
+        style="height: 0"
       />
-    </div>
-    <div
-      v-else-if="!novels.length"
-      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
-    >
-      暂无匹配小说
-    </div>
-    <template v-else>
-      <div class="grid gap-3">
-        <div
-          v-for="novel in novels"
-          :key="novel.id"
-          class="liquid-panel group p-4 transition-colors hover:bg-(--ui-bg-muted)"
-        >
-          <div
-            class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"
-          >
-            <NuxtLink
-              :to="`/admin/novels/${novel.id}`"
-              class="min-w-0 flex-1"
-            >
-              <div class="flex flex-wrap items-center gap-2">
-                <h2 class="font-semibold text-(--ui-text-highlighted)">
-                  {{ novel.title }}
-                </h2>
-                <NTag size="small">{{ novel.status }}</NTag>
-                <NTag
-                  v-if="novel.deletedAt"
-                  type="warning"
-                  size="small"
-                >
-                  回收站
-                </NTag>
-              </div>
-              <p class="mt-2 line-clamp-2 text-sm text-(--ui-text-muted)">
-                {{ novel.description || '暂无简介' }}
-              </p>
-              <p class="mt-2 text-xs text-(--ui-text-dimmed)">
-                作者 {{ novel.user?.username || '未知用户' }} ·
-                {{ novel.genre || '未分类' }}
-              </p>
-            </NuxtLink>
-            <div class="flex items-center gap-4">
-              <div class="grid grid-cols-3 gap-3 text-right md:w-56">
-                <div>
-                  <p class="text-xs text-(--ui-text-dimmed)">章节</p>
-                  <p class="mt-1 font-semibold">{{ novel.chapterCount }}</p>
-                </div>
-                <div>
-                  <p class="text-xs text-(--ui-text-dimmed)">字数</p>
-                  <p class="mt-1 font-semibold">{{ novel.wordCount }}</p>
-                </div>
-                <div>
-                  <p class="text-xs text-(--ui-text-dimmed)">更新</p>
-                  <p class="mt-1 text-sm">
-                    {{ new Date(novel.updatedAt).toLocaleDateString() }}
-                  </p>
-                </div>
-              </div>
-              <NButton
-                size="small"
-                quaternary
-                circle
-                type="error"
-                @click.prevent="deleteNovel(novel)"
-              >
-                <template #icon><Icon icon="lucide:trash-2" /></template>
-              </NButton>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div
-        v-if="totalPages > 1"
-        class="flex items-center justify-between pt-2"
+        v-if="total > 0"
+        class="flex items-center justify-between px-4 py-3 border-t border-(--ui-border)/40 shrink-0"
       >
         <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
         <NPagination
           :page="page"
           :page-count="totalPages"
           :page-size="pageSize"
+          show-size-picker
+          :page-sizes="[10, 20, 50]"
           @update:page="goToPage"
         />
       </div>
-    </template>
+    </div>
   </div>
 </template>
