@@ -1,20 +1,18 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
-import { buildGenerationPrompt } from '../../utils/ai-prompts'
+import { buildRegenerationPrompt } from '../../utils/ai-prompts'
 import { checkRateLimit } from '../../utils/rate-limit'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema, ModelCostRateSchema } from '../../database/entities'
-import { isEmbeddingReady } from '../../services/embedding'
-import { retrieveRelevant } from '../../services/character-rag'
 
-const generateSchema = z.object({
+const regenerateSchema = z.object({
   novelId: z.number().int().positive(),
   chapterId: z.number().int().positive().optional(),
-  direction: z.string().optional(),
-  chapterOutline: z.string().optional(),
+  previousResult: z.string().min(1),
+  feedback: z.string().min(1).max(2000),
+  aiConfigId: z.number().int().positive().optional(),
   temperature: z.number().min(0).max(2).optional(),
-  maxTokens: z.number().int().min(256).max(128000).optional(),
-  aiConfigId: z.number().int().positive().optional()
+  maxTokens: z.number().int().min(256).max(128000).optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -29,7 +27,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody(event)
-  const data = generateSchema.parse(body)
+  const data = regenerateSchema.parse(body)
   const em = useEm(event)
 
   const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
@@ -44,24 +42,21 @@ export default defineEventHandler(async (event) => {
   const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
   const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
 
-  let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
-  if (isEmbeddingReady()) {
-    const query = [data.chapterOutline, data.direction].filter(Boolean).join(' ')
-    if (query) {
-      ragContext = await retrieveRelevant(data.novelId, query, 10)
-    }
-  }
+  const currentChapter = data.chapterId
+    ? chapters.find(ch => ch.id === data.chapterId)
+    : undefined
 
-  const messages = buildGenerationPrompt({
+  const messages = buildRegenerationPrompt({
     novel,
     chapters,
     characters,
     plotPoints,
     storyArcs,
-    currentChapterOutline: data.chapterOutline,
-    userDirection: data.direction,
-    ragContext
+    currentChapterOutline: currentChapter?.summary || undefined,
+    previousResult: data.previousResult,
+    feedback: data.feedback
   })
+
   const task = em.create(GenerationTaskSchema, {
     novel: data.novelId,
     chapter: data.chapterId || null,

@@ -302,6 +302,28 @@ export interface ApiToken {
   createdAt: Date
 }
 
+export interface ModelCostRate {
+  [OptionalProps]?: 'id' | 'createdAt' | 'updatedAt'
+  id: number
+  user: User
+  model: string
+  inputCostPer1k: string
+  outputCostPer1k: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ConsistencyIssue {
+  [OptionalProps]?: 'id' | 'dismissed' | 'createdAt'
+  id: number
+  chapter: Chapter
+  type: string
+  severity: 'high' | 'medium' | 'low'
+  description: string
+  dismissed: boolean
+  createdAt: Date
+}
+
 // ─── Entity Schemas ───
 
 export const UserSchema = new EntitySchema<User>({
@@ -815,6 +837,47 @@ export const ApiTokenSchema = new EntitySchema<ApiToken>({
   }
 })
 
+export const ModelCostRateSchema = new EntitySchema<ModelCostRate>({
+  name: 'ModelCostRate',
+  tableName: 'model_cost_rates',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    model: { type: 'string' },
+    inputCostPer1k: { type: 'string', fieldName: 'input_cost_per_1k', default: '0' },
+    outputCostPer1k: { type: 'string', fieldName: 'output_cost_per_1k', default: '0' },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    },
+    updatedAt: {
+      type: UnixTimestampType,
+      fieldName: 'updated_at',
+      onCreate: () => new Date(),
+      onUpdate: () => new Date()
+    }
+  }
+})
+
+export const ConsistencyIssueSchema = new EntitySchema<ConsistencyIssue>({
+  name: 'ConsistencyIssue',
+  tableName: 'consistency_issues',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    chapter: { kind: 'm:1', entity: () => 'Chapter', fieldName: 'chapter_id' },
+    type: { type: 'string' },
+    severity: { type: 'string', default: 'medium' },
+    description: { type: 'string' },
+    dismissed: { type: 'boolean', default: false },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    }
+  }
+})
+
 export const allEntities = [
   UserSchema,
   SiteConfigSchema,
@@ -836,5 +899,7 @@ export const allEntities = [
   WritingStatSchema,
   UserPreferenceSchema,
   SchemaMigrationSchema,
-  ApiTokenSchema
+  ApiTokenSchema,
+  ModelCostRateSchema,
+  ConsistencyIssueSchema
 ]

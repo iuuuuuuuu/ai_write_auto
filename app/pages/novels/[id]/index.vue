@@ -183,6 +183,9 @@ const { data: characters, refresh: refreshCharacters } = await useFetch<
 const { confirmDelete } = useConfirmDialog()
 
 const showCharacterDialog = ref(false)
+const showNewChapterDialog = ref(false)
+const newChapterTitle = ref('')
+const creatingChapter = ref(false)
 const editingCharacterId = ref<number | null>(null)
 const savingCharacter = ref(false)
 const characterFormRef = ref<{ validate: () => Promise<void> } | null>(null)
@@ -418,6 +421,33 @@ async function saveChapterOrder() {
   } finally {
     savingChapterOrder.value = false
   }
+}
+
+async function createNewChapter() {
+  if (!newChapterTitle.value.trim()) {
+    message.warning('请输入章节标题')
+    return
+  }
+  creatingChapter.value = true
+  try {
+    const nextNumber = (chapters.value?.length || 0) + 1
+    const result = await $fetch<{ id: number }>(`/api/novels/${novelId.value}/chapters`, {
+      method: 'POST',
+      body: { title: newChapterTitle.value.trim(), chapterNumber: nextNumber },
+    })
+    showNewChapterDialog.value = false
+    navigateTo(`/novels/${novelId.value}/chapters/${result.id}`)
+  } catch (e: any) {
+    message.error(e?.data?.message || '创建章节失败')
+  } finally {
+    creatingChapter.value = false
+  }
+}
+
+function openNewChapterDialog() {
+  const nextNumber = (chapters.value?.length || 0) + 1
+  newChapterTitle.value = `第${nextNumber}章`
+  showNewChapterDialog.value = true
 }
 
 function getValidOutlineItems() {
@@ -1012,9 +1042,9 @@ async function savePlotPoint() {
                 secondary
                 size="small"
                 @click="
-                  navigateTo(
-                    `/novels/${novel.id}/chapters/${chapters?.[0]?.id || 1}`
-                  )
+                  chapters?.length
+                    ? navigateTo(`/novels/${novel.id}/chapters/${chapters[0].id}`)
+                    : openNewChapterDialog()
                 "
               >
                 <template #icon><Icon icon="lucide:pen-tool" /></template>
@@ -1567,11 +1597,7 @@ async function savePlotPoint() {
               <NButton
                 size="tiny"
                 type="primary"
-                @click="
-                  navigateTo(
-                    `/novels/${novel.id}/chapters/${chapters?.[0]?.id || 1}`
-                  )
-                "
+                @click="openNewChapterDialog"
               >
                 <template #icon><Icon icon="lucide:plus" /></template>
                 新建章节
@@ -2052,6 +2078,27 @@ async function savePlotPoint() {
         </div>
       </section>
     </div>
+
+    <NModal
+      v-model:show="showNewChapterDialog"
+      preset="card"
+      title="新建章节"
+      class="max-w-sm"
+    >
+      <NInput
+        v-model:value="newChapterTitle"
+        placeholder="请输入章节标题"
+        @keydown.enter="createNewChapter"
+      />
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showNewChapterDialog = false">取消</NButton>
+          <NButton type="primary" :loading="creatingChapter" @click="createNewChapter">
+            创建
+          </NButton>
+        </div>
+      </template>
+    </NModal>
 
     <NModal
       v-model:show="showCharacterDialog"

@@ -353,3 +353,62 @@ export function buildStoryArcPrompt(
     { role: 'user', content: summaryText }
   ]
 }
+
+export function buildRegenerationPrompt(context: {
+  novel: any
+  chapters: any[]
+  characters: any[]
+  plotPoints: any[]
+  storyArcs?: any[]
+  currentChapterOutline?: string
+  previousResult: string
+  feedback: string
+}): Array<{ role: 'system' | 'user'; content: string }> {
+  const { novel, chapters, characters, plotPoints, storyArcs, currentChapterOutline, previousResult, feedback } = context
+
+  const systemPrompt = `你是一位专业的小说作家。用户对上一次生成的章节内容不满意，并提供了修改反馈。请根据反馈重新生成章节内容。
+
+## 重要规则
+- 认真理解用户的反馈意见，针对性地调整
+- 保持与已有章节一致的写作风格和叙事视角
+- 不要简单地在原文基础上修补，而是重新构思并生成
+- 保留原文中用户没有提出异议的优秀部分
+- 确保角色性格和行为的连贯性${novel.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
+
+  let userPrompt = `## 小说信息\n标题：${novel.title}\n`
+  if (novel.genre) userPrompt += `类型：${novel.genre}\n`
+  if (novel.worldSetting) userPrompt += `\n## 世界观设定\n${novel.worldSetting}\n`
+
+  if (characters.length > 0) {
+    userPrompt += `\n## 角色档案\n`
+    for (const char of characters.slice(0, 10)) {
+      userPrompt += `- ${char.name}`
+      if (char.description) userPrompt += `：${char.description}`
+      if (char.traits) userPrompt += `（性格：${char.traits}）`
+      userPrompt += '\n'
+    }
+  }
+
+  if (chapters.length > 0) {
+    const recentChapters = chapters.slice(-3)
+    userPrompt += `\n## 近期章节摘要\n`
+    for (const ch of recentChapters) {
+      if (ch.summary) {
+        userPrompt += `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}\n`
+      }
+    }
+  }
+
+  if (currentChapterOutline) {
+    userPrompt += `\n## 本章大纲\n${currentChapterOutline}\n`
+  }
+
+  userPrompt += `\n## 上次生成的内容（用户不满意）\n${previousResult.slice(0, 4000)}\n`
+  userPrompt += `\n## 用户反馈\n${feedback}\n`
+  userPrompt += `\n请根据以上反馈重新生成本章内容。`
+
+  return [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ]
+}

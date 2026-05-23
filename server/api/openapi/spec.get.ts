@@ -475,11 +475,300 @@ export default defineEventHandler(() => {
           tags: ['Search'],
           summary: '全文搜索',
           parameters: [
-            { name: 'q', in: 'query', required: true, schema: { type: 'string' }, description: '搜索关键词' }
+            { name: 'q', in: 'query', required: true, schema: { type: 'string' }, description: '搜索关键词' },
+            { name: 'novelId', in: 'query', schema: { type: 'integer' }, description: '限定搜索范围到指定小说' }
           ],
           responses: {
-            '200': { description: '搜索结果' }
+            '200': { description: '搜索结果（chapters, novels, characters）' }
           }
+        }
+      },
+      '/api/ai/regenerate': {
+        post: {
+          tags: ['AI'],
+          summary: '基于反馈重新生成（SSE 流式）',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    novelId: { type: 'integer' },
+                    chapterId: { type: 'integer' },
+                    previousResult: { type: 'string', description: '上次生成的内容' },
+                    feedback: { type: 'string', description: '用户反馈', example: '节奏太快，多加对话' },
+                    aiConfigId: { type: 'integer' },
+                    temperature: { type: 'number' },
+                    maxTokens: { type: 'integer' }
+                  },
+                  required: ['novelId', 'previousResult', 'feedback']
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'SSE 流', content: { 'text/event-stream': { schema: { type: 'string' } } } }
+          }
+        }
+      },
+      '/api/ai/fragment': {
+        post: {
+          tags: ['AI'],
+          summary: 'AI 片段生成（对话/描写/动作/独白）（SSE 流式）',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    novelId: { type: 'integer' },
+                    chapterId: { type: 'integer' },
+                    fragmentType: { type: 'string', enum: ['dialogue', 'description', 'action', 'monologue'] },
+                    contextBefore: { type: 'string' },
+                    aiConfigId: { type: 'integer' }
+                  },
+                  required: ['novelId', 'chapterId', 'fragmentType']
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: 'SSE 流', content: { 'text/event-stream': { schema: { type: 'string' } } } }
+          }
+        }
+      },
+      '/api/ai/batch-generate': {
+        post: {
+          tags: ['AI'],
+          summary: '批量生成多章节',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    novelId: { type: 'integer' },
+                    startChapter: { type: 'integer' },
+                    endChapter: { type: 'integer' },
+                    aiConfigId: { type: 'integer' }
+                  },
+                  required: ['novelId', 'startChapter', 'endChapter']
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: '批量任务已创建' }
+          }
+        }
+      },
+      '/api/ai/consistency-check': {
+        post: {
+          tags: ['AI'],
+          summary: '手动触发一致性检查',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    novelId: { type: 'integer' },
+                    chapterId: { type: 'integer' }
+                  },
+                  required: ['novelId', 'chapterId']
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: '检查结果', content: { 'application/json': { schema: { type: 'object', properties: { issues: { type: 'array', items: { type: 'object', properties: { type: { type: 'string' }, severity: { type: 'string' }, description: { type: 'string' } } } } } } } } }
+          }
+        }
+      },
+      '/api/ai/analyze-style': {
+        post: {
+          tags: ['AI'],
+          summary: 'AI 分析写作风格',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    novelId: { type: 'integer' }
+                  },
+                  required: ['novelId']
+                }
+              }
+            }
+          },
+          responses: {
+            '200': { description: '风格分析结果' }
+          }
+        }
+      },
+      '/api/ai/suggest': {
+        post: {
+          tags: ['AI'],
+          summary: 'AI 审阅章节并返回修改建议',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    novelId: { type: 'integer' },
+                    chapterId: { type: 'integer' },
+                    aiConfigId: { type: 'integer' }
+                  },
+                  required: ['novelId', 'chapterId']
+                }
+              }
+            }
+          },
+          responses: {
+            '200': {
+              description: '建议列表',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      suggestions: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            originalText: { type: 'string' },
+                            suggestedText: { type: 'string' },
+                            reason: { type: 'string' }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/novels/{id}/chapters/{chapterId}/versions': {
+        get: {
+          tags: ['Chapters'],
+          summary: '获取章节版本历史',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+          ],
+          responses: {
+            '200': { description: '版本列表' }
+          }
+        }
+      },
+      '/api/novels/{id}/chapters/{chapterId}/versions/{versionId}/rollback': {
+        post: {
+          tags: ['Chapters'],
+          summary: '回滚到指定版本',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } },
+            { name: 'versionId', in: 'path', required: true, schema: { type: 'integer' } }
+          ],
+          responses: {
+            '200': { description: '回滚成功' }
+          }
+        }
+      },
+      '/api/novels/{id}/chapters/{chapterId}/notes': {
+        get: {
+          tags: ['Chapters'],
+          summary: '获取章节作者笔记',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+          ],
+          responses: { '200': { description: '笔记内容' } }
+        },
+        put: {
+          tags: ['Chapters'],
+          summary: '更新章节作者笔记',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+          ],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { type: 'object', properties: { content: { type: 'string' } }, required: ['content'] } } }
+          },
+          responses: { '200': { description: '更新成功' } }
+        }
+      },
+      '/api/novels/{id}/chapters/{chapterId}/consistency-issues': {
+        get: {
+          tags: ['AI'],
+          summary: '获取章节一致性问题列表',
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
+            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+          ],
+          responses: { '200': { description: '一致性问题列表' } }
+        }
+      },
+      '/api/stats/token-usage': {
+        get: {
+          tags: ['Stats'],
+          summary: '获取 Token 用量统计',
+          parameters: [
+            { name: 'days', in: 'query', schema: { type: 'integer', default: 30 }, description: '统计天数' }
+          ],
+          responses: { '200': { description: 'Token 用量数据' } }
+        }
+      },
+      '/api/settings/cost-rates': {
+        get: {
+          tags: ['Settings'],
+          summary: '获取模型单价配置',
+          responses: { '200': { description: '单价列表' } }
+        },
+        put: {
+          tags: ['Settings'],
+          summary: '创建或更新模型单价',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    model: { type: 'string', example: 'gpt-4o' },
+                    inputCostPer1k: { type: 'string', example: '0.005' },
+                    outputCostPer1k: { type: 'string', example: '0.015' }
+                  },
+                  required: ['model', 'inputCostPer1k', 'outputCostPer1k']
+                }
+              }
+            }
+          },
+          responses: { '200': { description: '保存成功' } }
+        }
+      },
+      '/api/settings/backup': {
+        get: {
+          tags: ['Settings'],
+          summary: '获取备份列表和配置',
+          responses: { '200': { description: '备份信息' } }
+        },
+        post: {
+          tags: ['Settings'],
+          summary: '手动触发备份',
+          responses: { '200': { description: '备份成功' } }
         }
       }
     }

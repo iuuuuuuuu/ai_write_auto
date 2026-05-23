@@ -27,11 +27,15 @@ export default defineEventHandler(async (event) => {
   const allUsage = await em.find(TokenUsageSchema, filter)
   const totalInput = allUsage.reduce((sum, u) => sum + u.tokensInput, 0)
   const totalOutput = allUsage.reduce((sum, u) => sum + u.tokensOutput, 0)
+  const totalEstimatedCost = allUsage.reduce((sum, u) => {
+    return sum + (u.estimatedCost ? parseFloat(u.estimatedCost) : 0)
+  }, 0)
 
   return {
     totalInput,
     totalOutput,
     totalTokens: totalInput + totalOutput,
+    totalEstimatedCost: totalEstimatedCost > 0 ? totalEstimatedCost.toFixed(4) : null,
     records: total,
     ...paginatedResult(usage, total, pagination),
   }

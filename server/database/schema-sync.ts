@@ -1,7 +1,7 @@
 import type { MikroORM } from '@mikro-orm/core'
 import { SchemaMigrationSchema, SiteConfigSchema } from './entities'
 
-export const DATABASE_SCHEMA_VERSION = '2026.05.21.001'
+export const DATABASE_SCHEMA_VERSION = '2026.05.23.001'
 
 export interface DatabaseSchemaSyncResult {
   version: string
@@ -48,7 +48,28 @@ export async function syncDatabaseSchema(
   source: string
 ): Promise<DatabaseSchemaSyncResult> {
   const generator = orm.getSchemaGenerator()
-  await generator.updateSchema({ safe: true, dropTables: false })
+
+  try {
+    await generator.updateSchema({ safe: true, dropTables: false })
+  } catch (e: any) {
+    if (e?.message?.includes('Cannot read properties of null')) {
+      // FTS5/vector virtual tables confuse MikroORM's schema introspection.
+      // Drop them temporarily, sync schema, then they'll be recreated by ensureFts.
+      const conn = orm.em.getConnection()
+      try {
+        await conn.execute('DROP TABLE IF EXISTS chapters_fts')
+        await conn.execute('DROP TRIGGER IF EXISTS chapters_fts_insert')
+        await conn.execute('DROP TRIGGER IF EXISTS chapters_fts_delete')
+        await conn.execute('DROP TRIGGER IF EXISTS chapters_fts_update')
+      } catch {}
+      try {
+        await conn.execute('DROP TABLE IF EXISTS vec_character_embeddings')
+      } catch {}
+      await generator.updateSchema({ safe: true, dropTables: false })
+    } else {
+      throw e
+    }
+  }
 
   const syncedAt = new Date().toISOString()
   await recordSchemaMigration(orm, DATABASE_SCHEMA_VERSION, source)

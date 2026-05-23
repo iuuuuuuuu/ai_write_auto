@@ -8,6 +8,7 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent])
 
 const { t } = useI18n()
+const message = useMessage()
 
 const days = ref(30)
 const { data: usage, refresh } = await useFetch('/api/stats/token-usage', {
@@ -17,7 +18,47 @@ const { data: usage, refresh } = await useFetch('/api/stats/token-usage', {
 const totalInput = computed(() => (usage.value as any)?.totalInput || 0)
 const totalOutput = computed(() => (usage.value as any)?.totalOutput || 0)
 const totalTokens = computed(() => (usage.value as any)?.totalTokens || 0)
+const totalEstimatedCost = computed(() => (usage.value as any)?.totalEstimatedCost || null)
 const records = computed(() => (usage.value as any)?.usage || [])
+
+/* ─── Cost Rates ─── */
+const { data: costRates, refresh: refreshCostRates } = await useFetch<any[]>('/api/settings/cost-rates', { default: () => [] })
+const showCostForm = ref(false)
+const costForm = ref({ id: undefined as number | undefined, model: '', inputCostPer1k: '0', outputCostPer1k: '0' })
+const savingCost = ref(false)
+
+function openCostForm(rate?: any) {
+  if (rate) {
+    costForm.value = { id: rate.id, model: rate.model, inputCostPer1k: rate.inputCostPer1k, outputCostPer1k: rate.outputCostPer1k }
+  } else {
+    costForm.value = { id: undefined, model: '', inputCostPer1k: '0', outputCostPer1k: '0' }
+  }
+  showCostForm.value = true
+}
+
+async function saveCostRate() {
+  savingCost.value = true
+  try {
+    await $fetch('/api/settings/cost-rates', { method: 'PUT', body: costForm.value })
+    showCostForm.value = false
+    await refreshCostRates()
+    message.success('保存成功')
+  } catch (e: any) {
+    message.error(e?.data?.message || '保存失败')
+  } finally {
+    savingCost.value = false
+  }
+}
+
+async function deleteCostRate(id: number) {
+  try {
+    await $fetch('/api/settings/cost-rates', { method: 'DELETE', query: { id } })
+    await refreshCostRates()
+    message.success('已删除')
+  } catch (e: any) {
+    message.error(e?.data?.message || '删除失败')
+  }
+}
 
 const chartOption = computed(() => {
   const data = [...records.value].reverse()
@@ -119,7 +160,7 @@ watch(days, () => refresh())
       </div>
     </div>
 
-    <div class="grid grid-cols-3 gap-2">
+    <div class="grid grid-cols-4 gap-2">
       <div class="card-glass p-3 text-center">
         <p class="text-xl font-bold font-mono text-(--ui-text-highlighted)">
           {{ formatNumber(totalInput) }}
@@ -137,6 +178,12 @@ watch(days, () => refresh())
           {{ formatNumber(totalTokens) }}
         </p>
         <p class="text-[11px] text-(--ui-text-dimmed) mt-1">Total</p>
+      </div>
+      <div class="card-glass p-3 text-center">
+        <p class="text-xl font-bold font-mono text-amber-600">
+          ${{ totalEstimatedCost || '0.00' }}
+        </p>
+        <p class="text-[11px] text-(--ui-text-dimmed) mt-1">{{ t('ai.estimatedCost') }}</p>
       </div>
     </div>
 
@@ -209,5 +256,61 @@ watch(days, () => refresh())
       icon="lucide:bar-chart-2"
       :title="t('common.noData')"
     />
+
+    <!-- Cost Rate Configuration -->
+    <div class="card-glass p-4 space-y-3">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-medium text-(--ui-text)">模型单价配置</p>
+        <NButton size="tiny" @click="openCostForm()">
+          <template #icon><Icon icon="lucide:plus" /></template>
+          添加
+        </NButton>
+      </div>
+      <p class="text-xs text-(--ui-text-dimmed)">配置每个模型的 token 单价，用于自动计算费用估算</p>
+      <div v-if="costRates?.length" class="space-y-2">
+        <div
+          v-for="rate in costRates"
+          :key="rate.id"
+          class="flex items-center justify-between px-3 py-2 rounded-lg bg-(--ui-bg-muted)"
+        >
+          <div>
+            <p class="text-sm font-medium text-(--ui-text)">{{ rate.model }}</p>
+            <p class="text-[11px] text-(--ui-text-dimmed)">
+              Input: ${{ rate.inputCostPer1k }}/1K · Output: ${{ rate.outputCostPer1k }}/1K
+            </p>
+          </div>
+          <div class="flex gap-1">
+            <NButton size="tiny" quaternary @click="openCostForm(rate)">
+              <template #icon><Icon icon="lucide:pencil" /></template>
+            </NButton>
+            <NButton size="tiny" quaternary @click="deleteCostRate(rate.id)">
+              <template #icon><Icon icon="lucide:trash-2" /></template>
+            </NButton>
+          </div>
+        </div>
+      </div>
+      <p v-else class="text-xs text-(--ui-text-dimmed) text-center py-2">暂无配置，费用将不会被计算</p>
+    </div>
+
+    <!-- Cost Rate Form Modal -->
+    <NModal v-model:show="showCostForm" preset="card" title="模型单价" style="max-width: 400px">
+      <div class="space-y-3">
+        <NFormItem label="模型名称" required>
+          <NInput v-model:value="costForm.model" placeholder="如 gpt-4o, claude-sonnet-4-6" />
+        </NFormItem>
+        <NFormItem label="Input 单价 ($/1K tokens)">
+          <NInput v-model:value="costForm.inputCostPer1k" placeholder="0.003" />
+        </NFormItem>
+        <NFormItem label="Output 单价 ($/1K tokens)">
+          <NInput v-model:value="costForm.outputCostPer1k" placeholder="0.015" />
+        </NFormItem>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton @click="showCostForm = false">取消</NButton>
+          <NButton type="primary" :loading="savingCost" @click="saveCostRate">保存</NButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>

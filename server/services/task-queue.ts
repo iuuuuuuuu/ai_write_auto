@@ -1,5 +1,6 @@
 import { getOrm } from '../database'
 import { callAi } from '../utils/ai-client'
+import { runConsistencyCheck } from '../utils/consistency-check'
 import {
   buildSummaryPrompt,
   buildCharacterExtractionPrompt,
@@ -21,7 +22,7 @@ import {
 import type { GenerationTask } from '../database/entities'
 
 const MAX_RETRIES = 3
-const POST_PROCESSING_TYPES = ['extract_summary', 'extract_characters']
+const POST_PROCESSING_TYPES = ['extract_summary', 'extract_characters', 'consistency_check']
 
 type ExtractedCharacterRole = 'main' | 'supporting' | 'mentioned'
 
@@ -305,6 +306,20 @@ async function processTask(task: GenerationTask): Promise<void> {
               }
             }
           }
+        }
+      }
+    }
+
+    if (task.type === 'consistency_check' && task.chapter) {
+      const chapterId = getEntityId(task.chapter)
+      const novelId = getEntityId(task.novel)
+      const chapter = await em.findOne(ChapterSchema, { id: chapterId })
+      if (chapter) {
+        const novelEntity = await em.findOne('Novel', { id: novelId }) as any
+        const userId = novelEntity ? getEntityId(novelEntity.user) : 0
+        if (userId) {
+          const issues = await runConsistencyCheck(em, userId, novelId, chapterId)
+          result = `Found ${issues.length} consistency issues`
         }
       }
     }

@@ -1,5 +1,9 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'default', pageTransition: false })
+definePageMeta({
+  layout: 'default',
+  pageTransition: false,
+  contentOverflow: 'hidden'
+})
 
 import { h } from 'vue'
 import { Icon } from '@iconify/vue'
@@ -20,9 +24,9 @@ function getNovelTo() {
 }
 
 /* ─────────────── 左侧边栏状态 ─────────────── */
-const leftSidebarTab = ref<'chapters' | 'characters' | 'versions' | 'notes'>(
-  'chapters'
-)
+const leftSidebarTab = ref<
+  'chapters' | 'characters' | 'versions' | 'notes' | 'checks'
+>('chapters')
 const sidebarCollapsed = ref(false)
 
 /* ─────────────── 版本管理 ─────────────── */
@@ -203,6 +207,8 @@ const { data: aiConfigs } = await useFetch<
     name: string
     purpose: string
     model: string
+    temperature?: string | null
+    maxTokens?: number | null
     isDefault: boolean
     enabled: boolean
   }>
@@ -244,10 +250,20 @@ const generatedContent = ref('')
 const showGenerateDialog = ref(false)
 const generateDirection = ref('')
 const selectedAiConfigId = ref<number | undefined>()
+const generateTemperature = ref<number>(0.7)
+const generateMaxTokens = ref<number>(4096)
 const zenMode = ref(false)
 const showShortcutHelp = ref(false)
 const conflictDetected = ref(false)
 const serverUpdatedAt = ref(chapter.value?.updatedAt || null)
+const consistencyWarningsRef = ref<{ refresh: () => void } | null>(null)
+const pageRootRef = ref<HTMLElement | null>(null)
+const pageHeight = ref('100%')
+let pageResizeObserver: ResizeObserver | null = null
+
+const editingChapterTitle = ref(false)
+const editTitleValue = ref('')
+const titleInputRef = ref<HTMLInputElement | null>(null)
 
 const showFloatingToolbar = ref(false)
 const floatingToolbarPos = reactive({ x: 0, y: 0 })
@@ -256,6 +272,12 @@ const expandingOrRewriting = ref(false)
 const aiActionResult = ref('')
 const aiActionType = ref<'expand' | 'rewrite' | 'continue' | null>(null)
 
+/* ─────────────── 反馈式重生成 ─────────────── */
+const previousGeneratedContent = ref('')
+const showFeedbackInput = ref(false)
+const feedbackText = ref('')
+const regenerating = ref(false)
+
 /* ─────────────── 中断草稿恢复 ─────────────── */
 const {
   draftRecovery,
@@ -263,6 +285,53 @@ const {
   saveDraftRecovery,
   clearDraftRecovery
 } = useDraftRecovery(novelId, chapterId)
+
+/* ─────────────── AI 建议模式 ─────────────── */
+const {
+  suggestions,
+  isActive: suggestionModeActive,
+  loading: suggestionsLoading,
+  pendingCount: suggestionsPendingCount,
+  fetchSuggestions,
+  acceptSuggestion: acceptSuggestionAt,
+  rejectSuggestion: rejectSuggestionAt,
+  acceptAll: acceptAllSuggestions,
+  rejectAll: rejectAllSuggestions,
+  clearSuggestions
+} = useSuggestionMode(novelId, chapterId)
+
+async function startSuggestionMode() {
+  await fetchSuggestions(selectedAiConfigId.value)
+}
+
+function applySuggestion(index: number) {
+  const suggestion = suggestions.value[index]
+  if (!suggestion || !content.value) return
+  const newContent = content.value.replace(
+    suggestion.originalText,
+    suggestion.suggestedText
+  )
+  if (newContent !== content.value) {
+    content.value = newContent
+    setEditorMarkdown(newContent)
+  }
+  acceptSuggestionAt(index)
+}
+
+function applyAllAcceptedSuggestions() {
+  let newContent = content.value || ''
+  for (const s of suggestions.value) {
+    if (s.status === 'pending') {
+      newContent = newContent.replace(s.originalText, s.suggestedText)
+      s.status = 'accepted'
+    }
+  }
+  if (newContent !== content.value) {
+    content.value = newContent
+    setEditorMarkdown(newContent)
+  }
+  clearSuggestions()
+}
 
 async function applyDraftRecovery() {
   if (!draftRecovery.value) return
@@ -578,6 +647,38 @@ watch(
   { immediate: true }
 )
 
+watch(selectedGenerationConfig, (config) => {
+  if (config) {
+    generateTemperature.value = parseFloat(config.temperature ?? '0.7')
+    generateMaxTokens.value = config.maxTokens || 4096
+  }
+})
+
+const presetCycle = [
+  { name: '创意', temperature: 0.9 },
+  { name: '平衡', temperature: 0.7 },
+  { name: '精确', temperature: 0.3 }
+] as const
+
+const currentPresetLabel = computed(() => {
+  const temp = generateTemperature.value
+  if (temp >= 0.85) return '创意'
+  if (temp >= 0.5) return '平衡'
+  return '精确'
+})
+
+function cyclePreset() {
+  const currentIdx = presetCycle.findIndex(
+    (p) => p.name === currentPresetLabel.value
+  )
+  const next = presetCycle[(currentIdx + 1) % presetCycle.length]!
+  generateTemperature.value = next.temperature
+}
+
+const estimatedContextTokens = computed(() =>
+  Math.round(currentWordCount.value * 1.5)
+)
+
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
 
 watch(content, () => {
@@ -626,6 +727,35 @@ async function saveContent(source?: 'ai_generated' | 'user_edited') {
   }
 }
 
+function startEditTitle() {
+  editTitleValue.value = chapter.value?.title || ''
+  editingChapterTitle.value = true
+  nextTick(() => {
+    titleInputRef.value?.focus()
+    titleInputRef.value?.select()
+  })
+}
+
+function cancelEditTitle() {
+  editingChapterTitle.value = false
+}
+
+async function finishEditTitle() {
+  const newTitle = editTitleValue.value.trim()
+  if (!newTitle || newTitle === chapter.value?.title) {
+    editingChapterTitle.value = false
+    return
+  }
+  try {
+    await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, {
+      method: 'PUT',
+      body: { title: newTitle }
+    })
+    await refreshChapter()
+  } catch {}
+  editingChapterTitle.value = false
+}
+
 function handleTextSelect() {
   const selected = getEditorSelectionText()
   if (selected && selected.trim().length > 0) {
@@ -639,14 +769,7 @@ function handleTextSelect() {
     }
   } else {
     selectedText.value = ''
-    const cursorPos = getCursorClientPos()
-    if (cursorPos) {
-      floatingToolbarPos.x = cursorPos.x
-      floatingToolbarPos.y = cursorPos.y - 10
-      showFloatingToolbar.value = true
-    } else {
-      showFloatingToolbar.value = false
-    }
+    showFloatingToolbar.value = false
   }
 }
 
@@ -832,7 +955,9 @@ async function generateChapter() {
         novelId: novelId.value,
         chapterId: chapterId.value,
         direction: generateDirection.value || undefined,
-        aiConfigId: selectedAiConfigId.value
+        aiConfigId: selectedAiConfigId.value,
+        temperature: generateTemperature.value,
+        maxTokens: generateMaxTokens.value
       })
     })
 
@@ -849,11 +974,13 @@ async function generateChapter() {
           const data = JSON.parse(line.slice(6))
           if (data.content) generatedContent.value += data.content
           if (data.done) {
+            previousGeneratedContent.value = generatedContent.value
             await setEditorMarkdown(generatedContent.value)
             content.value = generatedContent.value
             await saveContent('ai_generated')
             await refreshChapter()
             clearDraftRecovery()
+            setTimeout(() => consistencyWarningsRef.value?.refresh(), 15000)
           }
         } catch {}
       }
@@ -861,6 +988,66 @@ async function generateChapter() {
   } finally {
     generating.value = false
   }
+}
+
+async function regenerateWithFeedback() {
+  if (!feedbackText.value.trim() || !previousGeneratedContent.value) return
+
+  regenerating.value = true
+  generatedContent.value = ''
+
+  try {
+    const response = await fetch('/api/ai/regenerate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: novelId.value,
+        chapterId: chapterId.value,
+        previousResult: previousGeneratedContent.value,
+        feedback: feedbackText.value,
+        aiConfigId: selectedAiConfigId.value,
+        temperature: generateTemperature.value,
+        maxTokens: generateMaxTokens.value
+      })
+    })
+
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      const text = decoder.decode(value, { stream: true })
+      for (const line of text.split('\n')) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.content) generatedContent.value += data.content
+          if (data.done) {
+            previousGeneratedContent.value = generatedContent.value
+            await setEditorMarkdown(generatedContent.value)
+            content.value = generatedContent.value
+            await saveContent('ai_generated')
+            await refreshChapter()
+            showFeedbackInput.value = false
+            feedbackText.value = ''
+          }
+        } catch {}
+      }
+    }
+  } finally {
+    regenerating.value = false
+  }
+}
+
+function cancelFeedbackRegeneration() {
+  showFeedbackInput.value = false
+  feedbackText.value = ''
+}
+
+function clearAllSuggestions() {
+  rejectAllSuggestions()
+  clearSuggestions()
 }
 
 function viewVersionDiff(version: ChapterVersionItem) {
@@ -995,9 +1182,25 @@ function handleBeforeUnload(e: BeforeUnloadEvent) {
   }
 }
 
+function updatePageHeight() {
+  const contentSlot = pageRootRef.value?.parentElement?.parentElement
+  if (!contentSlot) return
+  const style = getComputedStyle(contentSlot)
+  const verticalPadding =
+    parseFloat(style.paddingTop) + parseFloat(style.paddingBottom)
+  pageHeight.value = `${contentSlot.clientHeight - verticalPadding}px`
+}
+
 onMounted(() => {
   document.addEventListener('keydown', handleDocumentKeydown)
   window.addEventListener('beforeunload', handleBeforeUnload)
+  nextTick(() => {
+    updatePageHeight()
+    const contentSlot = pageRootRef.value?.parentElement?.parentElement
+    if (!contentSlot) return
+    pageResizeObserver = new ResizeObserver(updatePageHeight)
+    pageResizeObserver.observe(contentSlot)
+  })
 })
 
 onBeforeRouteLeave((to, from, next) => {
@@ -1015,6 +1218,7 @@ onBeforeRouteLeave((to, from, next) => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', handleDocumentKeydown)
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  pageResizeObserver?.disconnect()
   if (saveTimeout) clearTimeout(saveTimeout)
   if (detectTimeout) clearTimeout(detectTimeout)
 })
@@ -1022,8 +1226,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div
-    class="h-[calc(100vh-36px)] flex flex-col overflow-hidden bg-(--ui-bg)"
-    :class="{ 'fixed inset-0 z-50 !h-screen': zenMode }"
+    ref="pageRootRef"
+    class="flex flex-col overflow-hidden bg-(--ui-bg)"
+    :class="{ 'fixed inset-0 z-50': zenMode }"
+    :style="{ height: zenMode ? '100vh' : pageHeight }"
   >
     <!-- Toolbar -->
     <div
@@ -1054,9 +1260,31 @@ onBeforeUnmount(() => {
           /></template>
         </NButton>
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium text-(--ui-text-highlighted)">
-            Ch.{{ chapter?.chapterNumber }} {{ chapter?.title }}
-          </p>
+          <div
+            v-if="!editingChapterTitle"
+            class="flex items-center gap-1 min-w-0 cursor-pointer group"
+            title="点击修改章节名"
+            @click="startEditTitle"
+          >
+            <p
+              class="truncate text-sm font-medium text-(--ui-text-highlighted) group-hover:text-(--ui-primary) transition-colors"
+            >
+              Ch.{{ chapter?.chapterNumber }} {{ chapter?.title }}
+            </p>
+            <Icon
+              icon="lucide:pencil"
+              class="w-3 h-3 shrink-0 text-(--ui-text-dimmed) group-hover:text-(--ui-primary) transition-colors"
+            />
+          </div>
+          <input
+            v-else
+            ref="titleInputRef"
+            v-model="editTitleValue"
+            class="w-full text-sm font-medium bg-transparent border-b border-(--ui-primary) outline-none text-(--ui-text-highlighted) py-0.5"
+            @blur="finishEditTitle"
+            @keydown.enter="finishEditTitle"
+            @keydown.escape="cancelEditTitle"
+          />
         </div>
         <NButton
           v-if="nextChapter"
@@ -1124,6 +1352,18 @@ onBeforeUnmount(() => {
             重试
           </button>
         </div>
+        <NButton
+          size="tiny"
+          quaternary
+          :loading="suggestionsLoading"
+          :disabled="!aiStatus.available || !content"
+          title="AI 建议"
+          @click="startSuggestionMode"
+        >
+          <template #icon>
+            <Icon icon="lucide:message-square-diff" />
+          </template>
+        </NButton>
         <NButton
           size="tiny"
           quaternary
@@ -1225,7 +1465,7 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Main Area: Sidebar + Editor -->
-    <div class="flex-1 overflow-hidden flex">
+    <div class="flex-1 min-h-0 overflow-hidden flex">
       <!-- Left Sidebar -->
       <div
         v-if="!zenMode"
@@ -1294,6 +1534,17 @@ onBeforeUnmount(() => {
                 @click="leftSidebarTab = 'notes'"
               >
                 笔记
+              </button>
+              <button
+                class="px-2 py-1 text-[11px] font-medium rounded-md transition-colors relative"
+                :class="
+                  leftSidebarTab === 'checks' ?
+                    'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
+                  : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+                "
+                @click="leftSidebarTab = 'checks'"
+              >
+                检查
               </button>
             </div>
           </div>
@@ -1705,13 +1956,23 @@ onBeforeUnmount(() => {
               支持 Markdown 语法，换行即可保存。
             </p>
           </div>
+
+          <!-- Checks Tab -->
+          <div
+            v-show="leftSidebarTab === 'checks'"
+            class="flex-1 overflow-y-auto px-2 pb-2"
+          >
+            <EditorConsistencyWarnings
+              ref="consistencyWarningsRef"
+              :novel-id="novelId"
+              :chapter-id="chapterId"
+            />
+          </div>
         </template>
       </div>
 
       <!-- Editor -->
-      <div
-        class="flex-1 min-w-0 min-h-0 flex flex-col bg-(--ui-bg-muted)"
-      >
+      <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-(--ui-bg-muted)">
         <div
           v-if="!zenMode"
           class="shrink-0 border-b border-(--ui-border) bg-(--ui-bg-elevated) px-3 py-2 sm:px-4"
@@ -1778,13 +2039,14 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="flex-1 overflow-y-auto px-1.5 py-1.5 sm:px-2 sm:py-2">
+        <div class="flex-1 min-h-0 flex flex-col">
           <div
-            class="min-h-full w-full rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated)"
+            class="flex-1 min-h-0 flex flex-col w-full rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) overflow-hidden m-1.5 sm:m-2"
+            style="height: 0"
           >
             <div
               ref="editorContainerRef"
-              class="chapter-writing-surface w-full min-h-[calc(100vh-132px)] milkdown-editor px-3 py-3 text-(--ui-text) text-[15px] leading-[1.9] sm:px-4 lg:px-5"
+              class="chapter-writing-surface w-full flex-1 milkdown-editor px-3 py-3 text-(--ui-text) text-[15px] leading-[1.9] sm:px-4 lg:px-5"
               :class="
                 zenMode ?
                   'min-h-screen text-base leading-[2.05] lg:px-[6vw]'
@@ -1880,13 +2142,15 @@ onBeforeUnmount(() => {
 
           <!-- Generated Content Preview -->
           <div
-            v-if="generating && generatedContent"
+            v-if="(generating || regenerating) && generatedContent"
             class="mt-2 w-full p-4 card-glass"
           >
             <div class="flex items-center gap-2 mb-2">
               <span class="size-1.5 rounded-full bg-violet-400 animate-pulse" />
               <p class="text-xs font-medium text-violet-500">
-                {{ t('ai.generating') }}
+                {{
+                  regenerating ? '基于反馈重新生成中...' : t('ai.generating')
+                }}
               </p>
             </div>
             <div
@@ -1895,11 +2159,210 @@ onBeforeUnmount(() => {
               {{ generatedContent }}
             </div>
           </div>
+
+          <!-- Feedback Regeneration -->
+          <div
+            v-if="!generating && !regenerating && previousGeneratedContent"
+            class="mt-2 w-full p-3 card-glass border-l-2 border-l-amber-400"
+          >
+            <div
+              v-if="!showFeedbackInput"
+              class="flex items-center justify-between"
+            >
+              <p class="text-xs text-(--ui-text-dimmed)">对生成结果不满意？</p>
+              <NButton
+                size="tiny"
+                quaternary
+                @click="showFeedbackInput = true"
+              >
+                <template #icon
+                  ><Icon icon="lucide:message-square-plus"
+                /></template>
+                基于反馈重新生成
+              </NButton>
+            </div>
+            <div
+              v-else
+              class="space-y-2"
+            >
+              <NInput
+                v-model:value="feedbackText"
+                type="textarea"
+                :rows="2"
+                placeholder="输入反馈，如：更戏剧化、节奏太快、多加对话..."
+                size="small"
+              />
+              <div class="flex justify-end gap-1.5">
+                <NButton
+                  size="tiny"
+                  quaternary
+                  @click="cancelFeedbackRegeneration"
+                  >取消</NButton
+                >
+                <NButton
+                  size="tiny"
+                  type="primary"
+                  :disabled="!feedbackText.trim()"
+                  :loading="regenerating"
+                  @click="regenerateWithFeedback"
+                >
+                  重新生成
+                </NButton>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Suggestion Mode Panel -->
+        <div
+          v-if="suggestionModeActive && suggestions.length"
+          class="shrink-0 max-h-[40vh] overflow-y-auto border-t border-primary-300/30 bg-primary-50/5"
+        >
+          <div
+            class="flex items-center justify-between px-3 py-2 border-b border-(--ui-border) sticky top-0 bg-(--ui-bg-elevated) z-10"
+          >
+            <div class="flex items-center gap-2">
+              <Icon
+                icon="lucide:message-square-diff"
+                class="w-3.5 h-3.5 text-primary-500"
+              />
+              <span
+                class="text-xs font-medium text-primary-600 dark:text-primary-400"
+              >
+                AI 建议模式 · {{ suggestionsPendingCount }} 条待处理
+              </span>
+            </div>
+            <div class="flex gap-1">
+              <NButton
+                size="tiny"
+                type="primary"
+                @click="applyAllAcceptedSuggestions"
+                >全部接受</NButton
+              >
+              <NButton
+                size="tiny"
+                quaternary
+                @click="clearAllSuggestions"
+                >全部拒绝</NButton
+              >
+            </div>
+          </div>
+          <div class="divide-y divide-(--ui-border)">
+            <div
+              v-for="(suggestion, idx) in suggestions"
+              :key="idx"
+              class="px-3 py-2.5 transition-colors"
+              :class="{
+                'opacity-40': suggestion.status !== 'pending',
+                'bg-emerald-500/5': suggestion.status === 'accepted',
+                'bg-red-500/5': suggestion.status === 'rejected'
+              }"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div class="flex-1 min-w-0 space-y-1">
+                  <p class="text-xs text-(--ui-text-dimmed)">
+                    {{ suggestion.reason }}
+                  </p>
+                  <div class="text-sm leading-relaxed">
+                    <span class="text-red-500 line-through"
+                      >{{ suggestion.originalText.slice(0, 80)
+                      }}{{
+                        suggestion.originalText.length > 80 ? '...' : ''
+                      }}</span
+                    >
+                    <span class="mx-1 text-(--ui-text-dimmed)">→</span>
+                    <span class="text-emerald-600 dark:text-emerald-400"
+                      >{{ suggestion.suggestedText.slice(0, 80)
+                      }}{{
+                        suggestion.suggestedText.length > 80 ? '...' : ''
+                      }}</span
+                    >
+                  </div>
+                </div>
+                <div
+                  v-if="suggestion.status === 'pending'"
+                  class="flex gap-1 shrink-0"
+                >
+                  <NButton
+                    size="tiny"
+                    type="primary"
+                    @click="applySuggestion(idx)"
+                  >
+                    <template #icon><Icon icon="lucide:check" /></template>
+                  </NButton>
+                  <NButton
+                    size="tiny"
+                    quaternary
+                    @click="rejectSuggestionAt(idx)"
+                  >
+                    <template #icon><Icon icon="lucide:x" /></template>
+                  </NButton>
+                </div>
+                <span
+                  v-else
+                  class="text-[10px] shrink-0"
+                  :class="
+                    suggestion.status === 'accepted' ?
+                      'text-emerald-500'
+                    : 'text-red-400'
+                  "
+                >
+                  {{ suggestion.status === 'accepted' ? '已接受' : '已拒绝' }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Editor Status Bar -->
+        <div
+          v-if="!zenMode"
+          class="shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-(--ui-border) bg-(--ui-bg-muted)/50 text-[11px] text-(--ui-text-dimmed)"
+        >
+          <div class="flex items-center gap-3">
+            <NPopselect
+              v-model:value="selectedAiConfigId"
+              :options="generationModelOptions"
+              trigger="click"
+              size="small"
+            >
+              <button
+                class="flex items-center gap-1 hover:text-(--ui-text) transition-colors"
+              >
+                <Icon
+                  icon="lucide:cpu"
+                  class="w-3 h-3"
+                />
+                <span>{{
+                  selectedGenerationConfig?.model || '未选择模型'
+                }}</span>
+              </button>
+            </NPopselect>
+            <button
+              class="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-(--ui-bg-elevated) transition-colors"
+              :title="t('chapter.generateDialog.temperatureHint')"
+              @click="cyclePreset"
+            >
+              <Icon
+                icon="lucide:thermometer"
+                class="w-3 h-3"
+              />
+              <span>{{ currentPresetLabel }}</span>
+            </button>
+          </div>
+          <div class="flex items-center gap-3">
+            <span :title="t('chapter.generateDialog.maxTokensHint')">
+              <Icon
+                icon="lucide:hash"
+                class="w-3 h-3 inline"
+              />
+              ~{{ estimatedContextTokens }} tokens
+            </span>
+            <span> {{ currentWordCount }} {{ t('chapter.wordCount') }} </span>
+          </div>
         </div>
       </div>
     </div>
-
-    <!-- Floating Toolbar -->
     <Teleport to="body">
       <div
         v-if="showFloatingToolbar && !generating"
@@ -2029,6 +2492,35 @@ onBeforeUnmount(() => {
             placeholder="选择用于生成的模型"
           />
         </NFormItem>
+        <NFormItem :label="t('chapter.generateDialog.temperature')">
+          <div class="w-full space-y-1">
+            <NSlider
+              v-model:value="generateTemperature"
+              :min="0"
+              :max="2"
+              :step="0.1"
+              :tooltip="true"
+            />
+            <div class="flex justify-between text-xs text-gray-400">
+              <span>{{ t('chapter.generateDialog.temperatureHint') }}</span>
+              <span>{{ generateTemperature }}</span>
+            </div>
+          </div>
+        </NFormItem>
+        <NFormItem :label="t('chapter.generateDialog.maxTokens')">
+          <NInputNumber
+            v-model:value="generateMaxTokens"
+            :min="512"
+            :max="128000"
+            :step="256"
+            class="w-full"
+          />
+          <template #feedback>
+            <span class="text-xs text-gray-400">{{
+              t('chapter.generateDialog.maxTokensHint')
+            }}</span>
+          </template>
+        </NFormItem>
         <NAlert
           v-if="!generationModelOptions.length"
           type="warning"
@@ -2138,12 +2630,19 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.chapter-writing-surface {
+  display: flex;
+  flex-direction: column;
+}
+
 .chapter-writing-surface :deep(.milkdown) {
-  min-height: inherit;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .chapter-writing-surface :deep(.ProseMirror) {
-  min-height: calc(100vh - 164px);
+  flex: 1;
   max-width: none;
   padding: 0;
   color: var(--ui-text);
@@ -2190,11 +2689,15 @@ onBeforeUnmount(() => {
 .chapter-writing-surface :deep(.ProseMirror-selectednode),
 .chapter-writing-surface :deep(.ProseMirror-focused) {
   outline: none;
+  box-shadow: none;
+}
+
+.chapter-writing-surface :deep(.ProseMirror:focus-visible) {
+  box-shadow: none;
 }
 
 @media (max-width: 768px) {
   .chapter-writing-surface :deep(.ProseMirror) {
-    min-height: calc(100vh - 152px);
     font-size: 0.94rem;
   }
 

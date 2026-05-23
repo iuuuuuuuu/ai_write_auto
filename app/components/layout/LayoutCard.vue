@@ -7,8 +7,15 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const route = useRoute()
 const { user, logout } = useAuth()
 const { settings, updateSetting } = useLayoutSettings()
+
+const contentOverflowClass = computed(() => {
+  return route.meta.contentOverflow === 'hidden' ?
+      'overflow-hidden'
+    : 'overflow-auto'
+})
 
 const settingsDrawerOpen = useState('layout-settings-drawer', () => false)
 
@@ -248,7 +255,10 @@ function toggleSidebar() {
           area="user"
           class="shrink-0"
         />
-        <div class="flex-1 min-h-0 overflow-auto px-4 py-3">
+        <div
+          class="flex-1 min-h-0 px-4 py-3"
+          :class="contentOverflowClass"
+        >
           <slot />
         </div>
         <footer
