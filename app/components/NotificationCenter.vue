@@ -57,7 +57,7 @@ function handleRemove(event: Event, id: string) {
         <Icon icon="lucide:bell" class="size-4" />
         <span
           v-if="unreadCount > 0"
-          class="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white"
+          class="absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full bg-red-500 text-[9px] text-white animate-pulse-glow"
         >
           {{ unreadCount > 9 ? '9+' : unreadCount }}
         </span>
@@ -94,10 +94,11 @@ function handleRemove(event: Event, id: string) {
           v-if="!notifications.length"
           class="flex flex-col items-center justify-center py-8 text-(--ui-text-muted)"
         >
-          <Icon icon="lucide:bell-off" class="size-6" />
+          <Icon icon="lucide:bell-off" class="size-6 animate-breathe" />
           <p class="mt-2 text-xs">暂无通知</p>
         </div>
 
+        <TransitionGroup name="list">
         <div
           v-for="notification in notifications"
           :key="notification.id"
@@ -147,6 +148,7 @@ function handleRemove(event: Event, id: string) {
             </div>
           </div>
         </div>
+        </TransitionGroup>
       </div>
     </div>
   </NPopover>

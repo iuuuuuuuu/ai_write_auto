@@ -159,7 +159,7 @@ function getStatusLabel(status: string) {
             <NSpin size="medium" />
           </div>
           <NEmpty v-else-if="!novels.length" description="没有已删除的小说" class="py-12" />
-          <div v-else class="mt-4 grid gap-3">
+          <TransitionGroup v-else name="list" tag="div" class="relative mt-4 grid gap-3">
             <article
               v-for="novel in novels"
               :key="novel.id"
@@ -202,7 +202,7 @@ function getStatusLabel(status: string) {
                 </NButton>
               </div>
             </article>
-          </div>
+          </TransitionGroup>
         </NTabPane>
 
         <NTabPane name="chapters" tab="章节">
@@ -210,7 +210,7 @@ function getStatusLabel(status: string) {
             <NSpin size="medium" />
           </div>
           <NEmpty v-else-if="!chapters.length" description="没有已删除的章节" class="py-12" />
-          <div v-else class="mt-4 grid gap-3">
+          <TransitionGroup v-else name="list" tag="div" class="relative mt-4 grid gap-3">
             <article
               v-for="chapter in chapters"
               :key="chapter.id"
@@ -248,7 +248,7 @@ function getStatusLabel(status: string) {
                 </NButton>
               </div>
             </article>
-          </div>
+          </TransitionGroup>
         </NTabPane>
       </NTabs>
     </section>

@@ -121,7 +121,7 @@ useBackupNotification()
       </div>
 
       <!-- Mobile Content -->
-      <div class="px-3 pb-6 pt-20">
+      <div class="px-3 pb-20 pt-20">
         <TabBar
           v-if="settings.showTabs"
           area="user"
@@ -129,6 +129,9 @@ useBackupNotification()
         />
         <slot />
       </div>
+
+      <!-- Mobile Bottom Navigation -->
+      <LayoutMobileBottomNav />
 
       <!-- Mobile Drawer -->
       <Teleport to="body">

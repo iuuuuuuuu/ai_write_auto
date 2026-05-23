@@ -38,7 +38,7 @@ async function handleRegister() {
 </script>
 
 <template>
-  <div>
+  <div class="stagger-children">
     <div class="mb-8 flex items-center gap-3 lg:hidden">
       <div class="liquid-panel flex size-11 items-center justify-center rounded-[1.35rem]">
         <Icon icon="lucide:pen-tool" class="size-5 text-primary-500" />

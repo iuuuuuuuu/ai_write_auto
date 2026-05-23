@@ -27,7 +27,7 @@ onMounted(() => {
 
 <template>
   <div ref="containerRef" class="text-center py-10">
-    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-3 bg-primary-500">
+    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-3 bg-primary-500 animate-float">
       <Icon :icon="icon || 'lucide:inbox'" class="w-6 h-6 text-white" />
     </div>
     <h3 class="text-base font-semibold text-(--ui-text-highlighted)">{{ title }}</h3>

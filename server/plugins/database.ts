@@ -7,6 +7,10 @@ import {
   startScheduledBackup,
   stopScheduledBackup
 } from '../services/database-backup'
+import {
+  startTrashCleanup,
+  stopTrashCleanup
+} from '../services/trash-cleanup'
 import { ensureVectorTable } from '../services/vector-store'
 
 export default defineNitroPlugin(async (nitroApp) => {
@@ -35,6 +39,13 @@ export default defineNitroPlugin(async (nitroApp) => {
     }
 
     try {
+      startTrashCleanup(orm)
+      console.log('[db] Trash cleanup service started')
+    } catch (e) {
+      console.warn('[db] Trash cleanup service failed to start:', e)
+    }
+
+    try {
       await ensureFts(orm)
       console.log('[db] FTS index ensured')
     } catch (e) {
@@ -50,6 +61,7 @@ export default defineNitroPlugin(async (nitroApp) => {
 
     nitroApp.hooks.hook('close', async () => {
       stopScheduledBackup()
+      stopTrashCleanup()
       await orm.close()
     })
   } catch (e) {

@@ -1203,15 +1203,12 @@ onMounted(() => {
   })
 })
 
-onBeforeRouteLeave((to, from, next) => {
+onBeforeRouteLeave(() => {
   if (hasUnsavedChanges.value) {
     const answer = window.confirm(
       '当前章节有未保存的更改，离开将丢失修改。是否继续？'
     )
-    if (answer) next()
-    else next(false)
-  } else {
-    next()
+    if (!answer) return false
   }
 })
 
@@ -1227,7 +1224,7 @@ onBeforeUnmount(() => {
 <template>
   <div
     ref="pageRootRef"
-    class="flex flex-col overflow-hidden bg-(--ui-bg)"
+    class="flex flex-col overflow-hidden bg-(--ui-bg) transition-all duration-300"
     :class="{ 'fixed inset-0 z-50': zenMode }"
     :style="{ height: zenMode ? '100vh' : pageHeight }"
   >
@@ -2364,6 +2361,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <Teleport to="body">
+      <Transition name="fade-scale">
       <div
         v-if="showFloatingToolbar && !generating"
         class="fixed z-50 flex items-center gap-0.5 px-2 py-1.5 rounded-xl card-glass shadow-xl"
@@ -2450,6 +2448,7 @@ onBeforeUnmount(() => {
           </NButton>
         </NDropdown>
       </div>
+      </Transition>
     </Teleport>
 
     <KeyboardShortcutsHelp

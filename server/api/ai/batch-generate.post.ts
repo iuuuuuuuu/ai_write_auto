@@ -2,7 +2,6 @@ import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
-import { checkRateLimit } from '../../utils/rate-limit'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, NovelOutlineSchema, GenerationTaskSchema } from '../../database/entities'
 
 const batchSchema = z.object({
@@ -15,14 +14,6 @@ const batchSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-
-  const rateCheck = checkRateLimit(auth.userId)
-  if (!rateCheck.allowed) {
-    throw createError({
-      statusCode: 429,
-      message: `Rate limit exceeded. Try again in ${Math.ceil(rateCheck.resetIn / 1000)}s`
-    })
-  }
 
   const body = await readBody(event)
   const data = batchSchema.parse(body)

@@ -1544,7 +1544,7 @@ async function savePlotPoint() {
     </section>
 
     <div
-      class="grid gap-4 xl:grid-cols-[minmax(520px,0.92fr)_minmax(640px,1.08fr)]"
+      class="stagger-children grid gap-4 xl:grid-cols-[minmax(520px,0.92fr)_minmax(640px,1.08fr)]"
     >
       <!-- Chapters -->
       <section class="card-glass p-5">
@@ -1659,9 +1659,11 @@ async function savePlotPoint() {
             清空筛选
           </NButton>
         </div>
-        <div
+        <TransitionGroup
           v-else
-          class="space-y-2"
+          name="list"
+          tag="div"
+          class="relative space-y-2"
         >
           <template
             v-for="(chapter, index) in filteredChapters"
@@ -1741,7 +1743,7 @@ async function savePlotPoint() {
               </div>
             </NuxtLink>
           </template>
-        </div>
+        </TransitionGroup>
       </section>
 
       <section
@@ -1876,7 +1878,7 @@ async function savePlotPoint() {
             <article
               v-for="character in filteredCharacters"
               :key="character.id"
-              class="flex min-h-[250px] flex-col rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3 transition-colors hover:bg-(--ui-bg-muted)"
+              class="flex min-h-[250px] flex-col rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3 transition-all duration-200 hover:bg-(--ui-bg-muted) hover:-translate-y-0.5 hover:shadow-md"
             >
               <div class="flex items-start gap-2.5">
                 <div

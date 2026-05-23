@@ -407,7 +407,7 @@ function resetImport() {
       </div>
     </section>
 
-    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div class="stagger-children grid grid-cols-2 gap-3 sm:grid-cols-4">
       <div class="liquid-panel flex items-center gap-3 p-3">
         <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500">
           <Icon icon="lucide:book-open" class="h-5 w-5 text-white" />
@@ -496,17 +496,22 @@ function resetImport() {
         <span v-if="total" class="text-[11px] text-(--ui-text-dimmed)">{{ total }} 部</span>
       </div>
 
-      <div v-if="novelsLoading" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        <NSkeleton v-for="i in 6" :key="i" class="h-44 rounded-xl" text />
-      </div>
+      <Transition name="fade" mode="out-in">
+        <div v-if="novelsLoading" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <NSkeleton v-for="i in 6" :key="i" class="h-44 rounded-xl" text />
+        </div>
 
-      <template v-else-if="novels.length">
-        <div ref="staggerRef" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          <NuxtLink
-            v-for="novel in novels"
-            :key="novel.id"
-            :to="`/novels/${novel.id}`"
-            class="group relative flex flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) transition-all duration-200 hover:border-(--ui-border-accented) hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)]"
+        <div v-else-if="novels.length" key="novels-content">
+          <TransitionGroup
+            name="list"
+            tag="div"
+            class="relative grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+          >
+            <NuxtLink
+              v-for="novel in novels"
+              :key="novel.id"
+              :to="`/novels/${novel.id}`"
+              class="group relative flex flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) transition-all duration-200 hover:border-(--ui-border-accented) hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:-translate-y-0.5"
           >
             <!-- Top color bar -->
             <div class="h-1.5 w-full" :style="{ background: getGenreColor(novel.genre) }" />
@@ -533,13 +538,13 @@ function resetImport() {
               </div>
             </div>
           </NuxtLink>
+          </TransitionGroup>
+          <div v-if="totalPages > 1" class="flex items-center justify-center pt-4">
+            <NPagination :page="page" :page-count="totalPages" :page-size="pageSize" @update:page="goToPage" />
+          </div>
         </div>
-        <div v-if="totalPages > 1" class="flex items-center justify-center pt-4">
-          <NPagination :page="page" :page-count="totalPages" :page-size="pageSize" @update:page="goToPage" />
-        </div>
-      </template>
 
-      <div v-else class="py-16">
+        <div v-else key="novels-empty" class="py-16">
         <EmptyState
           icon="lucide:feather"
           title="开始你的第一个故事"
@@ -561,6 +566,7 @@ function resetImport() {
           </NButton>
         </div>
       </div>
+      </Transition>
     </section>
 
     <!-- Create Modal -->

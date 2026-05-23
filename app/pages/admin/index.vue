@@ -120,7 +120,7 @@ const dayOptions = [
     请稍后重试，或检查当前账号是否仍拥有管理员权限。
   </NAlert>
 
-  <div v-else class="space-y-3">
+  <div v-else class="space-y-3 stagger-children">
     <!-- Top Bento: Stats -->
     <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4 lg:auto-rows-[160px]">
       <!-- Users Hero (2×2) -->

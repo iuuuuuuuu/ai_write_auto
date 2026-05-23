@@ -1,7 +1,6 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
-import { checkRateLimit } from '../../utils/rate-limit'
 
 const schema = z.object({
   text: z.string().min(1),
@@ -11,14 +10,6 @@ const schema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-
-  const rateCheck = checkRateLimit(auth.userId)
-  if (!rateCheck.allowed) {
-    throw createError({
-      statusCode: 429,
-      message: `Rate limit exceeded. Try again in ${Math.ceil(rateCheck.resetIn / 1000)}s`
-    })
-  }
 
   const body = await readBody(event)
   const data = schema.parse(body)
