@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { zhCN, dateZhCN } from 'naive-ui'
+
 const naiveTheme = computed(() => ({
   common: {
     primaryColor: '#3b82f6',
@@ -36,7 +38,7 @@ const naiveTheme = computed(() => ({
 
 // 全局 AI 连通性检测，启动时检测一次，之后每 5 分钟轮询
 const route = useRoute()
-if (import.meta.client && !route.path.startsWith('/setup')) {
+if (import.meta.client && !route.path.startsWith('/setup') && !route.path.startsWith('/login')) {
   useAiConnectivity({
     immediate: true,
     checkConnectivity: true,
@@ -46,7 +48,7 @@ if (import.meta.client && !route.path.startsWith('/setup')) {
 </script>
 
 <template>
-  <NaiveConfig :theme-overrides="naiveTheme">
+  <NaiveConfig :theme-overrides="naiveTheme" :locale="zhCN" :date-locale="dateZhCN">
     <NMessageProvider>
       <NDialogProvider>
         <NuxtLayout>

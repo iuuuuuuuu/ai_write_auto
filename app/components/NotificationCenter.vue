@@ -1,6 +1,15 @@
 <script setup lang="ts">
 const { notifications, unreadCount, markAsRead, markAllAsRead, removeNotification, clearAll } = useNotificationCenter()
 const showPopover = ref(false)
+const route = useRoute()
+
+watch(() => route.fullPath, () => {
+  showPopover.value = false
+})
+
+onBeforeUnmount(() => {
+  showPopover.value = false
+})
 
 function getIcon(type: string) {
   if (type === 'success') return 'lucide:check-circle'

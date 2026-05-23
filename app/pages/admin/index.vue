@@ -24,6 +24,11 @@ interface ChartData {
 }
 
 const chartDays = ref(7)
+const chartsReady = ref(false)
+
+onMounted(() => {
+  setTimeout(() => { chartsReady.value = true }, 100)
+})
 
 const { data: overview, pending, error } = await useFetch<AdminOverview>('/api/admin/overview')
 const { data: charts } = await useFetch<ChartData>('/api/admin/charts', {
@@ -238,7 +243,7 @@ const dayOptions = [
           <p class="text-sm font-medium text-(--ui-text-highlighted)">Token 用量趋势</p>
         </div>
         <div class="h-[180px]">
-          <VChart :option="tokenChartOption" autoresize class="w-full h-full" />
+          <VChart v-if="chartsReady" :option="tokenChartOption" autoresize class="w-full h-full" />
         </div>
       </section>
 
@@ -251,7 +256,7 @@ const dayOptions = [
           <p class="text-sm font-medium text-(--ui-text-highlighted)">写作活跃度</p>
         </div>
         <div class="h-[180px]">
-          <VChart :option="writingChartOption" autoresize class="w-full h-full" />
+          <VChart v-if="chartsReady" :option="writingChartOption" autoresize class="w-full h-full" />
         </div>
       </section>
 
@@ -264,7 +269,7 @@ const dayOptions = [
           <p class="text-sm font-medium text-(--ui-text-highlighted)">任务完成情况</p>
         </div>
         <div class="h-[180px]">
-          <VChart :option="taskChartOption" autoresize class="w-full h-full" />
+          <VChart v-if="chartsReady" :option="taskChartOption" autoresize class="w-full h-full" />
         </div>
       </section>
 

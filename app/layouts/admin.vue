@@ -147,7 +147,7 @@ function isActiveNav(to: string) {
       <TabBar area="admin" class="shrink-0" />
 
       <!-- Page content -->
-      <div class="flex-1 min-h-0 overflow-auto px-4 py-4 sm:px-5">
+      <div class="flex-1 min-h-0 flex flex-col px-4 py-4 sm:px-5 overflow-hidden">
         <slot />
       </div>
     </div>

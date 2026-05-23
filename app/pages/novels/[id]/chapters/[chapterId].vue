@@ -1436,50 +1436,15 @@ onBeforeUnmount(() => {
           /></template>
         </NButton>
       </div>
-      <div class="flex items-center gap-1.5">
-        <span class="text-[11px] tabular-nums text-(--ui-text-dimmed)">
-          {{ editorPlainText.replace(/\s/g, '').length }}
-          {{ t('chapter.wordCount') }}
-        </span>
-        <span
-          v-if="saving"
-          class="text-[11px] text-primary-500"
-          >· 保存中</span
-        >
-        <span
-          v-else-if="lastSaved"
-          class="text-[11px] text-emerald-500"
-          >· 已保存</span
-        >
-        <div class="w-px h-4 bg-(--ui-border)/40 mx-1" />
-        <button
-          class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
-          title="快捷键（Ctrl + /）"
-          @click="showShortcutHelp = true"
-        >
-          <Icon
-            icon="lucide:keyboard"
-            class="w-3.5 h-3.5"
-          />
-        </button>
-        <button
-          class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
-          @click="zenMode = true"
-        >
-          <Icon
-            icon="lucide:maximize"
-            class="w-3.5 h-3.5"
-          />
-        </button>
+
+      <!-- Left group: AI model + features -->
+      <div class="flex items-center gap-1">
         <div
           v-if="!aiStatus.available"
           class="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-600"
           title="AI 当前不可用，仍可手动写作"
         >
-          <Icon
-            icon="lucide:wifi-off"
-            class="w-3 h-3"
-          />
+          <Icon icon="lucide:wifi-off" class="w-3 h-3" />
           AI 离线
           <button
             class="text-[11px] underline underline-offset-2"
@@ -1488,6 +1453,28 @@ onBeforeUnmount(() => {
             重试
           </button>
         </div>
+        <NPopselect
+          v-model:value="selectedAiConfigId"
+          :options="generationModelOptions"
+          trigger="click"
+          size="small"
+        >
+          <button
+            class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+          >
+            <Icon icon="lucide:cpu" class="w-3 h-3" />
+            <span class="max-w-20 truncate">{{ selectedGenerationConfig?.name || '模型' }}</span>
+          </button>
+        </NPopselect>
+        <button
+          class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+          :title="t('chapter.generateDialog.temperatureHint')"
+          @click="cyclePreset"
+        >
+          <Icon icon="lucide:thermometer" class="w-3 h-3" />
+          <span>{{ currentPresetLabel }}</span>
+        </button>
+        <div class="w-px h-4 bg-(--ui-border)/40 mx-0.5" />
         <NButton
           size="tiny"
           quaternary
@@ -1505,12 +1492,39 @@ onBeforeUnmount(() => {
           quaternary
           :loading="generating"
           :disabled="!aiStatus.available"
+          title="AI 生成"
           @click="showGenerateDialog = true"
         >
           <template #icon>
             <Icon icon="lucide:sparkles" />
           </template>
         </NButton>
+      </div>
+
+      <div class="w-px h-4 bg-(--ui-border)/40" />
+
+      <!-- Right group: Utility actions -->
+      <div class="flex items-center gap-1">
+        <button
+          class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+          title="快捷键（Ctrl + /）"
+          @click="showShortcutHelp = true"
+        >
+          <Icon
+            icon="lucide:keyboard"
+            class="w-3.5 h-3.5"
+          />
+        </button>
+        <button
+          class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+          title="禅模式"
+          @click="zenMode = true"
+        >
+          <Icon
+            icon="lucide:maximize"
+            class="w-3.5 h-3.5"
+          />
+        </button>
         <NButton
           size="tiny"
           type="primary"
@@ -1524,10 +1538,10 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Zen Mode Exit -->
+    <!-- Zen Mode Controls -->
     <div
       v-if="zenMode"
-      class="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-0 hover:opacity-100 transition-opacity duration-300"
+      class="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity duration-300"
     >
       <div class="flex items-center gap-1.5 card-glass rounded-xl px-2.5 py-1.5">
         <button
@@ -1553,6 +1567,7 @@ onBeforeUnmount(() => {
       </div>
       <button
         class="flex items-center justify-center w-9 h-9 rounded-xl card-glass text-(--ui-text-muted) hover:text-(--ui-text) transition-colors"
+        title="退出禅模式 (Ctrl+Shift+Z)"
         @click="zenMode = false"
       >
         <Icon
@@ -1560,6 +1575,91 @@ onBeforeUnmount(() => {
           class="w-4 h-4"
         />
       </button>
+    </div>
+
+    <!-- Zen Mode Bottom Bar -->
+    <div
+      v-if="zenMode"
+      class="absolute bottom-0 left-0 right-0 z-10 flex items-center justify-between px-6 py-3 text-[11px] text-(--ui-text-dimmed)"
+    >
+      <!-- Left: Status -->
+      <div class="flex items-center gap-3">
+        <span class="flex items-center gap-1" :class="saveStatusClass">
+          <Icon
+            :icon="conflictDetected ? 'lucide:triangle-alert' : saving ? 'lucide:loader-circle' : 'lucide:check-circle'"
+            class="size-3"
+            :class="saving ? 'animate-spin' : ''"
+          />
+          {{ saveStatusText }}
+        </span>
+        <span class="tabular-nums">{{ currentWordCount.toLocaleString() }} 字</span>
+      </div>
+      <!-- Center: AI actions -->
+      <div class="flex items-center gap-1">
+        <NPopselect
+          v-model:value="selectedAiConfigId"
+          :options="generationModelOptions"
+          trigger="click"
+          size="small"
+        >
+          <button
+            class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+          >
+            <Icon icon="lucide:cpu" class="w-3 h-3" />
+            <span class="max-w-20 truncate">{{ selectedGenerationConfig?.name || '模型' }}</span>
+          </button>
+        </NPopselect>
+        <button
+          class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+          :title="t('chapter.generateDialog.temperatureHint')"
+          @click="cyclePreset"
+        >
+          <Icon icon="lucide:thermometer" class="w-3 h-3" />
+          <span>{{ currentPresetLabel }}</span>
+        </button>
+        <div class="w-px h-4 bg-(--ui-border)/30 mx-0.5" />
+        <NButton
+          size="tiny"
+          quaternary
+          :disabled="!aiStatus.available"
+          title="AI 续写 (Ctrl+J)"
+          @click="doAiAction('continue')"
+        >
+          <template #icon><Icon icon="lucide:pen-line" /></template>
+          续写
+        </NButton>
+        <NButton
+          size="tiny"
+          quaternary
+          :loading="generating"
+          :disabled="!aiStatus.available"
+          title="AI 生成"
+          @click="showGenerateDialog = true"
+        >
+          <template #icon><Icon icon="lucide:sparkles" /></template>
+          生成
+        </NButton>
+        <NButton
+          size="tiny"
+          quaternary
+          :loading="saving"
+          title="保存 (Ctrl+S)"
+          @click="() => saveContent()"
+        >
+          <template #icon><Icon icon="lucide:save" /></template>
+        </NButton>
+      </div>
+      <!-- Right: Progress -->
+      <div class="flex items-center gap-2">
+        <span class="tabular-nums">{{ currentWordCount }} / {{ chapterGoal }}</span>
+        <div class="relative w-16 h-1 rounded-full bg-(--ui-border)/30 overflow-hidden">
+          <div
+            class="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+            :class="chapterProgress >= 100 ? 'bg-emerald-400' : 'bg-(--ui-primary)/50'"
+            :style="{ width: `${chapterProgress}%` }"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- Draft Recovery -->
@@ -2130,88 +2230,21 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Editor -->
-      <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-(--ui-bg-muted)">
-        <div
-          v-if="!zenMode"
-          class="shrink-0 border-b border-(--ui-border) bg-(--ui-bg-elevated) px-3 py-2 sm:px-4"
-        >
+      <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-(--ui-bg)">
+        <div class="flex-1 min-h-0 flex flex-col px-2 pt-2 pb-1.5 sm:px-3">
           <div
-            class="flex items-center justify-between gap-3 text-[11px] text-(--ui-text-dimmed)"
-          >
-            <div class="flex min-w-0 items-center gap-3">
-              <span
-                class="h-2.5 w-2.5 shrink-0 rounded-sm bg-(--ui-primary-500)"
-              />
-              <span class="truncate text-(--ui-text-highlighted)"
-                >正文工作台</span
-              >
-              <span class="hidden items-center gap-1 sm:flex">
-                <Icon
-                  icon="lucide:type"
-                  class="size-3"
-                />
-                {{ currentWordCount.toLocaleString() }} 字
-              </span>
-              <span class="hidden items-center gap-1 sm:flex">
-                <Icon
-                  icon="lucide:list"
-                  class="size-3"
-                />
-                {{ currentLineCount }} 行
-              </span>
-              <span
-                class="hidden items-center gap-1 md:flex"
-                :class="saveStatusClass"
-              >
-                <Icon
-                  :icon="
-                    conflictDetected ? 'lucide:triangle-alert'
-                    : saving ? 'lucide:loader-circle'
-                    : 'lucide:check-circle'
-                  "
-                  class="size-3"
-                  :class="saving ? 'animate-spin' : ''"
-                />
-                {{ saveStatusText }}
-              </span>
-            </div>
-
-            <div class="ml-auto flex shrink-0 items-center justify-end gap-2">
-              <span class="hidden shrink-0 lg:inline">模型</span>
-              <div class="w-44 shrink-0">
-                <NSelect
-                  v-model:value="selectedAiConfigId"
-                  size="tiny"
-                  :options="generationModelOptions"
-                  placeholder="选择模型"
-                  class="w-full"
-                />
-              </div>
-              <span
-                class="hidden 2xl:inline max-w-48 truncate"
-                :title="selectedGenerationConfig?.model"
-              >
-                {{ selectedGenerationConfig?.model || '未选择' }}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div class="flex-1 min-h-0 flex flex-col">
-          <div
-            class="flex-1 min-h-0 flex flex-col w-full rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) overflow-hidden m-1.5 sm:m-2"
+            class="editor-canvas flex-1 min-h-0 flex flex-col w-full overflow-hidden"
             style="height: 0"
           >
             <div
               ref="editorContainerRef"
-              class="chapter-writing-surface w-full flex-1 milkdown-editor px-3 py-3 text-(--ui-text) text-[15px] leading-[1.9] sm:px-4 lg:px-5"
+              class="chapter-writing-surface w-full flex-1 milkdown-editor px-4 py-4 text-(--ui-text) text-[15px] leading-[1.9] sm:px-6 sm:py-5"
               :class="
                 zenMode ?
                   'min-h-screen leading-[2.05] lg:px-[6vw]'
                 : ''
               "
               :style="zenMode ? { fontSize: `${zenFontSize}px`, fontFamily: zenFontFamily } : {}"
-              "
               @mouseup="handleTextSelect"
             />
           </div>
@@ -2219,7 +2252,7 @@ onBeforeUnmount(() => {
           <!-- AI Action Result -->
           <div
             v-if="aiActionResult"
-            class="mt-2 w-full p-4 card-glass border-l-2 border-l-primary-400"
+            class="mt-3 w-full p-4 rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 border-l-2 border-l-primary-400 shadow-sm"
           >
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-2">
@@ -2303,7 +2336,7 @@ onBeforeUnmount(() => {
           <!-- Generated Content Preview -->
           <div
             v-if="(generating || regenerating) && generatedContent"
-            class="mt-2 w-full p-4 card-glass"
+            class="mt-3 w-full p-4 rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 shadow-sm"
           >
             <div class="flex items-center gap-2 mb-2">
               <span class="size-1.5 rounded-full bg-violet-400 animate-pulse" />
@@ -2323,7 +2356,7 @@ onBeforeUnmount(() => {
           <!-- Feedback Regeneration -->
           <div
             v-if="!generating && !regenerating && previousGeneratedContent"
-            class="mt-2 w-full p-3 card-glass border-l-2 border-l-amber-400"
+            class="mt-3 w-full p-3 rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 border-l-2 border-l-amber-400 shadow-sm"
           >
             <div
               v-if="!showFeedbackInput"
@@ -2477,48 +2510,50 @@ onBeforeUnmount(() => {
         <!-- Editor Status Bar -->
         <div
           v-if="!zenMode"
-          class="shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-(--ui-border) bg-(--ui-bg-muted)/50 text-[11px] text-(--ui-text-dimmed)"
+          class="shrink-0 flex flex-col"
         >
-          <div class="flex items-center gap-3">
-            <NPopselect
-              v-model:value="selectedAiConfigId"
-              :options="generationModelOptions"
-              trigger="click"
-              size="small"
-            >
-              <button
-                class="flex items-center gap-1 hover:text-(--ui-text) transition-colors"
+          <!-- Progress indicator -->
+          <div class="relative h-[2px] mx-4 rounded-full bg-(--ui-border)/30 overflow-hidden">
+            <div
+              class="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
+              :class="chapterProgress >= 100 ? 'bg-emerald-400' : 'bg-(--ui-primary)/60'"
+              :style="{ width: `${chapterProgress}%` }"
+            />
+          </div>
+          <!-- Status bar content -->
+          <div class="flex items-center justify-between px-4 py-2 text-[11px] text-(--ui-text-dimmed)/70">
+            <!-- Left: Writing status -->
+            <div class="flex items-center gap-2.5">
+              <span
+                class="flex items-center gap-1"
+                :class="saveStatusClass"
               >
                 <Icon
-                  icon="lucide:cpu"
-                  class="w-3 h-3"
+                  :icon="
+                    conflictDetected ? 'lucide:triangle-alert'
+                    : saving ? 'lucide:loader-circle'
+                    : 'lucide:check-circle'
+                  "
+                  class="size-3"
+                  :class="saving ? 'animate-spin' : ''"
                 />
-                <span>{{
-                  selectedGenerationConfig?.model || '未选择模型'
-                }}</span>
-              </button>
-            </NPopselect>
-            <button
-              class="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-(--ui-bg-elevated) transition-colors"
-              :title="t('chapter.generateDialog.temperatureHint')"
-              @click="cyclePreset"
-            >
-              <Icon
-                icon="lucide:thermometer"
-                class="w-3 h-3"
-              />
-              <span>{{ currentPresetLabel }}</span>
-            </button>
-          </div>
-          <div class="flex items-center gap-3">
-            <span :title="t('chapter.generateDialog.maxTokensHint')">
-              <Icon
-                icon="lucide:hash"
-                class="w-3 h-3 inline"
-              />
-              ~{{ estimatedContextTokens }} tokens
-            </span>
-            <span> {{ currentWordCount }} {{ t('chapter.wordCount') }} </span>
+                {{ saveStatusText }}
+              </span>
+              <span class="w-px h-3 bg-(--ui-border)/40" />
+              <span class="tabular-nums">{{ currentWordCount.toLocaleString() }} 字</span>
+              <span class="hidden sm:inline tabular-nums">{{ currentLineCount }} 行</span>
+            </div>
+            <!-- Center: Chapter progress label -->
+            <div class="hidden md:flex items-center gap-1.5 text-[10px]">
+              <span v-if="chapterProgress >= 100" class="text-emerald-500">目标已达成</span>
+              <span v-else class="text-(--ui-text-dimmed)/50">{{ currentWordCount }} / {{ chapterGoal }} 字</span>
+            </div>
+            <!-- Right: Token estimate -->
+            <div class="flex items-center gap-2.5">
+              <span class="tabular-nums" :title="t('chapter.generateDialog.maxTokensHint')">
+                ~{{ estimatedContextTokens }} tokens
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -2842,6 +2877,40 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.editor-canvas {
+  background: var(--ui-bg-elevated);
+  border-radius: 0.75rem;
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--ui-border) 50%, transparent),
+    0 2px 8px rgba(0, 0, 0, 0.03),
+    0 4px 20px rgba(0, 0, 0, 0.02);
+  transition:
+    box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  border: none;
+}
+
+.editor-canvas:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--ui-primary) 20%, var(--ui-border)),
+    0 2px 8px rgba(0, 0, 0, 0.04),
+    0 8px 28px rgba(0, 0, 0, 0.05);
+}
+
+:root.dark .editor-canvas {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--ui-border) 60%, transparent),
+    0 2px 8px rgba(0, 0, 0, 0.12),
+    0 4px 20px rgba(0, 0, 0, 0.08);
+}
+
+:root.dark .editor-canvas:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--ui-primary) 25%, var(--ui-border)),
+    0 2px 8px rgba(0, 0, 0, 0.15),
+    0 8px 28px rgba(0, 0, 0, 0.12);
+}
+
 .chapter-writing-surface {
   display: flex;
   flex-direction: column;
@@ -2859,43 +2928,55 @@ onBeforeUnmount(() => {
   padding: 0;
   color: var(--ui-text);
   background: transparent;
-  font-family: var(--font-sans);
-  font-size: 0.98rem;
-  line-height: 1.92;
-  letter-spacing: 0;
+  font-family: 'Noto Serif SC', 'Source Han Serif SC', Georgia, 'Times New Roman', serif;
+  font-size: 1rem;
+  line-height: 2;
+  letter-spacing: 0.015em;
   caret-color: var(--ui-primary);
   outline: none;
 }
 
+.chapter-writing-surface :deep(.ProseMirror ::selection) {
+  background: color-mix(in oklch, var(--ui-primary) 15%, transparent);
+}
+
 .chapter-writing-surface :deep(.ProseMirror p) {
-  margin: 0 0 0.72rem;
-  max-width: min(96ch, 100%);
+  margin: 0 0 0.85rem;
+  max-width: min(72ch, 100%);
   text-wrap: pretty;
+  text-indent: 2em;
+}
+
+.chapter-writing-surface :deep(.ProseMirror p:first-child) {
+  text-indent: 2em;
 }
 
 .chapter-writing-surface :deep(.ProseMirror h1),
 .chapter-writing-surface :deep(.ProseMirror h2),
 .chapter-writing-surface :deep(.ProseMirror h3) {
-  margin: 1rem 0 0.65rem;
+  margin: 1.5rem 0 0.8rem;
   color: var(--ui-text-highlighted);
   letter-spacing: 0;
-  line-height: 1.25;
+  line-height: 1.4;
+  font-family: var(--font-sans);
+  text-indent: 0;
 }
 
 .chapter-writing-surface :deep(.ProseMirror h1) {
-  font-size: 1.75rem;
+  font-size: 1.6rem;
 }
 
 .chapter-writing-surface :deep(.ProseMirror h2) {
-  font-size: 1.38rem;
+  font-size: 1.3rem;
 }
 
 .chapter-writing-surface :deep(.ProseMirror blockquote) {
-  margin: 0.9rem 0;
-  border-left: 3px solid var(--ui-primary);
-  padding: 0.35rem 0 0.35rem 1rem;
+  margin: 1rem 0;
+  border-left: 2px solid color-mix(in oklch, var(--ui-primary) 40%, transparent);
+  padding: 0.5rem 0 0.5rem 1.2rem;
   color: var(--ui-text-toned);
-  background: color-mix(in oklch, var(--ui-primary) 7%, transparent);
+  background: color-mix(in oklch, var(--ui-primary) 4%, transparent);
+  border-radius: 0 0.5rem 0.5rem 0;
 }
 
 .chapter-writing-surface :deep(.ProseMirror-selectednode),
@@ -2909,8 +2990,13 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
+  .editor-canvas {
+    border-radius: 0.5rem;
+  }
+
   .chapter-writing-surface :deep(.ProseMirror) {
     font-size: 0.94rem;
+    line-height: 1.9;
   }
 
   .chapter-writing-surface :deep(.ProseMirror p) {

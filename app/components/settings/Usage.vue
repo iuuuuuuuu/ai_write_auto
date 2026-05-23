@@ -7,6 +7,9 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent])
 
+const chartReady = ref(false)
+onMounted(() => { setTimeout(() => { chartReady.value = true }, 150) })
+
 const { t } = useI18n()
 const message = useMessage()
 
@@ -189,7 +192,7 @@ watch(days, () => refresh())
 
     <div v-if="records.length" class="card-glass p-4">
       <ClientOnly>
-        <VChart :option="chartOption" autoresize style="height: 220px; width: 100%" />
+        <VChart v-if="chartReady" :option="chartOption" autoresize style="height: 220px; width: 100%" />
       </ClientOnly>
     </div>
 

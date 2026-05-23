@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { h } from 'vue'
+import { NTag, NButton } from 'naive-ui'
+import { Icon } from '@iconify/vue'
+
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
 interface AdminUser {
@@ -75,11 +79,64 @@ async function deleteUser(user: AdminUser) {
     deletingId.value = null
   }
 }
+
+const tableColumns = [
+  {
+    title: '用户名',
+    key: 'username',
+    render(row: AdminUser) {
+      return h(
+        resolveComponent('NuxtLink') as any,
+        { to: `/admin/users/${row.id}`, class: 'font-medium text-(--ui-text-highlighted) hover:text-primary-500' },
+        () => row.username
+      )
+    }
+  },
+  {
+    title: 'ID',
+    key: 'id',
+    width: 80
+  },
+  {
+    title: '角色',
+    key: 'role',
+    width: 120,
+    render(row: AdminUser) {
+      return h(NTag, { type: row.role === 'admin' ? 'info' : 'default', size: 'small' }, () => row.role === 'admin' ? '管理员' : '用户')
+    }
+  },
+  {
+    title: '创建时间',
+    key: 'createdAt',
+    width: 180,
+    render(row: AdminUser) {
+      return new Date(row.createdAt).toLocaleString()
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 180,
+    align: 'right' as const,
+    render(row: AdminUser) {
+      return h('div', { class: 'flex gap-2 justify-end' }, [
+        h(NButton, { size: 'small', secondary: true, round: true, onClick: () => navigateTo(`/admin/users/${row.id}`) }, {
+          icon: () => h(Icon, { icon: 'lucide:eye' }),
+          default: () => '查阅'
+        }),
+        h(NButton, { size: 'small', quaternary: true, round: true, type: 'error', disabled: row.id === 1, loading: deletingId.value === row.id, onClick: () => deleteUser(row) }, {
+          icon: () => h(Icon, { icon: 'lucide:trash-2' }),
+          default: () => '删除'
+        })
+      ])
+    }
+  }
+]
 </script>
 
 <template>
-  <div class="space-y-4">
-    <section class="card-glass relative overflow-hidden p-5 md:p-6">
+  <div class="flex flex-col gap-4 h-full overflow-hidden">
+    <section class="card-glass relative overflow-hidden p-5 md:p-6 shrink-0">
       <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-sm text-(--ui-text-muted)">Admin / Users</p>
@@ -116,93 +173,32 @@ async function deleteUser(user: AdminUser) {
       </div>
     </section>
 
-    <div class="card-glass overflow-hidden">
+    <div class="card-glass flex-1 min-h-0 flex flex-col overflow-hidden">
+      <NDataTable
+        :columns="tableColumns"
+        :data="users"
+        :loading="pending"
+        :bordered="false"
+        :single-line="false"
+        flex-height
+        class="flex-1"
+        style="height: 0"
+      />
       <div
-        v-if="pending"
-        class="space-y-2 p-4"
+        v-if="total > 0"
+        class="flex items-center justify-between px-4 py-3 border-t border-(--ui-border)/40 shrink-0"
       >
-        <NSkeleton
-          v-for="item in 6"
-          :key="item"
-          class="h-12 rounded-md"
-          text
+        <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
+        <NPagination
+          :page="page"
+          :page-count="totalPages"
+          :page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          show-size-picker
+          @update:page="goToPage"
+          @update:page-size="updatePageSize"
         />
       </div>
-      <div
-        v-else-if="!users.length"
-        class="p-10 text-center text-sm text-(--ui-text-muted)"
-      >
-        暂无匹配用户
-      </div>
-      <div
-        v-else
-        class="space-y-2"
-      >
-        <div
-          v-for="item in users"
-          :key="item.id"
-          class="group grid gap-3 rounded-2xl bg-(--ui-bg-muted) px-3 py-4 ring-1 ring-(--ui-border) transition-colors hover:bg-(--ui-bg-muted) md:grid-cols-[1fr_130px_180px_220px] md:items-center"
-        >
-          <div class="min-w-0">
-            <NuxtLink
-              :to="`/admin/users/${item.id}`"
-              class="font-medium text-(--ui-text-highlighted) hover:text-primary-400"
-            >
-              {{ item.username }}
-            </NuxtLink>
-            <p class="mt-1 text-xs text-(--ui-text-dimmed)">ID {{ item.id }}</p>
-          </div>
-          <NTag :type="item.role === 'admin' ? 'info' : 'default'">
-            {{ item.role === 'admin' ? '管理员' : '用户' }}
-          </NTag>
-          <p class="text-sm text-(--ui-text-muted)">
-            {{ new Date(item.createdAt).toLocaleString() }}
-          </p>
-          <div class="flex flex-wrap gap-2 md:justify-end">
-            <NButton
-              size="small"
-              secondary
-              round
-              @click="navigateTo(`/admin/users/${item.id}`)"
-            >
-              <template #icon>
-                <Icon icon="lucide:eye" />
-              </template>
-              查阅
-            </NButton>
-            <NButton
-              size="small"
-              quaternary
-              round
-              type="error"
-              :disabled="item.id === 1"
-              :loading="deletingId === item.id"
-              @click="deleteUser(item)"
-            >
-              <template #icon>
-                <Icon icon="lucide:trash-2" />
-              </template>
-              删除
-            </NButton>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div
-      v-if="total > 0"
-      class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-    >
-      <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
-      <NPagination
-        :page="page"
-        :page-count="totalPages"
-        :page-size="pageSize"
-        :page-sizes="[10, 20, 50, 100]"
-        show-size-picker
-        @update:page="goToPage"
-        @update:page-size="updatePageSize"
-      />
     </div>
 
     <!-- Create User Modal -->
