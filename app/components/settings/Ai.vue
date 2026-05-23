@@ -57,6 +57,101 @@ const saving = ref(false)
 const deletingId = ref<number | null>(null)
 const applyingPreset = ref<string | null>(null)
 
+interface CustomPreset {
+  id: string
+  name: string
+  temperature: string
+  maxTokens: number
+  configId?: number
+}
+
+const customPresets = ref<CustomPreset[]>([])
+const showCustomPresetForm = ref(false)
+const newPreset = reactive({
+  name: '',
+  temperature: 0.7,
+  maxTokens: 4096,
+  configId: undefined as number | undefined
+})
+
+async function loadCustomPresets() {
+  try {
+    const prefs = await $fetch<Record<string, string>>('/api/settings/preferences')
+    if (prefs.ai_custom_presets) {
+      customPresets.value = JSON.parse(prefs.ai_custom_presets)
+    }
+  } catch {}
+}
+
+async function saveCustomPresets() {
+  await $fetch('/api/settings/preferences', {
+    method: 'PUT',
+    body: { key: 'ai_custom_presets', value: JSON.stringify(customPresets.value) }
+  })
+}
+
+async function addCustomPreset() {
+  if (!newPreset.name.trim()) return
+  customPresets.value.push({
+    id: Date.now().toString(36),
+    name: newPreset.name.trim(),
+    temperature: String(newPreset.temperature),
+    maxTokens: newPreset.maxTokens,
+    configId: newPreset.configId
+  })
+  await saveCustomPresets()
+  showCustomPresetForm.value = false
+  newPreset.name = ''
+  newPreset.temperature = 0.7
+  newPreset.maxTokens = 4096
+  newPreset.configId = undefined
+  message.success('预设已保存')
+}
+
+async function deleteCustomPreset(id: string) {
+  customPresets.value = customPresets.value.filter(p => p.id !== id)
+  await saveCustomPresets()
+}
+
+async function applyCustomPreset(preset: CustomPreset) {
+  const targetConfig = preset.configId
+    ? configs.value.find(c => c.id === preset.configId)
+    : defaultGenerationConfig.value
+  if (!targetConfig) {
+    message.warning('预设关联的模型配置不存在')
+    return
+  }
+  applyingPreset.value = preset.id
+  try {
+    await $fetch('/api/ai/config', {
+      method: 'POST',
+      body: {
+        id: targetConfig.id,
+        name: targetConfig.name,
+        purpose: targetConfig.purpose,
+        apiUrl: targetConfig.apiUrl,
+        model: targetConfig.model,
+        temperature: preset.temperature,
+        maxTokens: preset.maxTokens,
+        isDefault: true,
+        enabled: targetConfig.enabled
+      }
+    })
+    message.success(`已切换至「${preset.name}」`)
+    await refresh()
+  } catch {
+    message.error('切换预设失败')
+  } finally {
+    applyingPreset.value = null
+  }
+}
+
+const generationConfigs = computed(() =>
+  configs.value.filter(c => c.purpose === 'generation')
+)
+
+loadCustomPresets()
+
 const defaultGenerationConfig = computed(() => {
   return configs.value.find((c) => c.purpose === 'generation' && c.isDefault)
 })
@@ -306,35 +401,89 @@ async function deleteConfig(config: AiConfigItem) {
     </NAlert>
 
     <!-- Presets -->
-    <div class="flex items-center gap-2">
-      <span class="text-xs text-(--ui-text-dimmed)">快速切换：</span>
-      <NButton
-        size="tiny"
-        :loading="applyingPreset === 'creative'"
-        :type="defaultGenerationConfig?.temperature === '0.9' ? 'primary' : 'default'"
-        @click="applyPreset('creative')"
-      >
-        <template #icon><Icon icon="lucide:flame" /></template>
-        创意模式
-      </NButton>
-      <NButton
-        size="tiny"
-        :loading="applyingPreset === 'balanced'"
-        :type="defaultGenerationConfig?.temperature === '0.7' ? 'primary' : 'default'"
-        @click="applyPreset('balanced')"
-      >
-        <template #icon><Icon icon="lucide:scale" /></template>
-        平衡模式
-      </NButton>
-      <NButton
-        size="tiny"
-        :loading="applyingPreset === 'precise'"
-        :type="defaultGenerationConfig?.temperature === '0.3' ? 'primary' : 'default'"
-        @click="applyPreset('precise')"
-      >
-        <template #icon><Icon icon="lucide:crosshair" /></template>
-        精确模式
-      </NButton>
+    <div class="space-y-2">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-xs text-(--ui-text-dimmed)">快速切换：</span>
+        <NButton
+          size="tiny"
+          :loading="applyingPreset === 'creative'"
+          :type="defaultGenerationConfig?.temperature === '0.9' ? 'primary' : 'default'"
+          @click="applyPreset('creative')"
+        >
+          <template #icon><Icon icon="lucide:flame" /></template>
+          创意模式
+        </NButton>
+        <NButton
+          size="tiny"
+          :loading="applyingPreset === 'balanced'"
+          :type="defaultGenerationConfig?.temperature === '0.7' ? 'primary' : 'default'"
+          @click="applyPreset('balanced')"
+        >
+          <template #icon><Icon icon="lucide:scale" /></template>
+          平衡模式
+        </NButton>
+        <NButton
+          size="tiny"
+          :loading="applyingPreset === 'precise'"
+          :type="defaultGenerationConfig?.temperature === '0.3' ? 'primary' : 'default'"
+          @click="applyPreset('precise')"
+        >
+          <template #icon><Icon icon="lucide:crosshair" /></template>
+          精确模式
+        </NButton>
+        <NButton
+          v-for="cp in customPresets"
+          :key="cp.id"
+          size="tiny"
+          :loading="applyingPreset === cp.id"
+          @click="applyCustomPreset(cp)"
+        >
+          <template #icon><Icon icon="lucide:bookmark" /></template>
+          {{ cp.name }}
+        </NButton>
+        <NButton size="tiny" quaternary @click="showCustomPresetForm = !showCustomPresetForm">
+          <template #icon><Icon icon="lucide:plus" /></template>
+        </NButton>
+      </div>
+
+      <!-- Custom Preset Form -->
+      <div v-if="showCustomPresetForm" class="card-surface p-3 space-y-2">
+        <div class="flex gap-2">
+          <NInput v-model:value="newPreset.name" size="small" placeholder="预设名称" class="flex-1" />
+          <NSelect
+            v-model:value="newPreset.configId"
+            size="small"
+            :options="generationConfigs.map(c => ({ label: c.model, value: c.id }))"
+            placeholder="关联模型（可选）"
+            clearable
+            style="width: 180px"
+          />
+        </div>
+        <div class="flex gap-2 items-center">
+          <span class="text-xs text-(--ui-text-dimmed) shrink-0">温度:</span>
+          <NSlider v-model:value="newPreset.temperature" :min="0" :max="2" :step="0.1" :format-tooltip="(v: number) => String(v)" class="flex-1" />
+          <span class="text-xs w-6 text-center">{{ newPreset.temperature }}</span>
+          <span class="text-xs text-(--ui-text-dimmed) shrink-0 ml-2">Tokens:</span>
+          <NInputNumber v-model:value="newPreset.maxTokens" size="tiny" :min="512" :max="128000" :step="256" style="width: 100px" />
+        </div>
+        <div class="flex justify-between items-center">
+          <div class="flex gap-1 flex-wrap">
+            <NTag
+              v-for="cp in customPresets"
+              :key="cp.id"
+              size="small"
+              closable
+              @close="deleteCustomPreset(cp.id)"
+            >
+              {{ cp.name }} ({{ cp.temperature }})
+            </NTag>
+          </div>
+          <div class="flex gap-1">
+            <NButton size="tiny" @click="showCustomPresetForm = false">取消</NButton>
+            <NButton size="tiny" type="primary" :disabled="!newPreset.name.trim()" @click="addCustomPreset">保存</NButton>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Config Groups -->

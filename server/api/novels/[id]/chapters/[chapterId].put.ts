@@ -6,6 +6,7 @@ import {
   ChapterVersionSchema
 } from '../../../../database/entities'
 import { enqueuePostProcessing } from '../../../../services/task-queue'
+import { recordWordsWritten } from '../../../../utils/writing-stats'
 
 const updateChapterSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -53,12 +54,18 @@ export default defineEventHandler(async (event) => {
   const updates: Partial<Omit<typeof data, 'expectedUpdatedAt'>> & {
     wordCount?: number
   } = { ...updateFields }
+  const oldWordCount = chapter.wordCount || 0
   if (data.content !== undefined) {
     updates.wordCount = data.content.replace(/\s/g, '').length
   }
 
   wrap(chapter).assign(updates)
   await em.flush()
+
+  if (updates.wordCount !== undefined) {
+    const delta = updates.wordCount - oldWordCount
+    await recordWordsWritten(em, auth.userId, delta)
+  }
 
   const normalizeText = (text: string | null | undefined) =>
     (text ?? '').replace(/\s/g, '')

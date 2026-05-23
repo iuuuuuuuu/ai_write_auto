@@ -278,6 +278,60 @@ const showFeedbackInput = ref(false)
 const feedbackText = ref('')
 const regenerating = ref(false)
 
+/* ─────────────── Prompt 模板 ─────────────── */
+interface PromptTemplate {
+  id: number
+  name: string
+  content: string
+  category: string
+  isSystem: boolean
+}
+const promptTemplates = ref<PromptTemplate[]>([])
+const selectedTemplateId = ref<number | null>(null)
+
+async function fetchPromptTemplates() {
+  try {
+    const data = await $fetch<PromptTemplate[]>('/api/ai/templates')
+    promptTemplates.value = data.filter(
+      (t) => t.category === 'generation' || t.category === 'custom'
+    )
+  } catch {}
+}
+
+function applyTemplate(id: number | null) {
+  if (!id) return
+  const tpl = promptTemplates.value.find((t) => t.id === id)
+  if (tpl) generateDirection.value = tpl.content
+}
+
+const showSaveTemplateInput = ref(false)
+const newTemplateName = ref('')
+
+async function saveAsTemplate() {
+  if (!newTemplateName.value.trim() || !generateDirection.value.trim()) return
+  try {
+    await $fetch('/api/ai/templates', {
+      method: 'POST',
+      body: {
+        name: newTemplateName.value.trim(),
+        content: generateDirection.value.trim(),
+        category: 'generation'
+      }
+    })
+    showSaveTemplateInput.value = false
+    newTemplateName.value = ''
+    await fetchPromptTemplates()
+  } catch {}
+}
+
+async function deleteTemplate(id: number) {
+  try {
+    await $fetch('/api/ai/templates', { method: 'DELETE', query: { id } })
+    await fetchPromptTemplates()
+    if (selectedTemplateId.value === id) selectedTemplateId.value = null
+  } catch {}
+}
+
 /* ─────────────── 中断草稿恢复 ─────────────── */
 const {
   draftRecovery,
@@ -347,15 +401,27 @@ async function applyDraftRecovery() {
   clearDraftRecovery()
 }
 
+let draftLastSavedLength = 0
+
 watch(generatedContent, (val) => {
   if (generating.value && val) {
-    saveDraftRecovery(val, 'generate')
+    if (val.length - draftLastSavedLength >= 500 || !generating.value) {
+      saveDraftRecovery(val, 'generate')
+      draftLastSavedLength = val.length
+    }
+  } else {
+    draftLastSavedLength = 0
   }
 })
 
 watch(aiActionResult, (val) => {
   if (expandingOrRewriting.value && val && aiActionType.value) {
-    saveDraftRecovery(val, aiActionType.value)
+    if (val.length - draftLastSavedLength >= 500) {
+      saveDraftRecovery(val, aiActionType.value)
+      draftLastSavedLength = val.length
+    }
+  } else {
+    draftLastSavedLength = 0
   }
 })
 
@@ -507,6 +573,8 @@ watch(
 onMounted(async () => {
   await createEditor(content.value)
   loadDraftRecovery()
+  fetchPromptTemplates()
+  loadUserPresets()
 })
 
 watch(
@@ -660,19 +728,47 @@ const presetCycle = [
   { name: '精确', temperature: 0.3 }
 ] as const
 
+interface UserPreset {
+  id: string
+  name: string
+  temperature: string
+  maxTokens: number
+  configId?: number
+}
+const userPresets = ref<UserPreset[]>([])
+
+async function loadUserPresets() {
+  try {
+    const prefs = await $fetch<Record<string, string>>('/api/settings/preferences')
+    if (prefs.ai_custom_presets) {
+      userPresets.value = JSON.parse(prefs.ai_custom_presets)
+    }
+  } catch {}
+}
+
+const allPresets = computed(() => [
+  ...presetCycle.map(p => ({ name: p.name, temperature: p.temperature, configId: undefined as number | undefined })),
+  ...userPresets.value.map(p => ({ name: p.name, temperature: parseFloat(p.temperature), configId: p.configId }))
+])
+
 const currentPresetLabel = computed(() => {
   const temp = generateTemperature.value
+  const userMatch = userPresets.value.find(p => parseFloat(p.temperature) === temp)
+  if (userMatch) return userMatch.name
   if (temp >= 0.85) return '创意'
   if (temp >= 0.5) return '平衡'
   return '精确'
 })
 
 function cyclePreset() {
-  const currentIdx = presetCycle.findIndex(
+  const currentIdx = allPresets.value.findIndex(
     (p) => p.name === currentPresetLabel.value
   )
-  const next = presetCycle[(currentIdx + 1) % presetCycle.length]!
+  const next = allPresets.value[(currentIdx + 1) % allPresets.value.length]!
   generateTemperature.value = next.temperature
+  if (next.configId && aiConfigs.value.find(c => c.id === next.configId)) {
+    selectedAiConfigId.value = next.configId
+  }
 }
 
 const estimatedContextTokens = computed(() =>
@@ -1183,6 +1279,11 @@ function handleBeforeUnload(e: BeforeUnloadEvent) {
 }
 
 function updatePageHeight() {
+  const isMobile = window.innerWidth < 1024
+  if (isMobile) {
+    pageHeight.value = `calc(100dvh - 10rem)`
+    return
+  }
   const contentSlot = pageRootRef.value?.parentElement?.parentElement
   if (!contentSlot) return
   const style = getComputedStyle(contentSlot)
@@ -2473,13 +2574,63 @@ onBeforeUnmount(() => {
       style="max-width: 480px"
     >
       <div class="space-y-4">
+        <NFormItem label="Prompt 模板">
+          <div class="w-full space-y-2">
+            <div class="flex gap-2">
+              <NSelect
+                v-model:value="selectedTemplateId"
+                :options="promptTemplates.map(t => ({ label: t.name + (t.isSystem ? ' (系统)' : ''), value: t.id }))"
+                placeholder="选择已保存的模板"
+                clearable
+                class="flex-1"
+                @update:value="applyTemplate"
+              />
+              <NButton
+                size="small"
+                quaternary
+                @click="selectedTemplateId ? deleteTemplate(selectedTemplateId) : null"
+                :disabled="!selectedTemplateId || promptTemplates.find(t => t.id === selectedTemplateId)?.isSystem"
+              >
+                <template #icon><Icon icon="lucide:trash-2" /></template>
+              </NButton>
+            </div>
+          </div>
+        </NFormItem>
         <NFormItem :label="t('chapter.generateDialog.direction')">
-          <NInput
-            v-model:value="generateDirection"
-            type="textarea"
-            :placeholder="t('chapter.generateDialog.directionPlaceholder')"
-            :rows="3"
-          />
+          <div class="w-full space-y-2">
+            <NInput
+              v-model:value="generateDirection"
+              type="textarea"
+              :placeholder="t('chapter.generateDialog.directionPlaceholder')"
+              :rows="3"
+            />
+            <div class="flex justify-end">
+              <template v-if="!showSaveTemplateInput">
+                <NButton
+                  size="tiny"
+                  quaternary
+                  :disabled="!generateDirection.trim()"
+                  @click="showSaveTemplateInput = true"
+                >
+                  <template #icon><Icon icon="lucide:bookmark-plus" /></template>
+                  保存为模板
+                </NButton>
+              </template>
+              <template v-else>
+                <div class="flex gap-1 items-center">
+                  <NInput
+                    v-model:value="newTemplateName"
+                    size="tiny"
+                    placeholder="模板名称"
+                    style="width: 140px"
+                    @keyup.enter="saveAsTemplate"
+                  />
+                  <NButton size="tiny" type="primary" @click="saveAsTemplate">保存</NButton>
+                  <NButton size="tiny" quaternary @click="showSaveTemplateInput = false">取消</NButton>
+                </div>
+              </template>
+            </div>
+          </div>
         </NFormItem>
         <NFormItem
           :label="t('chapter.generateDialog.model')"

@@ -5,6 +5,7 @@ import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema, ModelCostRateSchema } from '../../database/entities'
 import { isEmbeddingReady } from '../../services/embedding'
 import { retrieveRelevant } from '../../services/character-rag'
+import { recordAiGeneration } from '../../utils/writing-stats'
 
 const generateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -131,6 +132,8 @@ export default defineEventHandler(async (event) => {
               })
               await em.flush()
             }
+
+            await recordAiGeneration(em, auth.userId)
 
             controller.enqueue(
               encoder.encode(

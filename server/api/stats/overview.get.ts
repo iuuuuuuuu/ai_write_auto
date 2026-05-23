@@ -1,4 +1,5 @@
 import { NovelSchema, ChapterSchema, WritingStatSchema, UserPreferenceSchema } from '../../database/entities'
+import { calculateStreak } from '../../utils/writing-stats'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -16,12 +17,14 @@ export default defineEventHandler(async (event) => {
   const chapterGoal = Number(prefMap.get('writing_chapter_goal') || 3000)
   const todayWords = todayStats?.wordsWritten || 0
 
+  const streak = await calculateStreak(em, auth.userId)
+
   return {
     todayWords,
     dailyGoal,
     dailyProgress: dailyGoal > 0 ? Math.min(Math.round((todayWords / dailyGoal) * 100), 100) : 0,
     chapterGoal,
-    streak: 0,
+    streak,
     totalNovels: novels.length,
     totalWords,
   }

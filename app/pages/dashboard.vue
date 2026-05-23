@@ -30,6 +30,7 @@ const creatingNovel = shallowRef(false)
 const generatingWorldbuilding = shallowRef(false)
 const creatingSampleNovel = shallowRef(false)
 const showOnboardingTips = shallowRef(false)
+const createStep = shallowRef(1)
 const staggerRef = ref<HTMLElement | null>(null)
 useStaggerAnimation(staggerRef, { staggerDelay: 50 })
 
@@ -159,6 +160,7 @@ async function handleCreateNovel() {
     newNovelGenre.value = null
     newNovelWorldSetting.value = ''
     newNovelStyleGuide.value = ''
+    createStep.value = 1
     refreshNovels()
     router.push(`/novels/${novel.id}`)
   } finally {
@@ -570,11 +572,19 @@ function resetImport() {
     </section>
 
     <!-- Create Modal -->
-    <NModal v-model:show="showCreateModal" preset="card" :title="t('novel.create')" style="max-width: 440px;">
-      <div class="space-y-3">
+    <NModal v-model:show="showCreateModal" preset="card" :title="t('novel.create')" style="max-width: 480px;" @after-leave="createStep = 1">
+      <!-- Step indicator -->
+      <div class="mb-4 flex items-center gap-2 text-xs text-(--ui-text-muted)">
+        <span :class="createStep === 1 ? 'text-(--ui-primary) font-semibold' : ''">1. 基本信息</span>
+        <Icon icon="lucide:chevron-right" class="size-3" />
+        <span :class="createStep === 2 ? 'text-(--ui-primary) font-semibold' : ''">2. 世界观设定</span>
+      </div>
+
+      <!-- Step 1: Basic Info -->
+      <div v-show="createStep === 1" class="space-y-3">
         <div class="space-y-1">
           <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('novel.novelTitle') }}</label>
-          <NInput v-model:value="newNovelTitle" :placeholder="t('novel.novelTitle')" size="large" autofocus @keyup.enter="handleCreateNovel" />
+          <NInput v-model:value="newNovelTitle" :placeholder="t('novel.novelTitle')" size="large" autofocus @keyup.enter="createStep = 2" />
         </div>
         <div class="space-y-1">
           <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('novel.description') }}</label>
@@ -584,45 +594,59 @@ function resetImport() {
           <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('novel.genre') }}</label>
           <NSelect v-model:value="newNovelGenre" :options="genreOptions" :placeholder="t('novel.genre')" clearable />
         </div>
-        <NCollapse>
-          <NCollapseItem title="详细设定（可选）" name="advanced">
-            <div class="space-y-3 pt-1">
-              <NButton
-                size="tiny"
-                secondary
-                :loading="generatingWorldbuilding"
-                :disabled="!newNovelTitle.trim()"
-                @click="generateWorldbuilding"
-              >
-                <template #icon><Icon icon="lucide:sparkles" /></template>
-                AI 生成设定
-              </NButton>
-              <div class="space-y-1">
-                <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">世界观</label>
-                <NInput
-                  v-model:value="newNovelWorldSetting"
-                  type="textarea"
-                  placeholder="时代背景、地理环境、势力格局、核心规则等"
-                  :rows="4"
-                />
-              </div>
-              <div class="space-y-1">
-                <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">写作风格</label>
-                <NInput
-                  v-model:value="newNovelStyleGuide"
-                  type="textarea"
-                  placeholder="叙事口吻、节奏、语言风格、禁用表达等"
-                  :rows="3"
-                />
-              </div>
-            </div>
-          </NCollapseItem>
-        </NCollapse>
       </div>
+
+      <!-- Step 2: Worldbuilding (optional) -->
+      <div v-show="createStep === 2" class="space-y-3">
+        <NButton
+          size="small"
+          secondary
+          :loading="generatingWorldbuilding"
+          :disabled="!newNovelTitle.trim()"
+          @click="generateWorldbuilding"
+        >
+          <template #icon><Icon icon="lucide:sparkles" /></template>
+          AI 生成设定
+        </NButton>
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">世界观</label>
+          <NInput
+            v-model:value="newNovelWorldSetting"
+            type="textarea"
+            placeholder="时代背景、地理环境、势力格局、核心规则等"
+            :rows="4"
+          />
+        </div>
+        <div class="space-y-1">
+          <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">写作风格</label>
+          <NInput
+            v-model:value="newNovelStyleGuide"
+            type="textarea"
+            placeholder="叙事口吻、节奏、语言风格、禁用表达等"
+            :rows="3"
+          />
+        </div>
+        <p class="text-xs text-(--ui-text-dimmed)">这些设定可以跳过，创建后随时在小说详情页补充。</p>
+      </div>
+
       <template #footer>
-        <div class="flex justify-end gap-2">
-          <NButton size="small" @click="showCreateModal = false">{{ t('common.cancel') }}</NButton>
-          <NButton type="primary" size="small" :loading="creatingNovel" :disabled="!newNovelTitle.trim()" @click="handleCreateNovel">{{ t('common.create') }}</NButton>
+        <div class="flex justify-between">
+          <div>
+            <NButton v-if="createStep === 2" size="small" quaternary @click="createStep = 1">
+              <template #icon><Icon icon="lucide:arrow-left" /></template>
+              上一步
+            </NButton>
+          </div>
+          <div class="flex gap-2">
+            <NButton size="small" @click="showCreateModal = false">{{ t('common.cancel') }}</NButton>
+            <NButton v-if="createStep === 1" type="primary" size="small" :disabled="!newNovelTitle.trim()" @click="createStep = 2">
+              下一步
+            </NButton>
+            <template v-if="createStep === 2">
+              <NButton size="small" @click="handleCreateNovel">跳过并创建</NButton>
+              <NButton type="primary" size="small" :loading="creatingNovel" :disabled="!newNovelTitle.trim()" @click="handleCreateNovel">{{ t('common.create') }}</NButton>
+            </template>
+          </div>
         </div>
       </template>
     </NModal>

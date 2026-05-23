@@ -3,6 +3,7 @@ import { streamAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, NovelOutlineSchema, GenerationTaskSchema } from '../../database/entities'
+import { recordAiGeneration } from '../../utils/writing-stats'
 
 const batchSchema = z.object({
   novelId: z.number().int().positive(),
@@ -160,6 +161,8 @@ export default defineEventHandler(async (event) => {
           status: 'completed',
           completedAt: new Date()
         })
+
+        await recordAiGeneration(em, auth.userId)
 
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: 'done', taskId, completed: totalChapters, total: totalChapters })}\n\n`)
