@@ -40,7 +40,7 @@ const hasSidebar = computed(() => ['classic', 'borderless', 'card'].includes(set
               class="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border transition-all duration-200"
               :class="[
                 settings.navMode === mode.value
-                  ? 'border-primary-400 bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 shadow-[0_1px_4px_-1px_var(--ui-glow)]'
+                  ? 'border-primary-400 bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
                   : 'border-(--ui-border)/40 text-(--ui-text-muted) hover:border-(--ui-border) hover:bg-(--ui-bg-muted)/50'
               ]"
               @click="updateSetting('navMode', mode.value)"

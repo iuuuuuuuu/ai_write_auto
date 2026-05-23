@@ -65,9 +65,6 @@ type CharacterFormModel = Partial<{
   description: string
   traits: string
   relationships: string
-  currentState: string
-  firstAppearanceChapter: number | null
-  lastAppearanceChapter: number | null
 }>
 
 type ChapterStatusFilter =
@@ -116,9 +113,55 @@ interface PlotPointItem {
   createdAt: string
 }
 
-const { data: novel } = await useFetch<NovelDetail>(
+const { data: novel, refresh: refreshNovel } = await useFetch<NovelDetail>(
   `/api/novels/${novelId.value}`
 )
+
+const { data: aiConfigs } = await useFetch<
+  Array<{ id: number; name: string; model: string; purpose: string; enabled: boolean }>
+>('/api/ai/config', { default: () => [] })
+
+const aiConfigOptions = computed(() => {
+  return aiConfigs.value
+    .filter((c) => c.purpose === 'generation' && c.enabled)
+    .map((c) => ({ label: c.name, value: c.id }))
+})
+
+const showAiSettingsModal = shallowRef(false)
+const savingAiSettings = shallowRef(false)
+const aiSettingsForm = reactive({
+  aiConfigId: null as number | null,
+  aiTemperature: '',
+  aiExtraPrompt: ''
+})
+
+function openAiSettings() {
+  aiSettingsForm.aiConfigId = novel.value?.aiConfigId ?? null
+  aiSettingsForm.aiTemperature = novel.value?.aiTemperature || ''
+  aiSettingsForm.aiExtraPrompt = novel.value?.aiExtraPrompt || ''
+  showAiSettingsModal.value = true
+}
+
+async function saveAiSettings() {
+  savingAiSettings.value = true
+  try {
+    await $fetch(`/api/novels/${novelId.value}`, {
+      method: 'PUT',
+      body: {
+        aiConfigId: aiSettingsForm.aiConfigId,
+        aiTemperature: aiSettingsForm.aiTemperature || undefined,
+        aiExtraPrompt: aiSettingsForm.aiExtraPrompt || undefined
+      }
+    })
+    message.success('AI 设定已保存')
+    showAiSettingsModal.value = false
+    await refreshNovel()
+  } catch {
+    message.error('AI 设定保存失败')
+  } finally {
+    savingAiSettings.value = false
+  }
+}
 
 watch(
   () => novel.value,
@@ -168,10 +211,7 @@ const characterForm = reactive<CharacterFormModel>({
   name: '',
   description: '',
   traits: '',
-  relationships: '',
-  currentState: '',
-  firstAppearanceChapter: null,
-  lastAppearanceChapter: null
+  relationships: ''
 })
 
 async function deleteNovel() {
@@ -310,7 +350,7 @@ function handleOutlineDragOver(event: DragEvent, index: number) {
     return
   const items = [...outlineFormItems.value]
   const [moved] = items.splice(draggingOutlineIndex.value, 1)
-  items.splice(index, 0, moved)
+  items.splice(index, 0, moved!)
   outlineFormItems.value = items.map((item, i) => ({
     ...item,
     sortOrder: i
@@ -605,15 +645,17 @@ const characterDialogTitle = computed(() => {
   return editingCharacterId.value ? '编辑角色' : '新增角色'
 })
 
+const editingCharacterData = computed(() => {
+  if (!editingCharacterId.value) return null
+  return characters.value?.find((c: CharacterItem) => c.id === editingCharacterId.value) ?? null
+})
+
 function resetCharacterForm() {
   editingCharacterId.value = null
   characterForm.name = ''
   characterForm.description = ''
   characterForm.traits = ''
   characterForm.relationships = ''
-  characterForm.currentState = ''
-  characterForm.firstAppearanceChapter = null
-  characterForm.lastAppearanceChapter = null
 }
 
 function openCreateCharacterDialog() {
@@ -627,9 +669,6 @@ function openEditCharacterDialog(character: CharacterItem) {
   characterForm.description = character.description || ''
   characterForm.traits = character.traits || ''
   characterForm.relationships = character.relationships || ''
-  characterForm.currentState = character.currentState || ''
-  characterForm.firstAppearanceChapter = character.firstAppearanceChapter
-  characterForm.lastAppearanceChapter = character.lastAppearanceChapter
   showCharacterDialog.value = true
 }
 
@@ -646,10 +685,7 @@ function getCharacterPayload() {
     name: characterForm.name?.trim() || '',
     description: characterForm.description?.trim() || undefined,
     traits: characterForm.traits?.trim() || undefined,
-    relationships: characterForm.relationships?.trim() || undefined,
-    currentState: characterForm.currentState?.trim() || undefined,
-    firstAppearanceChapter: characterForm.firstAppearanceChapter || null,
-    lastAppearanceChapter: characterForm.lastAppearanceChapter || null
+    relationships: characterForm.relationships?.trim() || undefined
   }
 }
 
@@ -948,37 +984,37 @@ async function savePlotPoint() {
           <div
             class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"
           >
-            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
+            <div class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2">
               <p class="text-[11px] text-(--ui-text-dimmed)">章节</p>
               <p class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)">
                 {{ chapters?.length || 0 }}
               </p>
             </div>
-            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
+            <div class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2">
               <p class="text-[11px] text-(--ui-text-dimmed)">字数</p>
               <p class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)">
                 {{ totalWords.toLocaleString() }}
               </p>
             </div>
-            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
+            <div class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2">
               <p class="text-[11px] text-(--ui-text-dimmed)">角色</p>
               <p class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)">
                 {{ sortedCharacters.length }}
               </p>
             </div>
-            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
+            <div class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2">
               <p class="text-[11px] text-(--ui-text-dimmed)">出场</p>
               <p class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)">
                 {{ characterChapterCount }}
               </p>
             </div>
-            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
+            <div class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2">
               <p class="text-[11px] text-(--ui-text-dimmed)">状态</p>
               <p class="mt-1 truncate text-sm text-(--ui-text-highlighted)">
                 {{ statusLabel }}
               </p>
             </div>
-            <div class="rounded-2xl bg-white/12 ring-1 ring-white/12 px-3 py-2 dark:bg-white/6">
+            <div class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2">
               <p class="text-[11px] text-(--ui-text-dimmed)">更新</p>
               <p class="mt-1 truncate text-sm text-(--ui-text-highlighted)">
                 {{ formatDate(novel.updatedAt) }}
@@ -988,7 +1024,8 @@ async function savePlotPoint() {
         </div>
 
         <aside
-          class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-3.5 dark:bg-white/6"
+          class="cursor-pointer rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3.5 transition-shadow hover:ring-(--ui-border-active)"
+          @click="openAiSettings"
         >
           <div class="mb-3 flex items-center gap-2">
             <Icon
@@ -998,6 +1035,10 @@ async function savePlotPoint() {
             <h2 class="text-sm font-semibold text-(--ui-text-highlighted)">
               AI 设定
             </h2>
+            <Icon
+              icon="lucide:pencil"
+              class="ml-auto size-3.5 text-(--ui-text-dimmed)"
+            />
           </div>
           <div class="grid grid-cols-2 gap-2 text-xs">
             <div class="rounded-md bg-(--ui-bg-elevated)/70 p-2">
@@ -1039,7 +1080,7 @@ async function savePlotPoint() {
       >
         <section
           v-if="novel.styleGuide"
-          class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 dark:bg-white/6"
+          class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
         >
           <div class="mb-1.5 flex items-center gap-2">
             <Icon
@@ -1058,7 +1099,7 @@ async function savePlotPoint() {
         </section>
         <section
           v-if="novel.worldSetting"
-          class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 dark:bg-white/6"
+          class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
         >
           <div class="mb-1.5 flex items-center gap-2">
             <Icon
@@ -1105,7 +1146,7 @@ async function savePlotPoint() {
           </NButton>
           <NButton
             size="tiny"
-            @click="openRegenerateOutlineDialog"
+            @click="() => openRegenerateOutlineDialog()"
           >
             <template #icon><Icon icon="lucide:refresh-cw" /></template>
             重新规划后续
@@ -1147,7 +1188,7 @@ async function savePlotPoint() {
           v-for="(outline, index) in outlineFormItems"
           :key="index"
           draggable="true"
-          class="grid gap-2 rounded-2xl bg-white/12 ring-1 ring-white/12 p-2 md:grid-cols-[auto_120px_minmax(0,1fr)_auto] cursor-move transition-opacity dark:bg-white/6"
+          class="grid gap-2 rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-2 md:grid-cols-[auto_120px_minmax(0,1fr)_auto] cursor-move transition-opacity"
           :class="{ 'opacity-50': draggingOutlineIndex === index }"
           @dragstart="handleOutlineDragStart(index)"
           @dragover="handleOutlineDragOver($event, index)"
@@ -1192,7 +1233,7 @@ async function savePlotPoint() {
 
       <div
         v-else-if="!sortedOutlines.length"
-        class="rounded-2xl bg-white/8 ring-1 ring-white/10 py-8 text-center text-sm text-(--ui-text-muted) dark:bg-white/4"
+        class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) py-8 text-center text-sm text-(--ui-text-muted)"
       >
         暂无章节大纲，可手动编辑或使用 AI 生成。
       </div>
@@ -1204,7 +1245,7 @@ async function savePlotPoint() {
         <article
           v-for="outline in sortedOutlines"
           :key="`${outline.chapterNumber}-${outline.sortOrder}`"
-          class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 dark:bg-white/6"
+          class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
         >
           <p class="text-xs font-mono text-primary-500">
             Ch.{{ outline.chapterNumber }}
@@ -1259,7 +1300,7 @@ async function savePlotPoint() {
         <div
           v-for="point in plotPoints"
           :key="point.id"
-          class="flex items-start gap-3 rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 dark:bg-white/6"
+          class="flex items-start gap-3 rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
         >
           <div
             class="mt-0.5 size-2 shrink-0 rounded-full"
@@ -1464,7 +1505,7 @@ async function savePlotPoint() {
               </p>
             </div>
             <div class="flex items-center gap-2">
-              <div class="flex rounded-md bg-white/12 ring-1 ring-white/12 p-0.5 gap-0.5 dark:bg-white/6">
+              <div class="flex rounded-md bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-0.5 gap-0.5">
                 <button
                   class="rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
                   :class="
@@ -1574,7 +1615,7 @@ async function savePlotPoint() {
             <article
               v-for="character in filteredCharacters"
               :key="character.id"
-              class="flex min-h-[250px] flex-col rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 transition-colors hover:bg-white/15 dark:bg-white/6"
+              class="flex min-h-[250px] flex-col rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3 transition-colors hover:bg-(--ui-bg-muted)"
             >
               <div class="flex items-start gap-2.5">
                 <div
@@ -1712,7 +1753,7 @@ async function savePlotPoint() {
 
               <div
                 v-if="character.appearances.length"
-                class="mt-auto border-t border-white/15 pt-2.5"
+                class="mt-auto border-t border-(--ui-border) pt-2.5"
               >
                 <div class="mb-1.5 flex items-center justify-between gap-2">
                   <p class="text-[10px] text-(--ui-text-dimmed)">最近出场</p>
@@ -1744,7 +1785,7 @@ async function savePlotPoint() {
                         {{ appearance.chapterTitle }}
                       </p>
                       <span
-                        class="shrink-0 rounded bg-white/12 ring-1 ring-white/12 px-1.5 py-0.5 text-[10px] text-(--ui-text-dimmed) dark:bg-white/6"
+                        class="shrink-0 rounded bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-1.5 py-0.5 text-[10px] text-(--ui-text-dimmed)"
                       >
                         {{ getRoleLabel(appearance.role) }}
                       </span>
@@ -1768,7 +1809,7 @@ async function savePlotPoint() {
           class="flex-1 min-h-0 mt-2"
         />
 
-        <div class="mt-4 border-t border-white/15 pt-4">
+        <div class="mt-4 border-t border-(--ui-border) pt-4">
           <NovelCharacterSuggestions
             :novel-id="novelId"
             @adopted="refreshCharacters()"
@@ -1816,12 +1857,6 @@ async function savePlotPoint() {
             placeholder="例如：谨慎、敏锐、重情义"
           />
         </NFormItem>
-        <NFormItem label="当前状态">
-          <NInput
-            v-model:value="characterForm.currentState"
-            placeholder="当前位置、处境、心理状态"
-          />
-        </NFormItem>
         <NFormItem label="人物关系">
           <NInput
             v-model:value="characterForm.relationships"
@@ -1830,23 +1865,20 @@ async function savePlotPoint() {
             placeholder="与其他角色的关系"
           />
         </NFormItem>
-        <div class="grid grid-cols-2 gap-3">
-          <NFormItem label="首次出现章节">
-            <NInputNumber
-              v-model:value="characterForm.firstAppearanceChapter"
-              :min="1"
-              clearable
-              class="w-full"
-            />
-          </NFormItem>
-          <NFormItem label="最近出现章节">
-            <NInputNumber
-              v-model:value="characterForm.lastAppearanceChapter"
-              :min="1"
-              clearable
-              class="w-full"
-            />
-          </NFormItem>
+        <div
+          v-if="editingCharacterData && (editingCharacterData.currentState || editingCharacterData.firstAppearanceChapter || editingCharacterData.lastAppearanceChapter)"
+          class="rounded-md bg-(--ui-bg-elevated) p-3 text-sm text-(--ui-text-muted)"
+        >
+          <div class="mb-1.5 text-xs font-medium">以下字段由系统根据章节内容自动维护</div>
+          <div v-if="editingCharacterData.currentState" class="mb-1">
+            <span class="font-medium text-(--ui-text)">当前状态：</span>{{ editingCharacterData.currentState }}
+          </div>
+          <div v-if="editingCharacterData.firstAppearanceChapter" class="mb-1">
+            <span class="font-medium text-(--ui-text)">首次出现：</span>第 {{ editingCharacterData.firstAppearanceChapter }} 章
+          </div>
+          <div v-if="editingCharacterData.lastAppearanceChapter">
+            <span class="font-medium text-(--ui-text)">最近出现：</span>第 {{ editingCharacterData.lastAppearanceChapter }} 章
+          </div>
         </div>
       </NForm>
       <template #footer>
@@ -2091,7 +2123,7 @@ async function savePlotPoint() {
             </button>
             <button
               class="rounded-lg border px-3 py-3 text-center transition-colors"
-              :class="exportFormat === 'md' ? 'border-primary-500 bg-primary-500/5 text-primary-600' : 'border-white/15 text-(--ui-text-muted) hover:bg-white/12'"
+              :class="exportFormat === 'md' ? 'border-primary-500 bg-primary-500/5 text-primary-600' : 'border-(--ui-border) text-(--ui-text-muted) hover:bg-(--ui-bg-muted)'"
               @click="exportFormat = 'md'"
             >
               <Icon icon="lucide:file-code" class="mx-auto mb-1 size-5" />
@@ -2122,6 +2154,69 @@ async function savePlotPoint() {
           >
             <template #icon><Icon icon="lucide:download" /></template>
             导出
+          </NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- AI Settings Modal -->
+    <NModal
+      v-model:show="showAiSettingsModal"
+      preset="card"
+      title="AI 设定"
+      style="max-width: 480px"
+    >
+      <p class="mb-4 text-sm text-(--ui-text-muted)">
+        为本小说配置专属的 AI 生成参数。章节生成、续写、扩写、改写等所有写作操作都会使用这里的设定。
+      </p>
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">内容生成模型</label>
+          <NSelect
+            v-model:value="aiSettingsForm.aiConfigId"
+            :options="aiConfigOptions"
+            placeholder="不指定，使用系统默认模型"
+            clearable
+          />
+          <p class="text-xs text-(--ui-text-dimmed)">
+            为本小说指定专用的内容生成模型。未指定时将使用设置中标记为默认的生成模型。可在「设置 → AI 模型」中管理模型列表。
+          </p>
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">Temperature</label>
+          <NInput
+            v-model:value="aiSettingsForm.aiTemperature"
+            placeholder="留空使用模型配置中的值"
+          />
+          <p class="text-xs text-(--ui-text-dimmed)">
+            控制生成内容的随机性，范围 0~2。值越高文风越多变有创意，越低则越稳定可控。推荐小说创作使用 0.7~0.9。
+          </p>
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-medium text-(--ui-text)">额外提示词</label>
+          <NInput
+            v-model:value="aiSettingsForm.aiExtraPrompt"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+            placeholder="例如：请使用第一人称叙述，语言风格偏向轻松幽默"
+          />
+          <p class="text-xs text-(--ui-text-dimmed)">
+            会附加到每次 AI 生成请求中，用于统一本小说的写作风格或添加特殊要求。
+          </p>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton size="small" @click="showAiSettingsModal = false">
+            取消
+          </NButton>
+          <NButton
+            type="primary"
+            size="small"
+            :loading="savingAiSettings"
+            @click="saveAiSettings"
+          >
+            保存
           </NButton>
         </div>
       </template>

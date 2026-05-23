@@ -60,8 +60,6 @@ async function deleteConfig(config: AdminAiConfig) {
 <template>
   <div class="space-y-4">
     <section class="card-glass relative overflow-hidden p-5 md:p-6">
-      <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
-      <div class="liquid-highlight" />
       <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-sm text-(--ui-text-muted)">Admin / AI</p>
@@ -165,13 +163,13 @@ async function deleteConfig(config: AdminAiConfig) {
           </div>
           <div class="mt-3 flex items-center justify-between">
             <div class="flex flex-wrap gap-2 text-xs text-(--ui-text-muted)">
-              <span class="rounded-full bg-white/18 px-2 py-1 ring-1 ring-white/15 dark:bg-white/8">{{
+              <span class="rounded-full bg-(--ui-bg-muted) px-2 py-1 ring-1 ring-(--ui-border)">{{
                 config.purpose
               }}</span>
-              <span class="rounded-full bg-white/18 px-2 py-1 ring-1 ring-white/15 dark:bg-white/8"
+              <span class="rounded-full bg-(--ui-bg-muted) px-2 py-1 ring-1 ring-(--ui-border)"
                 >Temperature {{ config.temperature || '未设置' }}</span
               >
-              <span class="rounded-full bg-white/18 px-2 py-1 ring-1 ring-white/15 dark:bg-white/8"
+              <span class="rounded-full bg-(--ui-bg-muted) px-2 py-1 ring-1 ring-(--ui-border)"
                 >Max {{ config.maxTokens || '未设置' }}</span
               >
             </div>

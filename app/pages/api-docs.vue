@@ -68,7 +68,7 @@ onMounted(() => {
       class="card-glass z-10 mx-3 mt-3 flex h-12 shrink-0 items-center gap-2.5 px-4"
     >
       <button
-        class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-white/12 hover:text-(--ui-text)"
+        class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
         @click="navigateTo('/settings')"
       >
         <Icon

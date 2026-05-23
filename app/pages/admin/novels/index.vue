@@ -59,8 +59,6 @@ const statusItems = [
 <template>
   <div class="space-y-4">
     <section class="card-glass relative overflow-hidden p-5 md:p-6">
-      <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
-      <div class="liquid-highlight" />
       <div class="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p class="text-sm text-(--ui-text-muted)">Admin / Novels</p>
@@ -114,7 +112,7 @@ const statusItems = [
         <div
           v-for="novel in novels"
           :key="novel.id"
-          class="liquid-panel group p-4 transition-colors hover:bg-white/10"
+          class="liquid-panel group p-4 transition-colors hover:bg-(--ui-bg-muted)"
         >
           <div
             class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between"

@@ -110,8 +110,6 @@ async function updateRole(role: 'admin' | 'user') {
 
     <template v-else-if="detail">
       <section class="card-glass relative overflow-hidden p-5">
-        <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
-        <div class="liquid-highlight" />
         <div
           class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
         >
@@ -198,7 +196,7 @@ async function updateRole(role: 'admin' | 'user') {
           <div
             v-for="config in detail.aiConfigs"
             :key="config.id"
-            class="grid gap-3 rounded-2xl bg-white/12 px-3 py-4 ring-1 ring-white/12 lg:grid-cols-[1fr_180px_160px] lg:items-center dark:bg-white/6"
+            class="grid gap-3 rounded-2xl bg-(--ui-bg-muted) px-3 py-4 ring-1 ring-(--ui-border) lg:grid-cols-[1fr_180px_160px] lg:items-center"
           >
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -249,7 +247,7 @@ async function updateRole(role: 'admin' | 'user') {
           <div
             v-for="novel in detail.novels"
             :key="novel.id"
-            class="grid gap-3 rounded-2xl bg-white/12 px-3 py-4 ring-1 ring-white/12 md:grid-cols-[1fr_120px_150px_90px] md:items-center dark:bg-white/6"
+            class="grid gap-3 rounded-2xl bg-(--ui-bg-muted) px-3 py-4 ring-1 ring-(--ui-border) md:grid-cols-[1fr_120px_150px_90px] md:items-center"
           >
             <div class="min-w-0">
               <NuxtLink

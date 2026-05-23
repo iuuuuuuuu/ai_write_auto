@@ -67,9 +67,6 @@ watch(
 <template>
   <div class="space-y-5">
     <section class="card-glass relative overflow-hidden p-6 sm:p-7">
-      <span class="liquid-orb -right-12 -top-16 h-40 w-40" />
-      <span class="liquid-highlight left-8 top-4 h-10 w-56 rotate-[-8deg]" />
-
       <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Token Usage</p>

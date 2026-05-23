@@ -39,8 +39,8 @@ const colors = [
   '#6366f1'
 ]
 
-function getNodeColor(index: number) {
-  return colors[index % colors.length]
+function getNodeColor(index: number): string {
+  return colors[index % colors.length]!
 }
 
 function computeEdges() {
@@ -59,7 +59,9 @@ function computeEdges() {
     const ids = Array.from(charIds)
     for (let i = 0; i < ids.length; i++) {
       for (let j = i + 1; j < ids.length; j++) {
-        const key = `${Math.min(ids[i], ids[j])}-${Math.max(ids[i], ids[j])}`
+        const a = ids[i]!
+        const b = ids[j]!
+        const key = `${Math.min(a, b)}-${Math.max(a, b)}`
         cooccurrence.set(key, (cooccurrence.get(key) || 0) + 1)
       }
     }
@@ -67,8 +69,8 @@ function computeEdges() {
 
   const edges: GraphEdge[] = []
   for (const [key, strength] of cooccurrence) {
-    const [source, target] = key.split('-').map(Number)
-    edges.push({ source, target, strength })
+    const parts = key.split('-').map(Number)
+    edges.push({ source: parts[0]!, target: parts[1]!, strength })
   }
   return edges
 }
@@ -95,16 +97,18 @@ function simulate(nodes: GraphNode[], edges: GraphEdge[]) {
     // 斥力
     for (let i = 0; i < nodes.length; i++) {
       for (let j = i + 1; j < nodes.length; j++) {
-        const dx = nodes[j].x - nodes[i].x
-        const dy = nodes[j].y - nodes[i].y
+        const ni = nodes[i]!
+        const nj = nodes[j]!
+        const dx = nj.x - ni.x
+        const dy = nj.y - ni.y
         const dist = Math.sqrt(dx * dx + dy * dy) || 1
         const force = 3000 / (dist * dist)
         const fx = (dx / dist) * force
         const fy = (dy / dist) * force
-        nodes[i].vx -= fx
-        nodes[i].vy -= fy
-        nodes[j].vx += fx
-        nodes[j].vy += fy
+        ni.vx -= fx
+        ni.vy -= fy
+        nj.vx += fx
+        nj.vy += fy
       }
     }
 

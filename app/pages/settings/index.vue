@@ -5,9 +5,6 @@ const { t } = useI18n()
 <template>
   <div class="mx-auto max-w-6xl space-y-5">
     <section class="card-glass relative overflow-hidden p-6 sm:p-7">
-      <span class="liquid-orb -right-10 -top-14 h-36 w-36" />
-      <span class="liquid-highlight left-8 top-4 h-10 w-56 rotate-[-8deg]" />
-
       <div class="relative z-10 flex items-center gap-4">
         <div class="liquid-panel flex size-12 items-center justify-center rounded-[1.35rem]">
           <Icon

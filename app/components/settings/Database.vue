@@ -640,7 +640,7 @@ onMounted(() => {
       </div>
 
       <div
-        class="grid gap-3 rounded-2xl ring-1 ring-white/12 p-2"
+        class="grid gap-3 rounded-2xl ring-1 ring-(--ui-border) p-2"
         :class="
           backupSettings.scheduleEnabled ?
             'sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]'
@@ -689,7 +689,7 @@ onMounted(() => {
         </div>
         <div
           v-if="backupSettings.scheduleEnabled"
-          class="sm:col-span-full flex flex-wrap items-center gap-2 border-t border-white/15 pt-2"
+          class="sm:col-span-full flex flex-wrap items-center gap-2 border-t border-(--ui-border) pt-2"
         >
           <span class="text-xs text-(--ui-text-dimmed)">频率预设：</span>
           <NButton size="tiny" quaternary @click="applyBackupFrequencyPreset('0 2 * * *')">每天 02:00</NButton>
@@ -709,7 +709,7 @@ onMounted(() => {
 
       <!-- Scheduled backup toggle and status -->
       <div
-        class="flex items-center justify-between rounded-2xl ring-1 ring-white/12 px-3 py-2"
+        class="flex items-center justify-between rounded-2xl ring-1 ring-(--ui-border) px-3 py-2"
       >
         <div class="flex items-center gap-3">
           <NSwitch v-model:value="backupSettings.scheduleEnabled" />
@@ -757,9 +757,9 @@ onMounted(() => {
         </p>
       </NAlert>
 
-      <div class="rounded-2xl ring-1 ring-white/12">
+      <div class="rounded-2xl ring-1 ring-(--ui-border)">
         <div
-          class="flex items-center justify-between gap-2 border-b border-white/15 px-2 py-1.5"
+          class="flex items-center justify-between gap-2 border-b border-(--ui-border) px-2 py-1.5"
         >
           <span class="text-xs text-(--ui-text-dimmed)">数据库备份</span>
           <span class="text-[11px] text-(--ui-text-dimmed)">
@@ -768,7 +768,7 @@ onMounted(() => {
         </div>
         <div
           v-if="backups.length"
-          class="divide-y divide-white/15"
+          class="divide-y divide-(--ui-border)"
         >
           <div
             v-for="backup in backups"
@@ -836,19 +836,19 @@ onMounted(() => {
           {{ lastRestoreResult.error }}
         </p>
         <div class="mt-2 grid gap-2 sm:grid-cols-3">
-          <div class="rounded-2xl ring-1 ring-white/12 p-2">
+          <div class="rounded-2xl ring-1 ring-(--ui-border) p-2">
             <p class="text-[11px] text-(--ui-text-dimmed)">当前数据库</p>
             <p class="mt-1 text-xs font-mono text-(--ui-text)">
               {{ lastRestoreResult.currentState || 'unknown' }}
             </p>
           </div>
-          <div class="rounded-2xl ring-1 ring-white/12 p-2">
+          <div class="rounded-2xl ring-1 ring-(--ui-border) p-2">
             <p class="text-[11px] text-(--ui-text-dimmed)">安全备份</p>
             <p class="mt-1 text-xs font-mono text-(--ui-text)">
               {{ lastRestoreResult.safetyBackup || '未生成' }}
             </p>
           </div>
-          <div class="rounded-2xl ring-1 ring-white/12 p-2">
+          <div class="rounded-2xl ring-1 ring-(--ui-border) p-2">
             <p class="text-[11px] text-(--ui-text-dimmed)">恢复前总行数</p>
             <p class="mt-1 text-xs font-mono text-(--ui-text)">
               {{ formatNumber(lastRestoreResult.preRestorePlan?.totalRows || 0) }}
@@ -857,9 +857,9 @@ onMounted(() => {
         </div>
         <div
           v-if="lastRestoreResult.preRestorePlan && migrationPlan"
-          class="mt-2 overflow-hidden rounded-2xl ring-1 ring-white/12"
+          class="mt-2 overflow-hidden rounded-2xl ring-1 ring-(--ui-border)"
         >
-          <div class="flex items-center gap-2 px-2 py-1.5 bg-white/12">
+          <div class="flex items-center gap-2 px-2 py-1.5 bg-(--ui-bg-muted)">
             <span class="text-[11px] text-(--ui-text-dimmed)">恢复前后对比</span>
             <span
               v-if="!lastRestoreResult.success"
@@ -869,7 +869,7 @@ onMounted(() => {
             </span>
           </div>
           <table class="w-full text-xs">
-            <thead class="bg-white/8">
+            <thead class="bg-(--ui-bg-muted)">
               <tr>
                 <th class="px-2 py-1.5 text-left text-(--ui-text-dimmed)">表</th>
                 <th class="px-2 py-1.5 text-right text-(--ui-text-dimmed)">
@@ -883,7 +883,7 @@ onMounted(() => {
                 </th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-white/15">
+            <tbody class="divide-y divide-(--ui-border)">
               <tr
                 v-for="table in migrationPlan.tables"
                 :key="table.tableName"

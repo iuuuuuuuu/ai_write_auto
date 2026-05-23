@@ -77,7 +77,7 @@ async function insertRows(
 ): Promise<number> {
   if (!rows.length) return 0
 
-  const connection = orm.em.getConnection()
+  const connection = orm.em.getConnection() as any
   await clearAllowedMetadataRows(orm, tableName)
 
   for (const row of rows) {

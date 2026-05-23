@@ -13,7 +13,7 @@ const emit = defineEmits<{
   skip: []
 }>()
 
-const step = computed(() => props.steps[props.currentStep])
+const step = computed(() => props.steps[props.currentStep] as OnboardingStep | undefined)
 const isLastStep = computed(() => props.currentStep >= props.steps.length - 1)
 const progressPercent = computed(
   () => ((props.currentStep + 1) / props.steps.length) * 100
@@ -30,7 +30,7 @@ const progressPercent = computed(
     <div class="space-y-3">
       <div class="flex items-center justify-between">
         <p class="text-sm font-medium text-(--ui-text-highlighted)">
-          {{ step.title }}
+          {{ step?.title }}
         </p>
         <span class="text-[11px] text-(--ui-text-dimmed)">
           {{ currentStep + 1 }} / {{ steps.length }}
@@ -45,7 +45,7 @@ const progressPercent = computed(
       </div>
 
       <p class="text-xs leading-relaxed text-(--ui-text-muted)">
-        {{ step.description }}
+        {{ step?.description }}
       </p>
 
       <div class="flex items-center justify-end gap-2">

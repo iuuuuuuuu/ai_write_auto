@@ -80,8 +80,6 @@ async function deleteUser(user: AdminUser) {
 <template>
   <div class="space-y-4">
     <section class="card-glass relative overflow-hidden p-5 md:p-6">
-      <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
-      <div class="liquid-highlight" />
       <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p class="text-sm text-(--ui-text-muted)">Admin / Users</p>
@@ -143,7 +141,7 @@ async function deleteUser(user: AdminUser) {
         <div
           v-for="item in users"
           :key="item.id"
-          class="group grid gap-3 rounded-2xl bg-white/12 px-3 py-4 ring-1 ring-white/12 transition-colors hover:bg-white/10 md:grid-cols-[1fr_130px_180px_220px] md:items-center dark:bg-white/6"
+          class="group grid gap-3 rounded-2xl bg-(--ui-bg-muted) px-3 py-4 ring-1 ring-(--ui-border) transition-colors hover:bg-(--ui-bg-muted) md:grid-cols-[1fr_130px_180px_220px] md:items-center"
         >
           <div class="min-w-0">
             <NuxtLink

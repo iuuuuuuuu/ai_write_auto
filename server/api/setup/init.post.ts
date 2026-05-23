@@ -25,7 +25,7 @@ const setupSchema = z.object({
   }),
   admin: z.object({
     username: z.string().min(3).max(50),
-    password: z.string().min(6)
+    password: z.string().min(1)
   }),
   site: z.object({
     name: z.string().min(1).max(100),

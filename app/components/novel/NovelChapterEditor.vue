@@ -50,7 +50,7 @@ onBeforeUnmount(() => { if (saveTimeout) clearTimeout(saveTimeout) })
       </div>
     </div>
     <div v-else class="flex flex-1 flex-col items-center justify-center p-8 text-center">
-      <div class="flex h-10 w-10 items-center justify-center rounded-xl" style="background: linear-gradient(135deg, var(--ui-primary-300), var(--ui-primary-500));">
+      <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-500">
         <Icon icon="lucide:pen-line" class="h-4 w-4 text-white" />
       </div>
       <p class="mt-2 text-sm font-semibold text-(--ui-text-muted)">选择章节开始编辑</p>

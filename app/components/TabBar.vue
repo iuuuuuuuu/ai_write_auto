@@ -3,12 +3,40 @@ import type { Tab } from '~/composables/useTabs'
 
 const props = defineProps<{ area: 'user' | 'admin' }>()
 
-const { tabs, activeTab, setActiveTab, removeTab, renameTab, closeOtherTabs, closeTabsToRight } = useTabs(props.area)
+const { tabs, activeTab, setActiveTab, removeTab, renameTab, closeOtherTabs, closeTabsToRight, reorderTabs } = useTabs(props.area)
 
 const renamingTabId = ref<string | null>(null)
 const renameInput = ref('')
 
 const contextMenu = ref({ show: false, x: 0, y: 0, tabId: '' })
+
+const dragState = ref<{ dragging: boolean; fromIndex: number; overIndex: number }>({
+  dragging: false,
+  fromIndex: -1,
+  overIndex: -1,
+})
+
+function handleDragStart(e: DragEvent, index: number) {
+  dragState.value = { dragging: true, fromIndex: index, overIndex: index }
+  e.dataTransfer!.effectAllowed = 'move'
+  e.dataTransfer!.setData('text/plain', String(index))
+}
+
+function handleDragOver(e: DragEvent, index: number) {
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'move'
+  dragState.value.overIndex = index
+}
+
+function handleDrop(e: DragEvent, index: number) {
+  e.preventDefault()
+  reorderTabs(dragState.value.fromIndex, index)
+  dragState.value = { dragging: false, fromIndex: -1, overIndex: -1 }
+}
+
+function handleDragEnd() {
+  dragState.value = { dragging: false, fromIndex: -1, overIndex: -1 }
+}
 
 function handleTabClick(tab: Tab) {
   if (tab.id === activeTab.value?.id) return
@@ -66,11 +94,6 @@ function handleContextAction(key: string) {
   }
 }
 
-function handleNewTab() {
-  const home = props.area === 'admin' ? '/admin' : '/dashboard'
-  navigateTo(home)
-}
-
 function getTabTitle(tab: Tab) {
   return tab.customTitle || tab.title
 }
@@ -89,10 +112,18 @@ const contextMenuOptions = computed(() => [
     <div class="tab-bar">
       <div class="tab-bar-scroll">
         <div
-          v-for="tab in tabs"
+          v-for="(tab, index) in tabs"
           :key="tab.id"
           class="tab-item"
-          :class="{ active: tab.id === activeTab?.id }"
+          :class="{
+            active: tab.id === activeTab?.id,
+            'drag-over': dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
+          }"
+          draggable="true"
+          @dragstart="handleDragStart($event, index)"
+          @dragover="handleDragOver($event, index)"
+          @drop="handleDrop($event, index)"
+          @dragend="handleDragEnd"
           @click="handleTabClick(tab)"
           @dblclick="handleDoubleClick(tab)"
           @contextmenu="handleContextMenu($event, tab)"
@@ -117,10 +148,6 @@ const contextMenuOptions = computed(() => [
             <Icon icon="lucide:x" class="w-3 h-3" />
           </button>
         </div>
-
-        <button class="tab-add" @click="handleNewTab">
-          <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
-        </button>
       </div>
 
       <NDropdown
@@ -142,8 +169,8 @@ const contextMenuOptions = computed(() => [
   height: 40px;
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid color-mix(in oklch, var(--ui-border) 25%, transparent);
-  background: var(--ui-bg-elevated);
+  border-bottom: 1px solid var(--ui-border);
+  background: transparent;
   padding: 0 8px;
   user-select: none;
 }
@@ -266,23 +293,17 @@ const contextMenuOptions = computed(() => [
   background: color-mix(in oklch, var(--ui-border) 40%, transparent);
 }
 
-.tab-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  margin: auto 4px;
+.tab-item.drag-over {
+  background: color-mix(in oklch, var(--color-primary-100) 50%, transparent);
   border-radius: 8px;
-  color: var(--ui-text-dimmed);
-  border: 1.5px dashed color-mix(in oklch, var(--ui-border) 60%, transparent);
-  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1.5px var(--color-primary-300);
 }
 
-.tab-add:hover {
-  color: var(--color-primary-500);
-  background: color-mix(in oklch, var(--color-primary-50) 60%, transparent);
-  border-color: var(--color-primary-300);
+.tab-item[draggable="true"] {
+  cursor: pointer;
+}
+
+.tab-item[draggable="true"]:active {
+  cursor: grabbing;
 }
 </style>

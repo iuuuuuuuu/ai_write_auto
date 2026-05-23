@@ -32,7 +32,7 @@ function toggleSidebar() {
       >
         <!-- Collapse/Expand Toggle -->
         <button
-          class="absolute -right-3 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-6 h-6 rounded-full bg-(--ui-bg-elevated) border border-(--ui-border)/40 text-(--ui-text-dimmed) hover:text-primary-500 hover:border-primary-300 hover:shadow-[0_2px_8px_-2px_var(--ui-glow)] transition-all duration-200 cursor-pointer"
+          class="absolute -right-3 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-6 h-6 rounded-full bg-(--ui-bg-elevated) border border-(--ui-border) text-(--ui-text-dimmed) hover:text-primary-500 hover:border-primary-300 transition-all duration-200 cursor-pointer"
           @click="toggleSidebar"
         >
           <Icon
@@ -56,14 +56,7 @@ function toggleSidebar() {
           >
             <div class="flex items-center gap-2.5 min-w-0">
               <div
-                class="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 shadow-[0_2px_8px_-1px_var(--ui-glow)]"
-                style="
-                  background: linear-gradient(
-                    135deg,
-                    var(--color-primary-400),
-                    var(--color-primary-600)
-                  );
-                "
+                class="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 bg-primary-500"
               >
                 <Icon
                   icon="lucide:pen-tool"
@@ -98,7 +91,7 @@ function toggleSidebar() {
                   class="group relative flex items-center h-9 rounded-[10px] px-2.5 transition-all duration-200"
                   :class="[
                     isActive(item.to) ?
-                      'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 shadow-[0_1px_3px_-1px_var(--ui-glow)]'
+                      'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
                     : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/70'
                   ]"
                 >
@@ -140,7 +133,7 @@ function toggleSidebar() {
                     class="group relative flex items-center h-9 rounded-[10px] px-2.5 transition-all duration-200"
                     :class="[
                       isActive('/admin') ?
-                        'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400 shadow-[0_1px_3px_-1px_var(--ui-glow)]'
+                        'bg-primary-50 dark:bg-primary-500/10 text-primary-600 dark:text-primary-400'
                       : 'text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/70'
                     ]"
                   >
@@ -227,14 +220,7 @@ function toggleSidebar() {
               :class="settings.sidebarExpanded ? 'gap-2.5' : 'justify-center'"
             >
               <div
-                class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 ring-2 ring-primary-100 dark:ring-primary-800/30"
-                style="
-                  background: linear-gradient(
-                    135deg,
-                    var(--color-primary-300),
-                    var(--color-primary-500)
-                  );
-                "
+                class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-primary-500 ring-2 ring-primary-100 dark:ring-primary-800/30"
               >
                 <span class="text-xs font-bold text-white">
                   {{ user?.username?.charAt(0).toUpperCase() }}

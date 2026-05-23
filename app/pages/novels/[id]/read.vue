@@ -27,6 +27,8 @@ const { data: chapters } = await useFetch<ReadChapterItem[]>(
   { default: () => [] }
 )
 
+const { updateActiveTabTitle } = useTabs('user')
+
 const { recordReading } = useReadingHistory()
 
 const activeChapterId = shallowRef<number | null>(null)
@@ -44,6 +46,16 @@ const sortedChapters = computed(() => {
 const activeChapter = computed(() => {
   return sortedChapters.value.find((chapter) => chapter.id === activeChapterId.value) || sortedChapters.value[0] || null
 })
+
+watch(
+  activeChapter,
+  (ch) => {
+    const novelTitle = novel.value?.title || ''
+    const chapterTitle = ch?.title || `第${ch?.chapterNumber}章`
+    updateActiveTabTitle(ch ? `${chapterTitle} - ${novelTitle}` : `阅读 - ${novelTitle}`)
+  },
+  { immediate: true }
+)
 
 const activeChapterIndex = computed(() => {
   if (!activeChapter.value) return -1
@@ -172,8 +184,6 @@ watch(activeChapterId, (chapterId) => {
 <template>
   <div class="mx-auto max-w-6xl space-y-4">
     <section class="card-glass relative overflow-hidden p-4 md:p-5">
-      <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
-      <div class="liquid-highlight" />
       <div class="relative z-10 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div class="min-w-0">
           <NButton
@@ -225,7 +235,7 @@ watch(activeChapterId, (chapterId) => {
             :key="chapter.id"
             type="button"
             class="w-full rounded-lg px-3 py-2 text-left transition-colors"
-            :class="chapter.id === activeChapter?.id ? 'bg-white/18 text-primary-500 ring-1 ring-white/15' : 'text-(--ui-text-muted) hover:bg-white/10 hover:text-(--ui-text)'"
+            :class="chapter.id === activeChapter?.id ? 'bg-(--ui-bg-muted) text-primary-500 ring-1 ring-(--ui-border)' : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)'"
             @click="selectChapter(chapter.id)"
           >
             <p class="truncate text-xs font-mono">Ch.{{ chapter.chapterNumber }}</p>
@@ -236,7 +246,7 @@ watch(activeChapterId, (chapterId) => {
 
       <article class="card-glass min-h-[640px] p-5 md:p-8">
         <template v-if="activeChapter">
-          <div class="mb-6 border-b border-white/15 pb-4">
+          <div class="mb-6 border-b border-(--ui-border) pb-4">
             <p class="text-xs font-mono text-primary-500">
               Chapter {{ activeChapter.chapterNumber }}
             </p>
@@ -253,7 +263,7 @@ watch(activeChapterId, (chapterId) => {
           <div v-if="readMode === 'page'" class="mt-4 text-center text-xs text-(--ui-text-dimmed)">
             第 {{ currentPage }} / {{ pagedContent.length }} 页 · 可使用左右方向键翻页
           </div>
-          <div class="mt-8 flex items-center justify-between border-t border-white/15 pt-4">
+          <div class="mt-8 flex items-center justify-between border-t border-(--ui-border) pt-4">
             <NButton
               :disabled="readMode === 'page' ? (!previousChapter && currentPage <= 1) : !previousChapter"
               secondary

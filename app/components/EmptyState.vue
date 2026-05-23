@@ -27,9 +27,8 @@ onMounted(() => {
 
 <template>
   <div ref="containerRef" class="text-center py-10">
-    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-3 relative overflow-hidden"
-         style="background: linear-gradient(135deg, var(--ui-primary-300), var(--ui-primary-500)); animation: breathe 3s ease-in-out infinite;">
-      <Icon :icon="icon || 'lucide:inbox'" class="w-6 h-6 text-white relative z-10" />
+    <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-3 bg-primary-500">
+      <Icon :icon="icon || 'lucide:inbox'" class="w-6 h-6 text-white" />
     </div>
     <h3 class="text-base font-semibold text-(--ui-text-highlighted)">{{ title }}</h3>
     <p v-if="description" class="mt-1 text-sm text-(--ui-text-dimmed) max-w-sm mx-auto">{{ description }}</p>

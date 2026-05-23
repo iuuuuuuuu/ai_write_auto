@@ -60,8 +60,8 @@ export default defineEventHandler(async (event) => {
   const chapterContent = chapter.content || ''
   const context = data.contextBefore || chapterContent.slice(-1000)
 
-  const systemPrompt = TYPE_PROMPTS[data.type]
-  const typeLabel = TYPE_LABELS[data.type]
+  const systemPrompt: string = TYPE_PROMPTS[data.type] ?? TYPE_PROMPTS.dialogue!
+  const typeLabel: string = TYPE_LABELS[data.type] ?? '内容'
 
   const messages = [
     {

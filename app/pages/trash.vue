@@ -5,6 +5,14 @@ const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
 
+function getErrorMessage(errorValue: unknown, fallback = '操作失败'): string {
+  if (typeof errorValue === 'object' && errorValue !== null && 'data' in errorValue) {
+    const data = (errorValue as { data?: { message?: string } }).data
+    if (data?.message) return data.message
+  }
+  return fallback
+}
+
 interface TrashNovel {
   id: number
   title: string
@@ -125,9 +133,6 @@ function getStatusLabel(status: string) {
 <template>
   <div class="mx-auto max-w-6xl space-y-5">
     <section class="card-glass relative overflow-hidden p-6 sm:p-7">
-      <span class="liquid-orb -right-10 -top-14 h-36 w-36 opacity-70" />
-      <span class="liquid-highlight left-8 top-4 h-10 w-52 rotate-[-8deg]" />
-
       <div class="relative z-10 flex items-center gap-4">
         <div class="liquid-panel flex size-12 items-center justify-center rounded-[1.35rem]">
           <Icon
@@ -165,7 +170,7 @@ function getStatusLabel(status: string) {
                   <h3 class="truncate text-sm font-semibold text-(--ui-text-highlighted)">
                     {{ novel.title }}
                   </h3>
-                  <span class="shrink-0 rounded-full bg-white/18 px-2 py-0.5 text-[10px] text-(--ui-text-muted) ring-1 ring-white/15 dark:bg-white/8">
+                  <span class="shrink-0 rounded-full bg-(--ui-bg-muted) px-2 py-0.5 text-[10px] text-(--ui-text-muted) ring-1 ring-(--ui-border)">
                     {{ getStatusLabel(novel.status) }}
                   </span>
                 </div>

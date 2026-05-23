@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart, BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+
+use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent])
+
 const { t } = useI18n()
 
 const days = ref(30)
@@ -10,6 +18,68 @@ const totalInput = computed(() => (usage.value as any)?.totalInput || 0)
 const totalOutput = computed(() => (usage.value as any)?.totalOutput || 0)
 const totalTokens = computed(() => (usage.value as any)?.totalTokens || 0)
 const records = computed(() => (usage.value as any)?.usage || [])
+
+const chartOption = computed(() => {
+  const data = [...records.value].reverse()
+  return {
+    tooltip: {
+      trigger: 'axis',
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e5e7eb',
+      borderWidth: 1,
+      textStyle: { color: '#333', fontSize: 12 },
+    },
+    legend: {
+      data: ['Input Tokens', 'Output Tokens'],
+      bottom: 0,
+      textStyle: { fontSize: 11, color: '#888' },
+      itemWidth: 12,
+      itemHeight: 8,
+    },
+    grid: { top: 10, right: 16, bottom: 36, left: 50 },
+    xAxis: {
+      type: 'category',
+      data: data.map((r: any) => {
+        const d = new Date(r.createdAt)
+        return `${d.getMonth() + 1}/${d.getDate()}`
+      }),
+      axisLine: { lineStyle: { color: '#e5e7eb' } },
+      axisLabel: { fontSize: 10, color: '#999' },
+    },
+    yAxis: {
+      type: 'value',
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+      axisLabel: {
+        fontSize: 10,
+        color: '#999',
+        formatter: (v: number) => {
+          if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M'
+          if (v >= 1000) return (v / 1000).toFixed(0) + 'K'
+          return v
+        },
+      },
+    },
+    series: [
+      {
+        name: 'Input Tokens',
+        type: 'bar',
+        stack: 'total',
+        data: data.map((r: any) => r.tokensInput || 0),
+        itemStyle: { color: '#60a5fa', borderRadius: [0, 0, 0, 0] },
+        barMaxWidth: 20,
+      },
+      {
+        name: 'Output Tokens',
+        type: 'bar',
+        stack: 'total',
+        data: data.map((r: any) => r.tokensOutput || 0),
+        itemStyle: { color: '#a78bfa', borderRadius: [3, 3, 0, 0] },
+        barMaxWidth: 20,
+      },
+    ],
+  }
+})
 
 function formatNumber(n: number) {
   if (n >= 1000000) return (n / 1000000).toFixed(2) + 'M'
@@ -70,12 +140,18 @@ watch(days, () => refresh())
       </div>
     </div>
 
+    <div v-if="records.length" class="card-glass p-4">
+      <ClientOnly>
+        <VChart :option="chartOption" autoresize style="height: 220px; width: 100%" />
+      </ClientOnly>
+    </div>
+
     <div
       v-if="records.length"
       class="card-glass overflow-hidden"
     >
       <table class="w-full text-sm">
-        <thead class="bg-white/12">
+        <thead class="bg-(--ui-bg-muted)">
           <tr>
             <th
               class="px-3 py-2 text-left text-[11px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider"
@@ -99,11 +175,11 @@ watch(days, () => refresh())
             </th>
           </tr>
         </thead>
-        <tbody class="divide-y divide-white/15">
+        <tbody class="divide-y divide-(--ui-border)">
           <tr
             v-for="record in records"
             :key="record.id"
-            class="hover:bg-white/10 transition-colors"
+            class="hover:bg-(--ui-bg-muted) transition-colors"
           >
             <td class="px-3 py-2 text-(--ui-text) text-[12px]">
               {{ new Date(record.createdAt).toLocaleDateString() }}

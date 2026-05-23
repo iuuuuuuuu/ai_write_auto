@@ -6,13 +6,37 @@ const naiveTheme = computed(() => ({
     primaryColorPressed: '#1d4ed8',
     primaryColorSuppl: '#60a5fa',
     borderRadius: '8px',
+    borderColor: '#e5e7eb',
+    dividerColor: '#f0f0f0',
+    cardColor: '#ffffff',
+    bodyColor: '#f7f8fa',
+    inputColor: '#ffffff',
+    tableColor: '#ffffff',
+    popoverColor: '#ffffff',
+    modalColor: '#ffffff',
+    boxShadow1: '0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02)',
+    boxShadow2: '0 2px 8px rgba(0, 0, 0, 0.06)',
     fontFamily:
       "'Geist', 'PingFang SC', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif"
+  },
+  Card: {
+    borderRadius: '10px'
+  },
+  Button: {
+    borderRadiusMedium: '8px',
+    borderRadiusSmall: '6px'
+  },
+  Input: {
+    borderRadius: '8px'
+  },
+  Tag: {
+    borderRadius: '6px'
   }
 }))
 
 // 全局 AI 连通性检测，启动时检测一次，之后每 5 分钟轮询
-if (import.meta.client) {
+const route = useRoute()
+if (import.meta.client && !route.path.startsWith('/setup')) {
   useAiConnectivity({
     immediate: true,
     checkConnectivity: true,

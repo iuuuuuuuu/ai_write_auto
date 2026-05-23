@@ -30,7 +30,7 @@ const updatedAtText = computed(() => {
       <div class="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         <div v-if="props.chapter.content?.trim()" class="whitespace-pre-wrap text-sm leading-[1.8] text-(--ui-text)">{{ contentPreview }}</div>
         <div v-else class="flex flex-col items-center justify-center py-12 text-center">
-          <div class="flex h-10 w-10 items-center justify-center rounded-xl" style="background: linear-gradient(135deg, var(--ui-primary-300), var(--ui-primary-500));">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-500">
             <Icon icon="lucide:pen-tool" class="h-4 w-4 text-white" />
           </div>
           <p class="mt-2 text-sm font-semibold text-(--ui-text-muted)">这一章还没有正文内容</p>
@@ -39,7 +39,7 @@ const updatedAtText = computed(() => {
       </div>
     </div>
     <div v-else class="flex flex-1 flex-col items-center justify-center p-8 text-center">
-      <div class="flex h-12 w-12 items-center justify-center rounded-xl" style="background: linear-gradient(135deg, var(--ui-primary-300), var(--ui-primary-500));">
+      <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-primary-500">
         <Icon icon="lucide:book-open" class="h-5 w-5 text-white" />
       </div>
       <p class="mt-3 text-sm font-semibold text-(--ui-text-muted)">选择一个章节查看详情</p>

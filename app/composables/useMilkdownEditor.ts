@@ -32,19 +32,19 @@ export function useMilkdownEditor(options: UseMilkdownEditorOptions = {}) {
     }
 
     editorInstance = await Editor.make()
-      .config((ctx: Ctx) => {
+      .config((ctx) => {
         ctx.set(rootCtx, containerRef.value!)
         ctx.set(defaultValueCtx, initialMarkdown)
-        ctx.get(listenerCtx).markdownUpdated((ctx, markdown, prevMarkdown) => {
+        ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, prevMarkdown) => {
           if (markdown !== prevMarkdown) {
             markdownRef.value = markdown
             options.onChange?.(markdown)
           }
         })
       })
-      .use(nord)
-      .use(commonmark)
-      .use(listener)
+      .use(nord as any)
+      .use(commonmark as any)
+      .use(listener as any)
       .create()
 
     editorRef.value = editorInstance
@@ -132,7 +132,7 @@ export function useMilkdownEditor(options: UseMilkdownEditorOptions = {}) {
       const { selection } = state
       try {
         const coords = view.coordsAtPos(selection.from)
-        pos = { x: coords.left + coords.width / 2, y: coords.top }
+        pos = { x: coords.left + (coords.right - coords.left) / 2, y: coords.top }
       } catch {
         pos = null
       }

@@ -90,8 +90,6 @@ const {
 
     <template v-else-if="detail">
       <section class="card-glass relative overflow-hidden p-5">
-        <div class="liquid-orb -right-16 -top-20 h-44 w-44 bg-primary-400/20" />
-        <div class="liquid-highlight" />
         <div
           class="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
         >

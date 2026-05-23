@@ -87,10 +87,10 @@ function copyToken() {
         </NButton>
       </div>
 
-      <div class="rounded-2xl ring-1 ring-white/12">
+      <div class="rounded-2xl ring-1 ring-(--ui-border)">
         <div
           v-if="tokens.length"
-          class="divide-y divide-white/15"
+          class="divide-y divide-(--ui-border)"
         >
           <div
             v-for="token in tokens"
@@ -180,7 +180,7 @@ function copyToken() {
           </p>
           <div class="flex items-center gap-2">
             <code
-              class="flex-1 rounded bg-white/12 ring-1 ring-white/12 px-2 py-1 text-[11px] font-mono break-all dark:bg-white/6"
+              class="flex-1 rounded bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-2 py-1 text-[11px] font-mono break-all"
             >
               {{ createdToken }}
             </code>

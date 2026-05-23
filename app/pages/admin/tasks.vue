@@ -130,9 +130,6 @@ function statusColor(status: TaskStatus) {
 <template>
   <div class="space-y-5">
     <section class="card-glass relative overflow-hidden p-6 sm:p-7">
-      <span class="liquid-orb -right-12 -top-16 h-40 w-40" />
-      <span class="liquid-highlight left-8 top-4 h-10 w-56 rotate-[-8deg]" />
-
       <div class="relative z-10">
         <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Tasks</p>
         <h1 class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">

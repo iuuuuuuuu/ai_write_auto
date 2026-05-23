@@ -106,12 +106,16 @@ export function useTabs(area: 'user' | 'admin') {
     save()
   }
 
+  const router = useRouter()
+
   function setActiveTab(id: string) {
     const tab = state.value.tabs.find(t => t.id === id)
     if (!tab) return
     state.value.activeTabId = id
     save()
-    navigateTo(tab.path)
+    if (router.currentRoute.value.path !== tab.path) {
+      router.push(tab.path)
+    }
   }
 
   function renameTab(id: string, newTitle: string) {
@@ -156,6 +160,15 @@ export function useTabs(area: 'user' | 'admin') {
     save()
   }
 
+  function reorderTabs(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return
+    const tab = state.value.tabs[fromIndex]
+    if (!tab) return
+    state.value.tabs.splice(fromIndex, 1)
+    state.value.tabs.splice(toIndex, 0, tab)
+    save()
+  }
+
   function activateByPath(path: string) {
     hydrate()
     const tab = state.value.tabs.find(t => t.path === path)
@@ -179,6 +192,7 @@ export function useTabs(area: 'user' | 'admin') {
     updateActiveTabTitle,
     closeOtherTabs,
     closeTabsToRight,
+    reorderTabs,
     activateByPath,
     hydrate,
   }

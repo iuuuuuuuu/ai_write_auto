@@ -2,11 +2,13 @@
 definePageMeta({ layout: 'default', pageTransition: false })
 
 import { h } from 'vue'
+import { Icon } from '@iconify/vue'
 import { computeLineDiff, type DiffLine } from '../../../../utils/diff'
 import type { DraftRecoveryType } from '../../../../composables/useDraftRecovery'
 
 const { t } = useI18n()
 const route = useRoute()
+const message = useMessage()
 const novelId = computed(() => Number(route.params.id))
 const chapterId = computed(() => Number(route.params.chapterId))
 const { updateActiveTabTitle } = useTabs('user')
@@ -211,7 +213,7 @@ const { data: preferences } = await useFetch<Record<string, string>>(
     default: () => ({})
   }
 )
-const { aiStatus, refresh: refreshAiStatus } = useAiConnectivity()
+const { aiStatus, refreshAiStatus } = useAiConnectivity()
 const { recordReading } = useReadingHistory()
 
 watch(
@@ -963,7 +965,7 @@ function handleDocumentKeydown(e: KeyboardEvent) {
 
   if (isShortcut(e, 'expand')) {
     e.preventDefault()
-    const selection = getEditorSelectionText()
+    const selection = getEditorSelectionText() || ''
     if (selection.trim()) {
       selectedText.value = selection
       doAiAction('expand')
@@ -973,7 +975,7 @@ function handleDocumentKeydown(e: KeyboardEvent) {
 
   if (isShortcut(e, 'continue')) {
     e.preventDefault()
-    if (!getEditorSelectionText().trim()) {
+    if (!(getEditorSelectionText() || '').trim()) {
       doAiAction('continue')
     }
   }
@@ -1026,7 +1028,7 @@ onBeforeUnmount(() => {
     <!-- Toolbar -->
     <div
       v-if="!zenMode"
-      class="flex items-center gap-2.5 px-4 h-12 border-b border-white/15 bg-white/12 backdrop-blur-md shrink-0 dark:bg-white/6"
+      class="flex items-center gap-2.5 px-4 h-12 border-b border-(--ui-border) bg-(--ui-bg-muted) backdrop-blur-md shrink-0"
     >
       <button
         class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
@@ -1117,7 +1119,7 @@ onBeforeUnmount(() => {
           AI 离线
           <button
             class="text-[11px] underline underline-offset-2"
-            @click="refreshAiStatus"
+            @click="() => refreshAiStatus()"
           >
             重试
           </button>
@@ -1137,7 +1139,7 @@ onBeforeUnmount(() => {
           size="tiny"
           type="primary"
           :loading="saving"
-          @click="saveContent"
+          @click="() => saveContent()"
         >
           <template #icon>
             <Icon icon="lucide:save" />
@@ -1227,12 +1229,12 @@ onBeforeUnmount(() => {
       <!-- Left Sidebar -->
       <div
         v-if="!zenMode"
-        class="shrink-0 border-r border-white/15 bg-white/10 flex flex-col transition-all duration-200 dark:bg-white/5"
+        class="shrink-0 border-r border-(--ui-border) bg-(--ui-bg-muted) flex flex-col transition-all duration-200"
         :class="sidebarCollapsed ? 'w-10' : 'w-64'"
       >
         <!-- Collapse toggle -->
         <button
-          class="flex items-center justify-center h-8 border-b border-white/15 text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-white/10 transition-colors"
+          class="flex items-center justify-center h-8 border-b border-(--ui-border) text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
           @click="sidebarCollapsed = !sidebarCollapsed"
         >
           <Icon
@@ -1392,7 +1394,7 @@ onBeforeUnmount(() => {
             class="flex-1 overflow-y-auto px-2 pb-2 space-y-3"
           >
             <div
-              class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-2 dark:bg-white/6"
+              class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-2"
             >
               <div class="flex items-center justify-between gap-2">
                 <span class="text-[10px] font-medium text-(--ui-text-muted)">
@@ -1501,7 +1503,7 @@ onBeforeUnmount(() => {
                 v-for="char in detectedCharacters"
                 :key="char.id"
                 type="button"
-                class="w-full text-left rounded-md px-2.5 py-2 text-xs transition-colors hover:bg-white/10 group border border-transparent hover:border-white/20"
+                class="w-full text-left rounded-md px-2.5 py-2 text-xs transition-colors hover:bg-(--ui-bg-muted) group border border-transparent hover:border-(--ui-border)"
                 @click="toggleChapterCharacter(char.id)"
               >
                 <div class="flex items-center gap-2">
@@ -1563,7 +1565,7 @@ onBeforeUnmount(() => {
 
             <div
               v-if="allCharacters?.length"
-              class="pt-2 border-t border-white/15"
+              class="pt-2 border-t border-(--ui-border)"
             >
               <p class="text-[10px] text-(--ui-text-dimmed) mb-1.5">全部角色</p>
               <div class="flex flex-wrap gap-1">
@@ -1575,7 +1577,7 @@ onBeforeUnmount(() => {
                   :class="
                     selectedCharacterIds.has(char.id) ?
                       'bg-(--ui-primary-500)/10 text-(--ui-primary-500)'
-                    : 'bg-white/12 text-(--ui-text-muted) hover:bg-white/15 hover:text-(--ui-text) ring-1 ring-white/12 dark:bg-white/6'
+                    : 'bg-(--ui-bg-muted) text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text) ring-1 ring-(--ui-border)'
                   "
                   @click="toggleChapterCharacter(char.id)"
                 >
@@ -1609,7 +1611,7 @@ onBeforeUnmount(() => {
             <div
               v-for="v in versions.slice().reverse()"
               :key="v.id"
-              class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-2 text-xs transition-colors hover:ring-white/20 dark:bg-white/6"
+              class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-2 text-xs transition-colors hover:ring-(--ui-border)"
             >
               <div class="flex items-center justify-between gap-1 mb-1">
                 <span class="font-medium text-(--ui-text-highlighted)">
@@ -1679,7 +1681,7 @@ onBeforeUnmount(() => {
                 class="text-[10px] text-(--ui-text-dimmed)"
               >
                 <NSpin
-                  size="tiny"
+                  :size="12"
                   class="inline-block mr-1"
                 />
                 保存中...
@@ -1708,18 +1710,18 @@ onBeforeUnmount(() => {
 
       <!-- Editor -->
       <div
-        class="flex-1 min-w-0 min-h-0 flex flex-col bg-white/14 dark:bg-white/5"
+        class="flex-1 min-w-0 min-h-0 flex flex-col bg-(--ui-bg-muted)"
       >
         <div
           v-if="!zenMode"
-          class="shrink-0 border-b border-white/15 bg-(--ui-bg-elevated)/82 px-3 py-2 backdrop-blur-xl dark:bg-(--ui-bg-elevated)/70 sm:px-4"
+          class="shrink-0 border-b border-(--ui-border) bg-(--ui-bg-elevated) px-3 py-2 sm:px-4"
         >
           <div
             class="flex items-center justify-between gap-3 text-[11px] text-(--ui-text-dimmed)"
           >
             <div class="flex min-w-0 items-center gap-3">
               <span
-                class="h-2.5 w-2.5 shrink-0 rounded-sm bg-(--ui-primary-500) shadow-[0_0_18px_var(--ui-glow)]"
+                class="h-2.5 w-2.5 shrink-0 rounded-sm bg-(--ui-primary-500)"
               />
               <span class="truncate text-(--ui-text-highlighted)"
                 >正文工作台</span
@@ -1778,7 +1780,7 @@ onBeforeUnmount(() => {
 
         <div class="flex-1 overflow-y-auto px-1.5 py-1.5 sm:px-2 sm:py-2">
           <div
-            class="min-h-full w-full rounded-xl border border-white/14 bg-white/36 backdrop-blur-xl dark:bg-white/6"
+            class="min-h-full w-full rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated)"
           >
             <div
               ref="editorContainerRef"
@@ -2079,7 +2081,7 @@ onBeforeUnmount(() => {
         </span>
       </div>
       <div
-        class="max-h-[60vh] overflow-y-auto rounded-2xl bg-white/12 ring-1 ring-white/12 p-3 text-xs leading-relaxed space-y-0.5 dark:bg-white/6"
+        class="max-h-[60vh] overflow-y-auto rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3 text-xs leading-relaxed space-y-0.5"
       >
         <div
           v-for="(line, idx) in diffLines"

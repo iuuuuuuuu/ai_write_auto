@@ -7,7 +7,7 @@ export default defineNuxtConfig({
   },
 
   app: {
-    pageTransition: { name: 'page', mode: 'out-in' },
+    pageTransition: false,
     head: {
       link: [
         { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
@@ -26,6 +26,10 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
+  build: {
+    transpile: ['vue-echarts', 'echarts', 'zrender'],
+  },
+
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
 
@@ -42,7 +46,12 @@ export default defineNuxtConfig({
         '@milkdown/theme-nord',
         '@milkdown/utils',
         '@vue/devtools-core',
-        '@vue/devtools-kit'
+        '@vue/devtools-kit',
+        'echarts/core',
+        'echarts/renderers',
+        'echarts/charts',
+        'echarts/components',
+        'vue-echarts'
       ]
     }
   },

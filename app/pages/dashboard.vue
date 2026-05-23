@@ -5,6 +5,8 @@ const { t } = useI18n()
 const { user } = useAuth()
 const { createNovel } = useNovels()
 const router = useRouter()
+const message = useMessage()
+const fileInput = ref<HTMLInputElement | null>(null)
 
 interface NovelItem {
   id: number; title: string; description: string | null; genre: string | null
@@ -275,9 +277,8 @@ function removeImportChapter(index: number) {
 function moveImportChapter(index: number, direction: number) {
   const newIndex = index + direction
   if (newIndex < 0 || newIndex >= importPreview.value.length) return
-  const temp = importPreview.value[index]
-  importPreview.value[index] = importPreview.value[newIndex]
-  importPreview.value[newIndex] = temp
+  const arr = importPreview.value
+  ;[arr[index], arr[newIndex]] = [arr[newIndex] as typeof arr[0], arr[index] as typeof arr[0]]
 }
 
 async function confirmImport() {
@@ -337,9 +338,6 @@ function resetImport() {
 
     <!-- Greeting & Stats -->
     <section class="card-glass overflow-hidden rounded-[2rem] p-5 md:p-7">
-      <span class="liquid-orb -right-10 -top-12 h-40 w-40" />
-      <span class="liquid-orb bottom-4 left-[42%] h-20 w-20 opacity-50" />
-      <span class="liquid-highlight left-8 top-4 h-12 w-56 rotate-[-8deg]" />
       <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div class="max-w-2xl">
           <p class="mb-2 text-xs uppercase tracking-[0.24em] text-(--ui-text-dimmed)">Writing Command Center</p>
@@ -381,19 +379,19 @@ function resetImport() {
             <h2 class="text-sm font-medium text-(--ui-text-highlighted)">新手写作路径</h2>
           </div>
           <div class="mt-4 grid gap-2 text-xs text-(--ui-text-muted) md:grid-cols-4">
-            <div class="rounded-2xl bg-white/45 p-3 dark:bg-white/8">
+            <div class="rounded-2xl bg-(--ui-bg-muted) p-3">
               <p class="font-medium text-(--ui-text)">1. 创建作品</p>
               <p class="mt-1">先填写标题、类型和一句故事简介。</p>
             </div>
-            <div class="rounded-2xl bg-white/45 p-3 dark:bg-white/8">
+            <div class="rounded-2xl bg-(--ui-bg-muted) p-3">
               <p class="font-medium text-(--ui-text)">2. 补充设定</p>
               <p class="mt-1">在详细设定中写下世界观和写作风格。</p>
             </div>
-            <div class="rounded-2xl bg-white/45 p-3 dark:bg-white/8">
+            <div class="rounded-2xl bg-(--ui-bg-muted) p-3">
               <p class="font-medium text-(--ui-text)">3. 规划大纲</p>
               <p class="mt-1">进入作品详情后编辑或 AI 生成章节大纲。</p>
             </div>
-            <div class="rounded-2xl bg-white/45 p-3 dark:bg-white/8">
+            <div class="rounded-2xl bg-(--ui-bg-muted) p-3">
               <p class="font-medium text-(--ui-text)">4. 开始写作</p>
               <p class="mt-1">打开章节，使用保存、续写和扩写快捷键。</p>
             </div>
@@ -411,7 +409,7 @@ function resetImport() {
 
     <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
       <div class="liquid-panel flex items-center gap-3 p-3">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, var(--ui-primary-400), var(--ui-primary-600));">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500">
           <Icon icon="lucide:book-open" class="h-5 w-5 text-white" />
         </div>
         <div>
@@ -420,7 +418,7 @@ function resetImport() {
         </div>
       </div>
       <div class="liquid-panel flex items-center gap-3 p-3">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, var(--ui-primary-400), var(--ui-primary-600));">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500">
           <Icon icon="lucide:type" class="h-5 w-5 text-white" />
         </div>
         <div>
@@ -429,7 +427,7 @@ function resetImport() {
         </div>
       </div>
       <div class="liquid-panel flex items-center gap-3 p-3">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500">
           <Icon icon="lucide:flame" class="h-5 w-5 text-white" />
         </div>
         <div>
@@ -438,7 +436,7 @@ function resetImport() {
         </div>
       </div>
       <div class="liquid-panel flex items-center gap-3 p-3">
-        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl" style="background: linear-gradient(135deg, var(--ui-primary-400), var(--ui-primary-600));">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500">
           <Icon icon="lucide:pencil" class="h-5 w-5 text-white" />
         </div>
         <div>
@@ -476,7 +474,7 @@ function resetImport() {
           v-for="item in recentActivity"
           :key="item.id"
           :to="`/novels/${item.novelId}/chapters/${item.id}`"
-          class="liquid-panel group w-56 flex-none p-3 transition-transform duration-200 hover:-translate-y-1"
+          class="liquid-panel group w-56 flex-none p-3 transition-transform duration-200"
         >
           <div class="mb-2 flex items-center gap-1.5">
             <span class="rounded-full bg-primary-500/10 px-2 py-0.5 text-[10px] font-medium text-primary-600 dark:text-primary-400">第{{ item.chapterNumber }}章</span>
@@ -499,7 +497,7 @@ function resetImport() {
       </div>
 
       <div v-if="novelsLoading" class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        <NSkeleton v-for="i in 6" :key="i" class="h-36 rounded-[1.5rem]" text />
+        <NSkeleton v-for="i in 6" :key="i" class="h-44 rounded-xl" text />
       </div>
 
       <template v-else-if="novels.length">
@@ -508,22 +506,31 @@ function resetImport() {
             v-for="novel in novels"
             :key="novel.id"
             :to="`/novels/${novel.id}`"
-            class="liquid-panel group relative overflow-hidden p-4 transition-transform duration-200 hover:-translate-y-1"
+            class="group relative flex flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) transition-all duration-200 hover:border-(--ui-border-accented) hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)]"
           >
-            <div class="absolute left-0 top-0 h-full w-1 opacity-70 transition-opacity group-hover:opacity-100"
-                 :style="{ background: `linear-gradient(180deg, ${getGenreColor(novel.genre)}aa, ${getGenreColor(novel.genre)})` }" />
-            <div class="mb-3 flex items-start justify-between gap-2">
-              <h3 class="truncate text-[14px] font-medium leading-snug text-(--ui-text) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400">{{ novel.title }}</h3>
-              <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    :class="novel.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' : novel.status === 'in_progress' ? 'bg-blue-500/10 text-blue-600' : 'bg-white/15 text-(--ui-text-dimmed) ring-1 ring-white/15'">
-                {{ getStatusLabel(novel.status) }}
-              </span>
-            </div>
-            <p v-if="novel.description" class="mb-4 line-clamp-2 text-[12px] leading-relaxed text-(--ui-text-dimmed)">{{ novel.description }}</p>
-            <div v-else class="mb-4 h-9" />
-            <div class="flex items-center justify-between text-[11px] text-(--ui-text-dimmed)">
-              <span class="font-medium" :style="{ color: getGenreColor(novel.genre) }">{{ novel.genre ? t(`novel.genres.${novel.genre}`) : t('novel.genres.other') }}</span>
-              <span class="font-mono">{{ (novel.wordCount || 0).toLocaleString() }} 字</span>
+            <!-- Top color bar -->
+            <div class="h-1.5 w-full" :style="{ background: getGenreColor(novel.genre) }" />
+
+            <div class="flex flex-1 flex-col p-3.5">
+              <div class="mb-2 flex items-start justify-between gap-2">
+                <h3 class="line-clamp-2 text-[14px] font-semibold leading-snug text-(--ui-text-highlighted) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400">{{ novel.title }}</h3>
+              </div>
+
+              <p v-if="novel.description" class="mb-3 line-clamp-2 text-[12px] leading-relaxed text-(--ui-text-dimmed)">{{ novel.description }}</p>
+              <div v-else class="mb-3" />
+
+              <div class="mt-auto flex items-center justify-between gap-2">
+                <span class="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      :class="novel.status === 'completed' ? 'bg-emerald-500/10 text-emerald-600' : novel.status === 'in_progress' ? 'bg-blue-500/10 text-blue-600' : 'bg-(--ui-bg-muted) text-(--ui-text-dimmed)'">
+                  {{ getStatusLabel(novel.status) }}
+                </span>
+                <span class="text-[11px] font-mono text-(--ui-text-dimmed)">{{ (novel.wordCount || 0).toLocaleString() }} 字</span>
+              </div>
+
+              <div class="mt-2.5 flex items-center justify-between border-t border-(--ui-border) pt-2.5 text-[11px] text-(--ui-text-dimmed)">
+                <span class="font-medium" :style="{ color: getGenreColor(novel.genre) }">{{ novel.genre ? t(`novel.genres.${novel.genre}`) : t('novel.genres.other') }}</span>
+                <span>{{ formatRelativeTime(novel.updatedAt) }}</span>
+              </div>
             </div>
           </NuxtLink>
         </div>
@@ -624,8 +631,8 @@ function resetImport() {
         <div class="space-y-1">
           <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">上传文件</label>
           <div
-            class="rounded-2xl border-2 border-dashed border-white/20 bg-white/8 p-8 text-center transition-colors hover:border-white/35 hover:bg-white/12 cursor-pointer"
-            @click="$refs.fileInput?.click()"
+            class="rounded-2xl border-2 border-dashed border-(--ui-border) bg-(--ui-bg-muted) p-8 text-center transition-colors hover:bg-(--ui-bg-muted) cursor-pointer"
+            @click="fileInput?.click()"
           >
             <input
               ref="fileInput"
@@ -656,7 +663,7 @@ function resetImport() {
           <div
             v-for="(ch, idx) in importPreview"
             :key="idx"
-            class="rounded-2xl bg-white/12 ring-1 ring-white/12 p-2.5 dark:bg-white/6"
+            class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-2.5"
           >
             <div class="flex items-center justify-between gap-2 mb-1">
               <div class="flex items-center gap-2 min-w-0">

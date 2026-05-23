@@ -76,7 +76,7 @@ useBackupNotification()
     </div>
 
     <!-- Mobile: Always use drawer navigation -->
-    <div class="liquid-shell lg:hidden min-h-screen">
+    <div class="min-h-screen lg:hidden">
       <!-- Mobile Floating Header -->
       <div
         class="fixed left-1/2 top-3 z-40 w-[calc(100%-1.5rem)] -translate-x-1/2"
@@ -85,7 +85,7 @@ useBackupNotification()
           class="card-glass flex h-12 items-center gap-2 rounded-full px-2.5"
         >
           <button
-            class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-white/50 hover:text-(--ui-text) dark:hover:bg-white/10"
+            class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
             @click="sidebarOpen = true"
           >
             <Icon
@@ -95,14 +95,7 @@ useBackupNotification()
           </button>
           <div class="flex min-w-0 flex-1 items-center gap-2">
             <div
-              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full shadow-[0_8px_24px_-10px_var(--ui-glow-strong)]"
-              style="
-                background: linear-gradient(
-                  135deg,
-                  var(--color-primary-400),
-                  var(--color-primary-600)
-                );
-              "
+              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-500"
             >
               <Icon
                 icon="lucide:pen-tool"
@@ -116,7 +109,7 @@ useBackupNotification()
           </div>
           <NotificationCenter />
           <button
-            class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-white/50 hover:text-(--ui-text) dark:hover:bg-white/10"
+            class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
             @click="settingsDrawerOpen = true"
           >
             <Icon
@@ -156,14 +149,7 @@ useBackupNotification()
                 <div class="flex h-[60px] items-center justify-between px-4">
                   <div class="flex items-center gap-2.5">
                     <div
-                      class="flex h-9 w-9 items-center justify-center rounded-full shadow-[0_8px_24px_-10px_var(--ui-glow-strong)]"
-                      style="
-                        background: linear-gradient(
-                          135deg,
-                          var(--color-primary-400),
-                          var(--color-primary-600)
-                        );
-                      "
+                      class="flex h-9 w-9 items-center justify-center rounded-full bg-primary-500"
                     >
                       <Icon
                         icon="lucide:pen-tool"
@@ -182,7 +168,7 @@ useBackupNotification()
                     </div>
                   </div>
                   <button
-                    class="flex h-9 w-9 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-white/50 hover:text-(--ui-text) dark:hover:bg-white/10"
+                    class="flex h-9 w-9 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
                     @click="sidebarOpen = false"
                   >
                     <Icon
@@ -200,8 +186,8 @@ useBackupNotification()
                     class="flex h-11 items-center gap-3 rounded-[1.1rem] px-3 text-[14px] font-medium transition-all duration-200"
                     :class="[
                       isActive(item.to) ?
-                        'bg-primary-500/12 text-primary-600 shadow-[0_10px_22px_-16px_var(--ui-glow-strong)] dark:text-primary-400'
-                      : 'text-(--ui-text-muted) hover:bg-white/45 hover:text-(--ui-text) dark:hover:bg-white/10'
+                        'bg-primary-500/12 text-primary-600 dark:text-primary-400'
+                      : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)'
                     ]"
                     @click="sidebarOpen = false"
                   >
@@ -221,7 +207,7 @@ useBackupNotification()
                       :class="[
                         isActive('/admin') ?
                           'bg-primary-500/12 text-primary-600 dark:text-primary-400'
-                        : 'text-(--ui-text-muted) hover:bg-white/45 hover:text-(--ui-text) dark:hover:bg-white/10'
+                        : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)'
                       ]"
                       @click="sidebarOpen = false"
                     >
@@ -241,7 +227,7 @@ useBackupNotification()
                     :class="[
                       isActive(settingsItem.to) ?
                         'bg-primary-500/12 text-primary-600 dark:text-primary-400'
-                      : 'text-(--ui-text-muted) hover:bg-white/45 hover:text-(--ui-text) dark:hover:bg-white/10'
+                      : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)'
                     ]"
                     @click="sidebarOpen = false"
                   >
@@ -255,14 +241,7 @@ useBackupNotification()
                     class="liquid-panel flex items-center gap-2.5 rounded-[1.25rem] px-3 py-2.5"
                   >
                     <div
-                      class="flex h-9 w-9 items-center justify-center rounded-full ring-1 ring-white/40 dark:ring-white/10"
-                      style="
-                        background: linear-gradient(
-                          135deg,
-                          var(--color-primary-300),
-                          var(--color-primary-500)
-                        );
-                      "
+                      class="flex h-9 w-9 items-center justify-center rounded-full bg-primary-500 ring-1 ring-(--ui-border)"
                     >
                       <span class="text-xs font-medium text-white">{{
                         user?.username?.charAt(0).toUpperCase()

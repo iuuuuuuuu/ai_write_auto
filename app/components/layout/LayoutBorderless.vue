@@ -51,14 +51,7 @@ function toggleSidebar() {
           >
             <div class="flex items-center gap-2.5 min-w-0">
               <div
-                class="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 shadow-[0_2px_8px_-1px_var(--ui-glow)]"
-                style="
-                  background: linear-gradient(
-                    135deg,
-                    var(--color-primary-400),
-                    var(--color-primary-600)
-                  );
-                "
+                class="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0 bg-primary-500"
               >
                 <Icon
                   icon="lucide:pen-tool"
@@ -221,14 +214,7 @@ function toggleSidebar() {
               :class="settings.sidebarExpanded ? 'gap-2.5' : 'justify-center'"
             >
               <div
-                class="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
-                style="
-                  background: linear-gradient(
-                    135deg,
-                    var(--color-primary-300),
-                    var(--color-primary-500)
-                  );
-                "
+                class="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-primary-500"
               >
                 <span class="text-xs font-bold text-white">{{
                   user?.username?.charAt(0).toUpperCase()

@@ -289,7 +289,7 @@ export async function restoreMysqlBackup(
     })
   }
 
-  const connection = orm.em.getConnection()
+  const connection = orm.em.getConnection() as any
   await connection.execute('SET FOREIGN_KEY_CHECKS=0')
   try {
     for (const table of [...MIGRATION_TABLES].reverse()) {
@@ -345,7 +345,7 @@ export async function readBackupSettings(
 
 export async function writeBackupSettings(
   orm: MikroORM,
-  settings: BackupSettings
+  settings: Partial<BackupSettings>
 ): Promise<BackupSettings> {
   const normalized = normalizeBackupSettings(settings)
   const em = orm.em.fork()
