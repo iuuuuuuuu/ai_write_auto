@@ -1,6 +1,7 @@
 import { readDbConfig } from '../database/db-config'
 import { initOrm } from '../database'
 import { syncDatabaseSchema } from '../database/schema-sync'
+import { ensureFts } from '../database/fts'
 import {
   createStartupBackupIfEnabled,
   startScheduledBackup,
@@ -31,6 +32,13 @@ export default defineNitroPlugin(async (nitroApp) => {
       console.log('[db] Scheduled backup service started')
     } catch (e) {
       console.warn('[db] Scheduled backup service failed to start:', e)
+    }
+
+    try {
+      await ensureFts(orm)
+      console.log('[db] FTS index ensured')
+    } catch (e) {
+      console.warn('[db] FTS index creation skipped:', e)
     }
 
     try {

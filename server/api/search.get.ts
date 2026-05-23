@@ -1,4 +1,6 @@
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../database/entities'
+import { searchFts } from '../database/fts'
+import { getOrm } from '../database'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -11,46 +13,24 @@ export default defineEventHandler(async (event) => {
   }
 
   const em = useEm(event)
-  const searchPattern = `%${keyword}%`
+  const orm = getOrm()
 
-  // Search chapters
-  const chapterFilter: any = {
-    novel: { user: auth.userId, deletedAt: null },
-    deletedAt: null,
-    content: { $like: searchPattern },
-  }
-  if (novelId) {
-    chapterFilter.novel.id = novelId
-  }
-
-  const chapterResults = await em.find(ChapterSchema, chapterFilter, {
-    populate: ['novel'],
+  // FTS search for chapters
+  const chapters = await searchFts(orm, keyword, {
+    userId: auth.userId,
+    novelId,
     limit: 50,
   })
 
-  const highlights = chapterResults.map((r: any) => {
-    const idx = r.content?.toLowerCase().indexOf(keyword.toLowerCase()) ?? -1
-    const start = Math.max(0, idx - 50)
-    const end = Math.min((r.content?.length || 0), idx + keyword.length + 50)
-    const snippet = idx >= 0 ? '...' + r.content.slice(start, end) + '...' : ''
-
-    return {
-      id: r.id,
-      title: r.title,
-      chapterNumber: r.chapterNumber,
-      novelId: r.novel?.id || r.novel,
-      snippet,
-    }
-  })
-
-  // Search novels
+  // Search novels by title (simple LIKE — small table, no FTS needed)
+  const searchPattern = `%${keyword}%`
   const novelResults = await em.find(NovelSchema, {
     user: auth.userId,
     deletedAt: null,
     title: { $like: searchPattern },
   }, { limit: 10 })
 
-  // Search characters
+  // Search characters by name (simple LIKE — small table)
   const characterFilter: any = {
     novel: { user: auth.userId },
     name: { $like: searchPattern },
@@ -62,7 +42,7 @@ export default defineEventHandler(async (event) => {
   const characterResults = await em.find(CharacterSchema, characterFilter, { limit: 20 })
 
   return {
-    chapters: highlights,
+    chapters,
     novels: novelResults.map((n) => ({ id: n.id, title: n.title, description: n.description })),
     characters: characterResults.map((c: any) => ({ id: c.id, name: c.name, description: c.description, novelId: c.novel?.id || c.novel })),
   }

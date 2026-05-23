@@ -5,6 +5,10 @@ import {
   GenerationTaskSchema
 } from '../../database/entities'
 
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const em = useEm(event)
@@ -17,19 +21,19 @@ export default defineEventHandler(async (event) => {
   const dateRange = Array.from({ length: days }, (_, i) => {
     const d = new Date()
     d.setDate(d.getDate() - (days - 1 - i))
-    return d.toISOString().split('T')[0]
+    return toDateStr(d)
   })
 
   const [tokenRecords, writingRecords, users, tasks] = await Promise.all([
     em.find(TokenUsageSchema, { createdAt: { $gte: since } }),
-    em.find(WritingStatSchema, { date: { $gte: since.toISOString().split('T')[0] } }),
+    em.find(WritingStatSchema, { date: { $gte: toDateStr(since) } }),
     em.find(UserSchema, { createdAt: { $gte: since } }),
     em.find(GenerationTaskSchema, { createdAt: { $gte: since } }),
   ])
 
   const tokenByDate = new Map<string, { input: number; output: number }>()
   for (const r of tokenRecords) {
-    const date = new Date(r.createdAt).toISOString().split('T')[0]
+    const date = toDateStr(new Date(r.createdAt))
     const entry = tokenByDate.get(date) || { input: 0, output: 0 }
     entry.input += r.tokensInput
     entry.output += r.tokensOutput
@@ -48,13 +52,13 @@ export default defineEventHandler(async (event) => {
 
   const userByDate = new Map<string, number>()
   for (const u of users) {
-    const date = new Date(u.createdAt).toISOString().split('T')[0]
+    const date = toDateStr(new Date(u.createdAt))
     userByDate.set(date, (userByDate.get(date) || 0) + 1)
   }
 
   const taskByDate = new Map<string, { completed: number; failed: number }>()
   for (const t of tasks) {
-    const date = new Date(t.createdAt).toISOString().split('T')[0]
+    const date = toDateStr(new Date(t.createdAt))
     const entry = taskByDate.get(date) || { completed: 0, failed: 0 }
     if (t.status === 'completed') entry.completed++
     else if (t.status === 'failed') entry.failed++

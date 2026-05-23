@@ -4,7 +4,8 @@ import {
   buildSummaryPrompt,
   buildCharacterExtractionPrompt,
   buildChapterStoryPrompt,
-  buildOverallArcPrompt
+  buildOverallArcPrompt,
+  buildStoryArcPrompt
 } from '../utils/ai-prompts'
 import { isEmbeddingReady } from './embedding'
 import { indexCharacterEvent } from './character-rag'
@@ -14,7 +15,8 @@ import {
   AiConfigSchema,
   CharacterSchema,
   ChapterCharacterSchema,
-  CharacterAppearanceSchema
+  CharacterAppearanceSchema,
+  StoryArcSchema
 } from '../database/entities'
 import type { GenerationTask } from '../database/entities'
 
@@ -307,6 +309,65 @@ async function processTask(task: GenerationTask): Promise<void> {
       }
     }
 
+    if (task.type === 'generate_arc') {
+      const novelId = getEntityId(task.novel)
+      const allChapters = await em.find(ChapterSchema, {
+        novel: novelId,
+        deletedAt: null,
+        summary: { $ne: null }
+      }, { orderBy: { chapterNumber: 'ASC' } })
+
+      const ARC_GROUP_SIZE = 10
+      const totalChapters = allChapters.length
+
+      if (totalChapters >= ARC_GROUP_SIZE) {
+        const aiConfig = await em.findOne(AiConfigSchema, { purpose: 'extraction' })
+        if (aiConfig) {
+          const arcCount = Math.floor(totalChapters / ARC_GROUP_SIZE)
+          for (let i = 0; i < arcCount; i++) {
+            const startIdx = i * ARC_GROUP_SIZE
+            const endIdx = startIdx + ARC_GROUP_SIZE
+            const group = allChapters.slice(startIdx, endIdx)
+            const startChapter = group[0]!.chapterNumber
+            const endChapter = group[group.length - 1]!.chapterNumber
+
+            const existing = await em.findOne(StoryArcSchema, {
+              novel: novelId,
+              startChapter,
+              endChapter
+            })
+            if (existing) continue
+
+            const summaries = group
+              .filter(ch => ch.summary)
+              .map(ch => ({ chapterNumber: ch.chapterNumber, title: ch.title, summary: ch.summary! }))
+
+            if (summaries.length < 3) continue
+
+            const messages = buildStoryArcPrompt(summaries, startChapter, endChapter)
+            const arcSummary = await callAi({
+              apiUrl: aiConfig.apiUrl,
+              apiKey: aiConfig.apiKey,
+              model: aiConfig.model,
+              messages,
+              temperature: 0.3,
+              maxTokens: 500
+            })
+
+            em.create(StoryArcSchema, {
+              novel: novelId,
+              title: `第${startChapter}-${endChapter}章`,
+              summary: arcSummary,
+              startChapter,
+              endChapter
+            })
+          }
+          await em.flush()
+          result = `Generated ${arcCount} arc summaries`
+        }
+      }
+    }
+
     await em.nativeUpdate(
       GenerationTaskSchema,
       { id: task.id },
@@ -366,6 +427,25 @@ export async function enqueuePostProcessing(
       })
     }
   }
+
+  // Trigger arc generation when chapter count is a multiple of 10
+  const chapterCount = await em.count(ChapterSchema, { novel: novelId, deletedAt: null })
+  if (chapterCount > 0 && chapterCount % 10 === 0) {
+    const existingArcTask = await em.findOne(GenerationTaskSchema, {
+      novel: novelId,
+      type: 'generate_arc',
+      status: { $in: ['pending', 'running'] }
+    })
+    if (!existingArcTask) {
+      em.create(GenerationTaskSchema, {
+        novel: novelId,
+        chapter: chapterId,
+        type: 'generate_arc',
+        status: 'pending'
+      })
+    }
+  }
+
   await em.flush()
 
   setTimeout(() => processPendingTasks(), 1000)

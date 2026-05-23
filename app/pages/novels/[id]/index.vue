@@ -214,6 +214,22 @@ const characterForm = reactive<CharacterFormModel>({
   relationships: ''
 })
 
+// Setup guide
+const setupGuideDismissed = ref(false)
+const setupStep1Done = computed(() => !!(novel.value?.worldSetting || novel.value?.styleGuide))
+const setupStep2Done = computed(() => (characters.value?.length || 0) > 0)
+const setupStep3Done = computed(() => (outlines.value?.length || 0) > 0)
+const showSetupGuide = computed(() => {
+  if (setupGuideDismissed.value) return false
+  if (!novel.value) return false
+  if ((chapters.value?.length || 0) > 0) return false
+  return !setupStep1Done.value || !setupStep2Done.value || !setupStep3Done.value
+})
+
+function dismissSetupGuide() {
+  setupGuideDismissed.value = true
+}
+
 async function deleteNovel() {
   const confirmed = await confirmDelete(novel.value?.title || '此小说')
   if (!confirmed) return
@@ -360,6 +376,48 @@ function handleOutlineDragOver(event: DragEvent, index: number) {
 
 function handleOutlineDragEnd() {
   draggingOutlineIndex.value = null
+}
+
+// Chapter drag-and-drop reorder
+const chapterReorderMode = ref(false)
+const draggingChapterIndex = ref<number | null>(null)
+const savingChapterOrder = ref(false)
+
+function handleChapterDragStart(index: number) {
+  draggingChapterIndex.value = index
+}
+
+function handleChapterDragOver(event: DragEvent, index: number) {
+  event.preventDefault()
+  if (draggingChapterIndex.value === null || draggingChapterIndex.value === index) return
+  const items = [...(chapters.value || [])]
+  const [moved] = items.splice(draggingChapterIndex.value, 1)
+  items.splice(index, 0, moved!)
+  chapters.value = items
+  draggingChapterIndex.value = index
+}
+
+function handleChapterDragEnd() {
+  draggingChapterIndex.value = null
+}
+
+async function saveChapterOrder() {
+  if (!chapters.value?.length) return
+  savingChapterOrder.value = true
+  try {
+    const orderedIds = chapters.value.map((c) => c.id)
+    await $fetch(`/api/novels/${novelId.value}/chapters/reorder`, {
+      method: 'PUT',
+      body: { orderedIds },
+    })
+    chapters.value = chapters.value.map((c, i) => ({ ...c, chapterNumber: i + 1 }))
+    chapterReorderMode.value = false
+    message.success('章节顺序已保存')
+  } catch (e: any) {
+    message.error(e?.data?.message || '保存排序失败')
+  } finally {
+    savingChapterOrder.value = false
+  }
 }
 
 function getValidOutlineItems() {
@@ -1119,6 +1177,124 @@ async function savePlotPoint() {
       </div>
     </section>
 
+    <!-- Novel Setup Guide -->
+    <section
+      v-if="showSetupGuide"
+      class="card-glass overflow-hidden p-5"
+    >
+      <div class="mb-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <Icon
+            icon="lucide:sparkles"
+            class="size-5 text-amber-500"
+          />
+          <h2 class="font-semibold text-(--ui-text-highlighted)">快速设定引导</h2>
+        </div>
+        <NButton
+          size="tiny"
+          quaternary
+          @click="dismissSetupGuide"
+        >
+          <template #icon><Icon icon="lucide:x" /></template>
+          跳过
+        </NButton>
+      </div>
+      <p class="mb-4 text-sm text-(--ui-text-muted)">
+        完成以下步骤可以帮助 AI 更好地理解你的故事，生成更连贯的内容。每步都可跳过，随时回来补充。
+      </p>
+      <div class="grid gap-3 sm:grid-cols-3">
+        <div
+          class="rounded-xl p-4 ring-1 transition-colors"
+          :class="setupStep1Done ? 'bg-green-500/5 ring-green-500/30' : 'bg-(--ui-bg-muted) ring-(--ui-border) hover:ring-(--ui-border-active)'"
+        >
+          <div class="mb-2 flex items-center gap-2">
+            <div
+              class="flex size-6 items-center justify-center rounded-full text-xs font-bold"
+              :class="setupStep1Done ? 'bg-green-500/20 text-green-600' : 'bg-primary-500/20 text-primary-500'"
+            >
+              {{ setupStep1Done ? '✓' : '1' }}
+            </div>
+            <span class="text-sm font-medium text-(--ui-text-highlighted)">世界观设定</span>
+          </div>
+          <p class="mb-3 text-xs text-(--ui-text-muted)">
+            描述故事发生的世界背景，AI 可辅助扩展。
+          </p>
+          <NButton
+            v-if="!setupStep1Done"
+            size="tiny"
+            type="primary"
+            @click="showAiSettingsModal = true"
+          >
+            去设定
+          </NButton>
+          <span
+            v-else
+            class="text-xs text-green-600"
+          >已完成</span>
+        </div>
+
+        <div
+          class="rounded-xl p-4 ring-1 transition-colors"
+          :class="setupStep2Done ? 'bg-green-500/5 ring-green-500/30' : 'bg-(--ui-bg-muted) ring-(--ui-border) hover:ring-(--ui-border-active)'"
+        >
+          <div class="mb-2 flex items-center gap-2">
+            <div
+              class="flex size-6 items-center justify-center rounded-full text-xs font-bold"
+              :class="setupStep2Done ? 'bg-green-500/20 text-green-600' : 'bg-primary-500/20 text-primary-500'"
+            >
+              {{ setupStep2Done ? '✓' : '2' }}
+            </div>
+            <span class="text-sm font-medium text-(--ui-text-highlighted)">创建角色</span>
+          </div>
+          <p class="mb-3 text-xs text-(--ui-text-muted)">
+            添加主要角色，AI 可根据世界观建议角色。
+          </p>
+          <NButton
+            v-if="!setupStep2Done"
+            size="tiny"
+            type="primary"
+            @click="showCharacterDialog = true"
+          >
+            添加角色
+          </NButton>
+          <span
+            v-else
+            class="text-xs text-green-600"
+          >已完成</span>
+        </div>
+
+        <div
+          class="rounded-xl p-4 ring-1 transition-colors"
+          :class="setupStep3Done ? 'bg-green-500/5 ring-green-500/30' : 'bg-(--ui-bg-muted) ring-(--ui-border) hover:ring-(--ui-border-active)'"
+        >
+          <div class="mb-2 flex items-center gap-2">
+            <div
+              class="flex size-6 items-center justify-center rounded-full text-xs font-bold"
+              :class="setupStep3Done ? 'bg-green-500/20 text-green-600' : 'bg-primary-500/20 text-primary-500'"
+            >
+              {{ setupStep3Done ? '✓' : '3' }}
+            </div>
+            <span class="text-sm font-medium text-(--ui-text-highlighted)">规划大纲</span>
+          </div>
+          <p class="mb-3 text-xs text-(--ui-text-muted)">
+            用 AI 生成章节大纲，为写作提供方向。
+          </p>
+          <NButton
+            v-if="!setupStep3Done"
+            size="tiny"
+            type="primary"
+            @click="openGenerateOutlineDialog"
+          >
+            生成大纲
+          </NButton>
+          <span
+            v-else
+            class="text-xs text-green-600"
+          >已完成</span>
+        </div>
+      </div>
+    </section>
+
     <!-- Outline -->
     <section class="card-glass p-5">
       <div
@@ -1360,18 +1536,47 @@ async function savePlotPoint() {
                 {{ chapterFilterText }}
               </p>
             </div>
-            <NButton
-              size="tiny"
-              type="primary"
-              @click="
-                navigateTo(
-                  `/novels/${novel.id}/chapters/${chapters?.[0]?.id || 1}`
-                )
-              "
-            >
-              <template #icon><Icon icon="lucide:plus" /></template>
-              新建章节
-            </NButton>
+            <div class="flex items-center gap-2">
+              <NButton
+                v-if="chapterReorderMode"
+                size="tiny"
+                type="success"
+                :loading="savingChapterOrder"
+                @click="saveChapterOrder"
+              >
+                <template #icon><Icon icon="lucide:check" /></template>
+                保存排序
+              </NButton>
+              <NButton
+                v-if="chapterReorderMode"
+                size="tiny"
+                quaternary
+                @click="chapterReorderMode = false"
+              >
+                取消
+              </NButton>
+              <NButton
+                v-if="!chapterReorderMode && chapters && chapters.length > 1"
+                size="tiny"
+                quaternary
+                @click="chapterReorderMode = true"
+              >
+                <template #icon><Icon icon="lucide:arrow-up-down" /></template>
+                排序
+              </NButton>
+              <NButton
+                size="tiny"
+                type="primary"
+                @click="
+                  navigateTo(
+                    `/novels/${novel.id}/chapters/${chapters?.[0]?.id || 1}`
+                  )
+                "
+              >
+                <template #icon><Icon icon="lucide:plus" /></template>
+                新建章节
+              </NButton>
+            </div>
           </div>
 
           <div class="grid gap-2 md:grid-cols-[minmax(0,1fr)_180px_auto]">
@@ -1432,54 +1637,84 @@ async function savePlotPoint() {
           v-else
           class="space-y-2"
         >
-          <NuxtLink
-            v-for="chapter in filteredChapters"
+          <template
+            v-for="(chapter, index) in filteredChapters"
             :key="chapter.id"
-            :to="`/novels/${novel.id}/chapters/${chapter.id}`"
-            class="group grid gap-3 rounded-lg p-3 transition-colors hover:bg-(--ui-bg-elevated)/60 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
           >
             <div
-              class="flex size-9 items-center justify-center rounded-lg bg-primary-400/10 text-xs font-semibold font-mono text-primary-500 shrink-0"
+              v-if="chapterReorderMode"
+              draggable="true"
+              class="group grid gap-3 rounded-lg p-3 transition-colors cursor-move ring-1 ring-(--ui-border) bg-(--ui-bg-muted) sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center"
+              :class="draggingChapterIndex === index ? 'opacity-50' : ''"
+              @dragstart="handleChapterDragStart(index)"
+              @dragover="handleChapterDragOver($event, index)"
+              @dragend="handleChapterDragEnd"
             >
-              {{ chapter.chapterNumber }}
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <p
-                  class="min-w-0 truncate text-sm font-medium text-(--ui-text-highlighted)"
+              <div class="flex items-center gap-2 shrink-0">
+                <Icon
+                  icon="lucide:grip-vertical"
+                  class="size-4 text-(--ui-text-dimmed)"
+                />
+                <div
+                  class="flex size-9 items-center justify-center rounded-lg bg-primary-400/10 text-xs font-semibold font-mono text-primary-500"
                 >
+                  {{ index + 1 }}
+                </div>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="min-w-0 truncate text-sm font-medium text-(--ui-text-highlighted)">
                   {{ chapter.title }}
                 </p>
-                <NTag
-                  size="tiny"
-                  :type="getChapterStatusType(chapter.status)"
-                >
-                  {{ getChapterStatusLabel(chapter.status) }}
-                </NTag>
-              </div>
-              <p
-                v-if="chapter.summary"
-                class="mt-1 line-clamp-2 text-xs leading-relaxed text-(--ui-text-muted)"
-              >
-                {{ chapter.summary }}
-              </p>
-              <div
-                class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-(--ui-text-dimmed)"
-              >
-                <span>{{ chapter.wordCount || 0 }} 字</span>
-                <span>{{ formatDate(chapter.updatedAt) }}</span>
               </div>
             </div>
-            <div
-              class="hidden items-center gap-1 text-xs text-(--ui-text-dimmed) sm:flex"
+            <NuxtLink
+              v-else
+              :to="`/novels/${novel.id}/chapters/${chapter.id}`"
+              class="group grid gap-3 rounded-lg p-3 transition-colors hover:bg-(--ui-bg-elevated)/60 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
             >
-              写作
-              <Icon
-                icon="lucide:chevron-right"
-                class="size-4 opacity-0 transition-opacity group-hover:opacity-100"
-              />
-            </div>
-          </NuxtLink>
+              <div
+                class="flex size-9 items-center justify-center rounded-lg bg-primary-400/10 text-xs font-semibold font-mono text-primary-500 shrink-0"
+              >
+                {{ chapter.chapterNumber }}
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p
+                    class="min-w-0 truncate text-sm font-medium text-(--ui-text-highlighted)"
+                  >
+                    {{ chapter.title }}
+                  </p>
+                  <NTag
+                    size="tiny"
+                    :type="getChapterStatusType(chapter.status)"
+                  >
+                    {{ getChapterStatusLabel(chapter.status) }}
+                  </NTag>
+                </div>
+                <p
+                  v-if="chapter.summary"
+                  class="mt-1 line-clamp-2 text-xs leading-relaxed text-(--ui-text-muted)"
+                >
+                  {{ chapter.summary }}
+                </p>
+                <div
+                  class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-(--ui-text-dimmed)"
+                >
+                  <span>{{ chapter.wordCount || 0 }} 字</span>
+                  <span>{{ formatDate(chapter.updatedAt) }}</span>
+                </div>
+              </div>
+              <div
+                class="hidden items-center gap-1 text-xs text-(--ui-text-dimmed) sm:flex"
+              >
+                写作
+                <Icon
+                  icon="lucide:chevron-right"
+                  class="size-4 opacity-0 transition-opacity group-hover:opacity-100"
+                />
+              </div>
+            </NuxtLink>
+          </template>
         </div>
       </section>
 

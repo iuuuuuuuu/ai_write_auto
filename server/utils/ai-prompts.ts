@@ -327,3 +327,29 @@ export function buildCharacterExtractionPrompt(
     { role: 'user', content: chapterContent }
   ]
 }
+
+export function buildStoryArcPrompt(
+  chapterSummaries: Array<{ chapterNumber: number; title: string; summary: string }>,
+  startChapter: number,
+  endChapter: number
+): Array<{ role: 'system' | 'user'; content: string }> {
+  const summaryText = chapterSummaries
+    .map(ch => `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}`)
+    .join('\n')
+
+  return [
+    {
+      role: 'system',
+      content: `你是一位文学分析师。请将以下连续章节的摘要压缩为一段简洁的故事弧线摘要。
+
+要求：
+- 提炼这组章节的核心剧情线索和主要事件
+- 标注关键转折点和角色状态变化
+- 控制在 200 字以内
+- 只返回纯文本摘要，不要 JSON，不要标题
+
+这组章节范围：第${startChapter}章 ~ 第${endChapter}章`
+    },
+    { role: 'user', content: summaryText }
+  ]
+}
