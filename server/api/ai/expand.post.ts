@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
   const em = useEm(event)
 
   const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
+  console.log('[expand] resolved config:', { model: aiConfig.model, apiUrl: aiConfig.apiUrl.replace(/\/[^/]*$/, '/...') })
 
   const chapter = await em.findOne(ChapterSchema, {
     id: data.chapterId,
@@ -49,6 +50,7 @@ export default defineEventHandler(async (event) => {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      controller.enqueue(encoder.encode(': connected\n\n'))
       try {
         for await (const chunk of streamAi({
           apiUrl: aiConfig.apiUrl,
@@ -76,7 +78,14 @@ export default defineEventHandler(async (event) => {
             return
           }
         }
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ content: '', done: true })}\n\n`
+          )
+        )
+        controller.close()
       } catch (err: any) {
+        console.error('[expand] AI stream error:', err.message)
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify({ error: err.message, done: true })}\n\n`

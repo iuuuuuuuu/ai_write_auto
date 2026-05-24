@@ -80,6 +80,7 @@ ${context}
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      controller.enqueue(encoder.encode(': connected\n\n'))
       try {
         for await (const chunk of streamAi({
           apiUrl: aiConfig.apiUrl,

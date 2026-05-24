@@ -249,6 +249,7 @@ const saving = ref(false)
 const lastSaved = ref<Date | null>(null)
 const generating = ref(false)
 const generatedContent = ref('')
+const generatedContentScrollRef = ref<HTMLElement | null>(null)
 const showGenerateDialog = ref(false)
 const generateDirection = ref('')
 const selectedAiConfigId = ref<number | undefined>()
@@ -438,6 +439,10 @@ watch(generatedContent, (val) => {
   } else {
     draftLastSavedLength = 0
   }
+  nextTick(() => {
+    const el = generatedContentScrollRef.value
+    if (el) el.scrollTop = el.scrollHeight
+  })
 })
 
 watch(aiActionResult, (val) => {
@@ -464,12 +469,20 @@ const {
   insertTextAtCursor: insertEditorTextAtCursor,
   focus: focusEditor,
   getCursorClientPos,
-  getContextBeforeCursor
+  getContextBeforeCursor,
+  setEditable: setEditorEditable
 } = useMilkdownEditor({
   onChange: (md) => {
     content.value = md
   }
 })
+
+watch(
+  [generating, regenerating, expandingOrRewriting],
+  ([gen, regen, expanding]) => {
+    setEditorEditable(!gen && !regen && !expanding)
+  }
+)
 
 /* ─────────────── 角色 ─────────────── */
 const { data: allCharacters, refresh: refreshAllCharacters } = await useFetch<
@@ -834,6 +847,7 @@ async function saveContent(source?: 'ai_generated' | 'user_edited') {
     )
     lastSaved.value = new Date()
     serverUpdatedAt.value = result.updatedAt || lastSaved.value.toISOString()
+    if (chapter.value) chapter.value.content = content.value
     conflictDetected.value = false
   } catch (error: unknown) {
     if (
@@ -907,6 +921,9 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
   aiActionResult.value = ''
   aiActionType.value = type
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000)
+
   try {
     const body: Record<string, unknown> = {
       novelId: novelId.value,
@@ -922,11 +939,13 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
     const response = await fetch(`/api/ai/${type}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controller.signal
     })
 
     if (!response.ok) {
-      throw new Error(`AI 请求失败：${response.status}`)
+      const errorBody = await response.text().catch(() => '')
+      throw new Error(`AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`)
     }
     if (!response.body) {
       throw new Error('AI 响应为空')
@@ -939,21 +958,33 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
       const { done, value } = await reader.read()
       if (done) break
       const text = decoder.decode(value, { stream: true })
+      let streamDone = false
       for (const line of text.split('\n')) {
         if (!line.startsWith('data: ')) continue
         try {
           const data = JSON.parse(line.slice(6)) as AiStreamPayload
           if (data.error) throw new Error(data.error)
           if (data.content) aiActionResult.value += data.content
-          if (data.done) break
+          if (data.done) { streamDone = true; break }
         } catch (error: unknown) {
           throw new Error(getErrorMessage(error))
         }
       }
+      if (streamDone) {
+        reader.cancel()
+        break
+      }
     }
   } catch (error: unknown) {
-    aiActionResult.value = getErrorMessage(error)
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      if (!aiActionResult.value) {
+        aiActionResult.value = '请求超时，请重试'
+      }
+    } else {
+      aiActionResult.value = getErrorMessage(error)
+    }
   } finally {
+    clearTimeout(timeout)
     expandingOrRewriting.value = false
   }
 }
@@ -975,6 +1006,9 @@ async function doFragment(
   aiActionResult.value = ''
   aiActionType.value = 'continue'
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 60000)
+
   try {
     const response = await fetch('/api/ai/fragment', {
       method: 'POST',
@@ -985,7 +1019,8 @@ async function doFragment(
         type,
         contextBefore: getContextBeforeCursor(),
         aiConfigId: selectedAiConfigId.value
-      })
+      }),
+      signal: controller.signal
     })
 
     if (!response.ok) {
@@ -1002,21 +1037,33 @@ async function doFragment(
       const { done, value } = await reader.read()
       if (done) break
       const text = decoder.decode(value, { stream: true })
+      let streamDone = false
       for (const line of text.split('\n')) {
         if (!line.startsWith('data: ')) continue
         try {
           const data = JSON.parse(line.slice(6)) as AiStreamPayload
           if (data.error) throw new Error(data.error)
           if (data.content) aiActionResult.value += data.content
-          if (data.done) break
+          if (data.done) { streamDone = true; break }
         } catch (error: unknown) {
           throw new Error(getErrorMessage(error))
         }
       }
+      if (streamDone) {
+        reader.cancel()
+        break
+      }
     }
   } catch (error: unknown) {
-    aiActionResult.value = getErrorMessage(error)
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      if (!aiActionResult.value) {
+        aiActionResult.value = '请求超时，请重试'
+      }
+    } else {
+      aiActionResult.value = getErrorMessage(error)
+    }
   } finally {
+    clearTimeout(timeout)
     expandingOrRewriting.value = false
   }
 }
@@ -1072,8 +1119,10 @@ async function generateChapter() {
   const controller = new AbortController()
   const timeout = setTimeout(() => {
     controller.abort()
-    message.warning('生成超时（60秒），已自动取消')
-  }, 60000)
+  }, 180000)
+
+  let buffer = ''
+  let rafId: number | null = null
 
   try {
     const response = await fetch('/api/ai/generate', {
@@ -1101,23 +1150,41 @@ async function generateChapter() {
         if (!line.startsWith('data: ')) continue
         try {
           const data = JSON.parse(line.slice(6))
-          if (data.content) generatedContent.value += data.content
+          if (data.content) {
+            buffer += data.content
+            if (!rafId) {
+              rafId = requestAnimationFrame(() => {
+                generatedContent.value = buffer
+                rafId = null
+              })
+            }
+          }
           if (data.done) {
-            previousGeneratedContent.value = generatedContent.value
-            await setEditorMarkdown(generatedContent.value)
-            content.value = generatedContent.value
+            if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+            generatedContent.value = buffer
+            previousGeneratedContent.value = buffer
+            await setEditorMarkdown(buffer)
+            content.value = buffer
             await saveContent('ai_generated')
             await refreshChapter()
             clearDraftRecovery()
             setTimeout(() => consistencyWarningsRef.value?.refresh(), 15000)
+            reader.cancel()
+            return
           }
         } catch {}
       }
     }
   } catch (e: unknown) {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+    if (buffer) generatedContent.value = buffer
     if (e instanceof DOMException && e.name === 'AbortError') {
       if (generatedContent.value) {
+        previousGeneratedContent.value = generatedContent.value
+        await setEditorMarkdown(generatedContent.value)
+        content.value = generatedContent.value
         saveDraftRecovery(generatedContent.value, 'generate')
+        message.info('生成超时，已保留已生成的内容')
       }
     }
   } finally {
@@ -1132,6 +1199,14 @@ async function regenerateWithFeedback() {
   regenerating.value = true
   generatedContent.value = ''
 
+  const controller = new AbortController()
+  const timeout = setTimeout(() => {
+    controller.abort()
+  }, 180000)
+
+  let buffer = ''
+  let rafId: number | null = null
+
   try {
     const response = await fetch('/api/ai/regenerate', {
       method: 'POST',
@@ -1144,7 +1219,8 @@ async function regenerateWithFeedback() {
         aiConfigId: selectedAiConfigId.value,
         temperature: generateTemperature.value,
         maxTokens: generateMaxTokens.value
-      })
+      }),
+      signal: controller.signal
     })
 
     const reader = response.body!.getReader()
@@ -1158,20 +1234,45 @@ async function regenerateWithFeedback() {
         if (!line.startsWith('data: ')) continue
         try {
           const data = JSON.parse(line.slice(6))
-          if (data.content) generatedContent.value += data.content
+          if (data.content) {
+            buffer += data.content
+            if (!rafId) {
+              rafId = requestAnimationFrame(() => {
+                generatedContent.value = buffer
+                rafId = null
+              })
+            }
+          }
           if (data.done) {
-            previousGeneratedContent.value = generatedContent.value
-            await setEditorMarkdown(generatedContent.value)
-            content.value = generatedContent.value
+            if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+            generatedContent.value = buffer
+            previousGeneratedContent.value = buffer
+            await setEditorMarkdown(buffer)
+            content.value = buffer
             await saveContent('ai_generated')
             await refreshChapter()
             showFeedbackInput.value = false
             feedbackText.value = ''
+            reader.cancel()
+            return
           }
         } catch {}
       }
     }
+  } catch (e: unknown) {
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+    if (buffer) generatedContent.value = buffer
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      if (generatedContent.value) {
+        previousGeneratedContent.value = generatedContent.value
+        await setEditorMarkdown(generatedContent.value)
+        content.value = generatedContent.value
+        saveDraftRecovery(generatedContent.value, 'generate')
+        message.info('生成超时，已保留已生成的内容')
+      }
+    }
   } finally {
+    clearTimeout(timeout)
     regenerating.value = false
   }
 }
@@ -2235,12 +2336,13 @@ onBeforeUnmount(() => {
       <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-(--ui-bg)">
         <div class="flex-1 min-h-0 flex flex-col px-2 pt-2 pb-1.5 sm:px-3">
           <div
-            class="editor-canvas flex-1 min-h-0 flex flex-col w-full overflow-hidden"
+            class="editor-canvas flex-1 min-h-0 w-full overflow-y-auto"
             style="height: 0"
+            @scroll="showFloatingToolbar = false"
           >
             <div
               ref="editorContainerRef"
-              class="chapter-writing-surface w-full flex-1 milkdown-editor px-4 py-4 text-(--ui-text) text-[15px] leading-[1.9] sm:px-6 sm:py-5"
+              class="chapter-writing-surface w-full min-h-full milkdown-editor px-4 py-4 text-(--ui-text) text-[15px] leading-[1.9] sm:px-6 sm:py-5"
               :class="
                 zenMode ?
                   'min-h-screen leading-[2.05] lg:px-[6vw]'
@@ -2349,7 +2451,8 @@ onBeforeUnmount(() => {
               </p>
             </div>
             <div
-              class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
+              ref="generatedContentScrollRef"
+              class="max-h-[40vh] overflow-y-auto text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
             >
               {{ generatedContent }}
             </div>
@@ -2919,13 +3022,11 @@ onBeforeUnmount(() => {
 }
 
 .chapter-writing-surface :deep(.milkdown) {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+  min-height: 100%;
 }
 
 .chapter-writing-surface :deep(.ProseMirror) {
-  flex: 1;
+  min-height: 100%;
   max-width: none;
   padding: 0;
   color: var(--ui-text);

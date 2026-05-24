@@ -71,6 +71,7 @@ export default defineEventHandler(async (event) => {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      controller.enqueue(encoder.encode(': connected\n\n'))
       let fullContent = ''
       let totalTokens = 0
 

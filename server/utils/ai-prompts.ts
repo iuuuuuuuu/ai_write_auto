@@ -3,6 +3,7 @@ export function buildGenerationPrompt(context: {
   chapters: any[]
   characters: any[]
   plotPoints: any[]
+  currentChapter?: { title: string; chapterNumber: number }
   currentChapterOutline?: string
   userDirection?: string
   storyArcs?: any[]
@@ -13,6 +14,7 @@ export function buildGenerationPrompt(context: {
     chapters,
     characters,
     plotPoints,
+    currentChapter,
     currentChapterOutline,
     userDirection,
     storyArcs,
@@ -26,7 +28,8 @@ export function buildGenerationPrompt(context: {
 - 确保角色性格和行为的连贯性
 - 推进剧情发展，不要重复已有内容
 - 使用生动的描写和自然的对话
-- 注意伏笔的铺设和回收`
+- 注意伏笔的铺设和回收
+- 重要：必须在一个完整的段落结尾处停止，不要在句子中间截断。如果接近字数上限，请在当前段落写完后自然收束`
 
   if (novel.styleGuide) {
     systemPrompt += `\n\n## 风格指南\n${novel.styleGuide}`
@@ -133,6 +136,10 @@ export function buildGenerationPrompt(context: {
 
   // Generation instruction
   userPrompt += `\n## 生成指令\n`
+  if (currentChapter) {
+    userPrompt += `当前章节：第${currentChapter.chapterNumber}章「${currentChapter.title}」\n`
+    userPrompt += `请围绕章节标题「${currentChapter.title}」展开内容，标题已确定，不要更改。生成的内容应与章节标题紧密相关。\n`
+  }
   if (currentChapterOutline) {
     userPrompt += `本章大纲：${currentChapterOutline}\n`
   }
@@ -142,7 +149,11 @@ export function buildGenerationPrompt(context: {
   if (novel.aiExtraPrompt) {
     userPrompt += `额外指示：${novel.aiExtraPrompt}\n`
   }
-  userPrompt += `\n请生成下一章的完整内容。`
+  if (currentChapter) {
+    userPrompt += `\n请生成第${currentChapter.chapterNumber}章「${currentChapter.title}」的完整内容。不要包含章节标题，直接从正文开始。`
+  } else {
+    userPrompt += `\n请生成下一章的完整内容。`
+  }
 
   return [
     { role: 'system', content: systemPrompt },

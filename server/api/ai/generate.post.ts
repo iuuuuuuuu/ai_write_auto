@@ -32,13 +32,14 @@ export default defineEventHandler(async (event) => {
   const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
 
   const chapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
+  const currentChapter = data.chapterId ? chapters.find(c => c.id === data.chapterId) : undefined
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
   const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
   const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
 
   let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
   if (isEmbeddingReady()) {
-    const query = [data.chapterOutline, data.direction].filter(Boolean).join(' ')
+    const query = [currentChapter?.title, data.chapterOutline, data.direction].filter(Boolean).join(' ')
     if (query) {
       ragContext = await retrieveRelevant(data.novelId, query, 10)
     }
@@ -50,6 +51,7 @@ export default defineEventHandler(async (event) => {
     characters,
     plotPoints,
     storyArcs,
+    currentChapter: currentChapter ? { title: currentChapter.title, chapterNumber: currentChapter.chapterNumber } : undefined,
     currentChapterOutline: data.chapterOutline,
     userDirection: data.direction,
     ragContext
@@ -77,6 +79,7 @@ export default defineEventHandler(async (event) => {
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      controller.enqueue(encoder.encode(': connected\n\n'))
       let fullContent = ''
       let totalTokens = 0
 

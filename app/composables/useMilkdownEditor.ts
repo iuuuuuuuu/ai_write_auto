@@ -155,6 +155,14 @@ export function useMilkdownEditor(options: UseMilkdownEditorOptions = {}) {
     return text
   }
 
+  function setEditable(editable: boolean) {
+    if (!editorInstance) return
+    editorInstance.action((ctx: Ctx) => {
+      const view = ctx.get(editorViewCtx)
+      view.setProps({ editable: () => editable })
+    })
+  }
+
   async function destroy() {
     if (editorInstance) {
       await editorInstance.destroy()
@@ -180,6 +188,7 @@ export function useMilkdownEditor(options: UseMilkdownEditorOptions = {}) {
     focus,
     getCursorClientPos,
     getContextBeforeCursor,
+    setEditable,
     destroy
   }
 }

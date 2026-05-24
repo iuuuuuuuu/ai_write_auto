@@ -22,20 +22,34 @@ function stripThinking(text: string): string {
 }
 
 export async function callAi(options: AiRequestOptions): Promise<string> {
-  const response = await fetch(options.apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${options.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      stream: false,
-    }),
-  })
+  const controller = new AbortController()
+  const connectTimeout = setTimeout(() => controller.abort(), 30000)
+
+  let response: Response
+  try {
+    response = await fetch(options.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${options.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: options.messages,
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        stream: false,
+      }),
+      signal: controller.signal,
+    })
+  } catch (e: any) {
+    clearTimeout(connectTimeout)
+    if (e.name === 'AbortError') {
+      throw new Error(`AI API 连接超时（30秒），请检查 API 地址是否可达: ${options.apiUrl}`)
+    }
+    throw new Error(`AI API 连接失败: ${e.message}`)
+  }
+  clearTimeout(connectTimeout)
 
   if (!response.ok) {
     const err = await response.text()
@@ -54,20 +68,34 @@ export interface AiResultWithUsage {
 }
 
 export async function callAiWithUsage(options: AiRequestOptions): Promise<AiResultWithUsage> {
-  const response = await fetch(options.apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${options.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      stream: false,
-    }),
-  })
+  const controller = new AbortController()
+  const connectTimeout = setTimeout(() => controller.abort(), 30000)
+
+  let response: Response
+  try {
+    response = await fetch(options.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${options.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: options.messages,
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        stream: false,
+      }),
+      signal: controller.signal,
+    })
+  } catch (e: any) {
+    clearTimeout(connectTimeout)
+    if (e.name === 'AbortError') {
+      throw new Error(`AI API 连接超时（30秒），请检查 API 地址是否可达: ${options.apiUrl}`)
+    }
+    throw new Error(`AI API 连接失败: ${e.message}`)
+  }
+  clearTimeout(connectTimeout)
 
   if (!response.ok) {
     const err = await response.text()
@@ -84,20 +112,34 @@ export async function callAiWithUsage(options: AiRequestOptions): Promise<AiResu
 }
 
 export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStreamChunk> {
-  const response = await fetch(options.apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${options.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: options.messages,
-      temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens ?? 4096,
-      stream: true,
-    }),
-  })
+  const controller = new AbortController()
+  const connectTimeout = setTimeout(() => controller.abort(), 30000)
+
+  let response: Response
+  try {
+    response = await fetch(options.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${options.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: options.messages,
+        temperature: options.temperature ?? 0.7,
+        max_tokens: options.maxTokens ?? 4096,
+        stream: true,
+      }),
+      signal: controller.signal,
+    })
+  } catch (e: any) {
+    clearTimeout(connectTimeout)
+    if (e.name === 'AbortError') {
+      throw new Error(`AI API 连接超时（30秒），请检查 API 地址是否可达: ${options.apiUrl}`)
+    }
+    throw new Error(`AI API 连接失败: ${e.message}`)
+  }
+  clearTimeout(connectTimeout)
 
   if (!response.ok) {
     const err = await response.text()
