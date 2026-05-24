@@ -202,13 +202,17 @@ const { data: novelInfo } = await useFetch<{ title: string }>(
 const { data: aiConfigs } = await useFetch<
   Array<{
     id: number
-    name: string
     purpose: string
-    model: string
     temperature?: string | null
-    maxTokens?: number | null
     isDefault: boolean
     enabled: boolean
+    aiModel: {
+      id: number
+      name: string
+      model: string
+      maxTokens?: number | null
+      enabled: boolean
+    }
   }>
 >('/api/ai/config', { default: () => [] })
 const { data: preferences } = await useFetch<Record<string, string>>(
@@ -672,11 +676,11 @@ function insertCharacterName(name: string) {
 }
 const generationModelOptions = computed(() =>
   aiConfigs.value
-    .filter((config) => config.purpose === 'generation' && config.enabled)
+    .filter((config) => config.purpose === 'generation' && config.enabled && config.aiModel?.enabled)
     .map((config) => ({
-      label: config.isDefault ? `${config.name} · 默认` : config.name,
+      label: config.isDefault ? `${config.aiModel.name} · 默认` : config.aiModel.name,
       value: config.id,
-      description: config.model
+      description: config.aiModel.model
     }))
 )
 
@@ -740,7 +744,7 @@ watch(
 watch(selectedGenerationConfig, (config) => {
   if (config) {
     generateTemperature.value = parseFloat(config.temperature ?? '0.7')
-    generateMaxTokens.value = config.maxTokens || 4096
+    generateMaxTokens.value = config.aiModel?.maxTokens || 4096
   }
 })
 
@@ -1461,7 +1465,7 @@ onBeforeUnmount(() => {
             class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
           >
             <Icon icon="lucide:cpu" class="w-3 h-3" />
-            <span class="max-w-20 truncate">{{ selectedGenerationConfig?.name || '模型' }}</span>
+            <span class="max-w-20 truncate">{{ selectedGenerationConfig?.aiModel?.name || '模型' }}</span>
           </button>
         </NPopselect>
         <button
@@ -1604,7 +1608,7 @@ onBeforeUnmount(() => {
             class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
           >
             <Icon icon="lucide:cpu" class="w-3 h-3" />
-            <span class="max-w-20 truncate">{{ selectedGenerationConfig?.name || '模型' }}</span>
+            <span class="max-w-20 truncate">{{ selectedGenerationConfig?.aiModel?.name || '模型' }}</span>
           </button>
         </NPopselect>
         <button

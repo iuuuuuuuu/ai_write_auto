@@ -202,6 +202,19 @@ const outlineFormItems = ref<OutlineFormItem[]>([])
 const showGenerateOutlineDialog = shallowRef(false)
 const showRegenerateOutlineDialog = shallowRef(false)
 const generatingOutline = shallowRef(false)
+const outlineStreamText = ref('')
+const outlineStreamParsed = ref<Array<{ chapterNumber: number; description: string }>>([])
+
+const outlineStreamItems = computed(() => {
+  const text = outlineStreamText.value
+  const items: Array<{ chapterNumber: number; description: string }> = []
+  const regex = /\{\s*"chapterNumber"\s*:\s*(\d+)\s*,\s*"description"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g
+  let match
+  while ((match = regex.exec(text)) !== null) {
+    items.push({ chapterNumber: parseInt(match[1]), description: match[2].replace(/\\"/g, '"').replace(/\\n/g, '\n') })
+  }
+  return items
+})
 const generateOutlineForm = reactive<GenerateOutlineForm>({
   idea: '',
   chapterCount: 20
@@ -503,6 +516,7 @@ async function regenerateOutlinesFromChapter() {
   }
 
   generatingOutline.value = true
+  outlineStreamText.value = ''
   try {
     await startStream({
       url: '/api/ai/generate-outline',
@@ -516,12 +530,12 @@ async function regenerateOutlinesFromChapter() {
           description: outline.description
         }))
       },
-      onChunk: () => {},
+      onChunk: (chunk) => { outlineStreamText.value += chunk },
       onDone: (fullContent) => {
         try {
-          const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
+          const jsonMatch = fullContent.match(/\[[\s\S]*\]/)
           const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
-          const outlines = parsed.outlines || []
+          const outlines = Array.isArray(parsed) ? parsed : (parsed.outlines || [])
           if (!outlines.length) {
             message.warning('AI 未返回可用大纲')
             return
@@ -562,6 +576,7 @@ async function generateOutlines() {
   }
 
   generatingOutline.value = true
+  outlineStreamText.value = ''
   try {
     await startStream({
       url: '/api/ai/generate-outline',
@@ -570,12 +585,12 @@ async function generateOutlines() {
         idea,
         chapterCount: generateOutlineForm.chapterCount
       },
-      onChunk: () => {},
+      onChunk: (chunk) => { outlineStreamText.value += chunk },
       onDone: (fullContent) => {
         try {
-          const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
+          const jsonMatch = fullContent.match(/\[[\s\S]*\]/)
           const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
-          const outlines = parsed.outlines || []
+          const outlines = Array.isArray(parsed) ? parsed : (parsed.outlines || [])
           if (!outlines.length) {
             message.warning('AI 未返回可用大纲')
             return
@@ -840,6 +855,7 @@ const showGenerateDialog = ref(false)
 const generateCount = ref(3)
 const generatePromptId = ref<number>(0)
 const generating = ref(false)
+const characterStreamText = ref('')
 
 const showExportDialog = ref(false)
 const exportFormat = ref<'txt' | 'md' | 'epub'>('md')
@@ -889,19 +905,33 @@ function openGenerateDialog() {
 
 async function generateCharacters() {
   generating.value = true
+  characterStreamText.value = ''
   try {
-    const result = await post<{ generated: number }>(
-      `/api/novels/${novelId.value}/characters/generate`,
-      {
+    await startStream({
+      url: `/api/novels/${novelId.value}/characters/generate`,
+      body: {
         count: generateCount.value,
         promptTemplateId: generatePromptId.value || undefined
-      }
-    )
-    message.success(`成功生成 ${result.generated} 个角色`)
-    showGenerateDialog.value = false
-    await refreshCharacters()
-  } catch {
-    // useApi handles error display
+      },
+      onChunk: (chunk) => { characterStreamText.value += chunk },
+      onDone: async (fullContent) => {
+        try {
+          const jsonMatch = fullContent.match(/\[[\s\S]*\]/)
+          const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
+          if (!Array.isArray(parsed) || !parsed.length) {
+            message.warning('AI 未返回可用角色')
+            return
+          }
+          await post(`/api/novels/${novelId.value}/characters-batch`, { characters: parsed })
+          message.success(`成功生成 ${parsed.length} 个角色`)
+          showGenerateDialog.value = false
+          await refreshCharacters()
+        } catch {
+          message.warning('AI 返回格式异常')
+        }
+      },
+      onError: (err) => { message.error(err) }
+    })
   } finally {
     generating.value = false
   }
@@ -2180,35 +2210,61 @@ async function savePlotPoint() {
       preset="card"
       title="AI 生成大纲"
       class="max-w-md"
+      :mask-closable="!generatingOutline"
+      :close-on-esc="!generatingOutline"
+      :closable="!generatingOutline"
     >
       <div class="space-y-4">
-        <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)"
-            >故事核心想法</label
-          >
-          <NInput
-            v-model:value="generateOutlineForm.idea"
-            type="textarea"
-            :autosize="{ minRows: 4, maxRows: 8 }"
-            placeholder="输入主线目标、核心冲突、结局方向等"
-          />
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)">章节数量</label>
-          <NInputNumber
-            v-model:value="generateOutlineForm.chapterCount"
-            :min="3"
-            :max="200"
-            class="w-full"
-          />
-        </div>
+        <template v-if="generatingOutline">
+          <div class="max-h-72 overflow-y-auto space-y-2">
+            <div v-if="!outlineStreamItems.length" class="flex items-center gap-2 text-sm text-(--ui-text-muted) py-4 justify-center">
+              <Icon icon="lucide:loader-2" class="w-4 h-4 animate-spin" />
+              <span>正在生成大纲...</span>
+            </div>
+            <div
+              v-for="item in outlineStreamItems"
+              :key="item.chapterNumber"
+              class="flex gap-2 p-2 rounded-md bg-(--ui-bg-elevated)"
+            >
+              <span class="shrink-0 w-7 h-7 rounded-full bg-(--ui-primary)/10 text-(--ui-primary) flex items-center justify-center text-xs font-medium">{{ item.chapterNumber }}</span>
+              <p class="text-sm text-(--ui-text) leading-relaxed pt-0.5">{{ item.description }}</p>
+            </div>
+            <div v-if="outlineStreamItems.length" class="flex items-center gap-1 text-xs text-(--ui-text-dimmed) pt-1">
+              <Icon icon="lucide:loader-2" class="w-3 h-3 animate-spin" />
+              <span>已生成 {{ outlineStreamItems.length }} 章...</span>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium text-(--ui-text)"
+              >故事核心想法</label
+            >
+            <NInput
+              v-model:value="generateOutlineForm.idea"
+              type="textarea"
+              :autosize="{ minRows: 4, maxRows: 8 }"
+              placeholder="输入主线目标、核心冲突、结局方向等"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium text-(--ui-text)">章节数量</label>
+            <NInputNumber
+              v-model:value="generateOutlineForm.chapterCount"
+              :min="3"
+              :max="200"
+              class="w-full"
+            />
+          </div>
+        </template>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton @click="showGenerateOutlineDialog = false">取消</NButton>
+          <NButton :disabled="generatingOutline" @click="showGenerateOutlineDialog = false">取消</NButton>
           <NButton
             type="primary"
             :loading="generatingOutline"
+            :disabled="generatingOutline"
             @click="generateOutlines"
           >
             <template #icon><Icon icon="lucide:sparkles" /></template>
@@ -2224,47 +2280,73 @@ async function savePlotPoint() {
       preset="card"
       title="重新规划后续大纲"
       class="max-w-md"
+      :mask-closable="!generatingOutline"
+      :close-on-esc="!generatingOutline"
+      :closable="!generatingOutline"
     >
       <div class="space-y-4">
-        <NAlert type="info" title="仅替换起始章节及之后的大纲">
-          起始章节之前的大纲会被保留，生成结果需要你确认后手动保存。
-        </NAlert>
-        <div class="grid grid-cols-2 gap-3">
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium text-(--ui-text)">起始章节</label>
-            <NInputNumber
-              v-model:value="regenerateOutlineForm.startChapter"
-              :min="1"
-              :max="200"
-              class="w-full"
-            />
+        <template v-if="generatingOutline">
+          <div class="max-h-72 overflow-y-auto space-y-2">
+            <div v-if="!outlineStreamItems.length" class="flex items-center gap-2 text-sm text-(--ui-text-muted) py-4 justify-center">
+              <Icon icon="lucide:loader-2" class="w-4 h-4 animate-spin" />
+              <span>正在生成大纲...</span>
+            </div>
+            <div
+              v-for="item in outlineStreamItems"
+              :key="item.chapterNumber"
+              class="flex gap-2 p-2 rounded-md bg-(--ui-bg-elevated)"
+            >
+              <span class="shrink-0 w-7 h-7 rounded-full bg-(--ui-primary)/10 text-(--ui-primary) flex items-center justify-center text-xs font-medium">{{ item.chapterNumber }}</span>
+              <p class="text-sm text-(--ui-text) leading-relaxed pt-0.5">{{ item.description }}</p>
+            </div>
+            <div v-if="outlineStreamItems.length" class="flex items-center gap-1 text-xs text-(--ui-text-dimmed) pt-1">
+              <Icon icon="lucide:loader-2" class="w-3 h-3 animate-spin" />
+              <span>已生成 {{ outlineStreamItems.length }} 章...</span>
+            </div>
+          </div>
+        </template>
+        <template v-else>
+          <NAlert type="info" title="仅替换起始章节及之后的大纲">
+            起始章节之前的大纲会被保留，生成结果需要你确认后手动保存。
+          </NAlert>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="space-y-1.5">
+              <label class="text-sm font-medium text-(--ui-text)">起始章节</label>
+              <NInputNumber
+                v-model:value="regenerateOutlineForm.startChapter"
+                :min="1"
+                :max="200"
+                class="w-full"
+              />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-sm font-medium text-(--ui-text)">生成数量</label>
+              <NInputNumber
+                v-model:value="regenerateOutlineForm.chapterCount"
+                :min="3"
+                :max="200"
+                class="w-full"
+              />
+            </div>
           </div>
           <div class="space-y-1.5">
-            <label class="text-sm font-medium text-(--ui-text)">生成数量</label>
-            <NInputNumber
-              v-model:value="regenerateOutlineForm.chapterCount"
-              :min="3"
-              :max="200"
-              class="w-full"
+            <label class="text-sm font-medium text-(--ui-text)">后续规划方向</label>
+            <NInput
+              v-model:value="regenerateOutlineForm.idea"
+              type="textarea"
+              :autosize="{ minRows: 4, maxRows: 8 }"
+              placeholder="描述从这一章开始的剧情目标、转折、结局方向等"
             />
           </div>
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)">后续规划方向</label>
-          <NInput
-            v-model:value="regenerateOutlineForm.idea"
-            type="textarea"
-            :autosize="{ minRows: 4, maxRows: 8 }"
-            placeholder="描述从这一章开始的剧情目标、转折、结局方向等"
-          />
-        </div>
+        </template>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton @click="showRegenerateOutlineDialog = false">取消</NButton>
+          <NButton :disabled="generatingOutline" @click="showRegenerateOutlineDialog = false">取消</NButton>
           <NButton
             type="primary"
             :loading="generatingOutline"
+            :disabled="generatingOutline"
             @click="regenerateOutlinesFromChapter"
           >
             <template #icon><Icon icon="lucide:refresh-cw" /></template>
@@ -2280,35 +2362,46 @@ async function savePlotPoint() {
       preset="card"
       title="AI 生成角色"
       class="max-w-md"
+      :mask-closable="!generating"
+      :close-on-esc="!generating"
+      :closable="!generating"
     >
       <div class="space-y-4">
-        <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)">生成数量</label>
-          <NInputNumber
-            v-model:value="generateCount"
-            :min="1"
-            :max="20"
-            class="w-full"
-          />
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)">提示词模板</label>
-          <NSelect
-            v-model:value="generatePromptId"
-            :options="promptOptions"
-            placeholder="选择提示词模板"
-          />
-          <p class="text-xs text-(--ui-text-dimmed)">
-            管理员可在后台「提示词模板」中配置角色生成提示词
-          </p>
-        </div>
+        <template v-if="generating">
+          <div class="rounded-lg bg-(--ui-bg-elevated) p-3 max-h-64 overflow-y-auto">
+            <pre class="text-xs text-(--ui-text-muted) whitespace-pre-wrap font-sans leading-relaxed">{{ characterStreamText || '正在生成角色...' }}</pre>
+          </div>
+        </template>
+        <template v-else>
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium text-(--ui-text)">生成数量</label>
+            <NInputNumber
+              v-model:value="generateCount"
+              :min="1"
+              :max="20"
+              class="w-full"
+            />
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium text-(--ui-text)">提示词模板</label>
+            <NSelect
+              v-model:value="generatePromptId"
+              :options="promptOptions"
+              placeholder="选择提示词模板"
+            />
+            <p class="text-xs text-(--ui-text-dimmed)">
+              管理员可在后台「提示词模板」中配置角色生成提示词
+            </p>
+          </div>
+        </template>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton @click="showGenerateDialog = false">取消</NButton>
+          <NButton :disabled="generating" @click="showGenerateDialog = false">取消</NButton>
           <NButton
             type="primary"
             :loading="generating"
+            :disabled="generating"
             @click="generateCharacters"
           >
             <template #icon><Icon icon="lucide:sparkles" /></template>

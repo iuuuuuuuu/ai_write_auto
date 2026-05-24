@@ -618,7 +618,7 @@ function resetImport() {
     </section>
 
     <!-- Create Modal -->
-    <NModal v-model:show="showCreateModal" preset="card" :title="t('novel.create')" style="max-width: 480px;" @after-leave="createStep = 1">
+    <NModal v-model:show="showCreateModal" preset="card" :title="t('novel.create')" style="max-width: 480px;" :mask-closable="!generatingDescription && !generatingWorldbuilding" :close-on-esc="!generatingDescription && !generatingWorldbuilding" :closable="!generatingDescription && !generatingWorldbuilding" @after-leave="createStep = 1">
       <!-- Step indicator -->
       <div class="mb-4 flex items-center gap-2 text-xs text-(--ui-text-muted)">
         <span :class="createStep === 1 ? 'text-(--ui-primary) font-semibold' : ''">1. 基本信息</span>
