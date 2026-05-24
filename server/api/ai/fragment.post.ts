@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
+import { createRequestSignal } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
-import { ChapterSchema, NovelSchema } from '../../database/entities'
+import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
 
 const fragmentSchema = z.object({
   novelId: z.number().int().positive(),
@@ -47,9 +48,13 @@ export default defineEventHandler(async (event) => {
     id: data.novelId,
     user: auth.userId
   })
+  const characters = await em.find(CharacterSchema, { novel: data.novelId })
 
   const chapterContent = chapter.content || ''
   const context = data.contextBefore || chapterContent.slice(-1000)
+  const characterContext = characters.length > 0
+    ? `\n角色：${characters.slice(0, 8).map(c => `${c.name}${c.traits ? `(${c.traits})` : ''}`).join('、')}`
+    : ''
 
   const systemPrompt: string = TYPE_PROMPTS[data.type] ?? TYPE_PROMPTS.dialogue!
   const typeLabel: string = TYPE_LABELS[data.type] ?? '内容'
@@ -57,12 +62,12 @@ export default defineEventHandler(async (event) => {
   const messages = [
     {
       role: 'system' as const,
-      content: systemPrompt
+      content: `${systemPrompt}${novel?.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
     },
     {
       role: 'user' as const,
       content: `小说：${novel?.title || '未命名'}
-章节：${chapter.title}
+章节：${chapter.title}${characterContext}
 
 上下文（光标前的内容）：
 ${context}
@@ -89,7 +94,8 @@ ${context}
           messages,
           temperature: parseFloat(aiConfig.temperature || '0.75'),
           maxTokens: 1500,
-          stream: true
+          stream: true,
+          signal: createRequestSignal(event)
         })) {
           if (chunk.content) {
             controller.enqueue(

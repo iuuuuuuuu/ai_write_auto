@@ -3,6 +3,12 @@ import type { EntityManager } from '@mikro-orm/core'
 import { streamAi, callAi, type AiRequestOptions } from './ai-client'
 import { TokenUsageSchema, ModelCostRateSchema } from '../database/entities'
 
+export function createRequestSignal(event: H3Event): AbortSignal {
+  const controller = new AbortController()
+  event.node.req.on('close', () => controller.abort())
+  return controller.signal
+}
+
 interface StreamContext {
   em: EntityManager
   userId: number
@@ -43,6 +49,8 @@ export function createStreamResponse(event: H3Event, options: AiRequestOptions, 
 
   const stream = new ReadableStream({
     async start(controller) {
+      const encoder = new TextEncoder()
+      controller.enqueue(encoder.encode(': connected\n\n'))
       try {
         let inputTokens = 0
         let outputTokens = 0

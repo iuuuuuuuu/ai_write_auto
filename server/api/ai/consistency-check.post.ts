@@ -1,10 +1,12 @@
 import { z } from 'zod'
 import { callAi } from '../../utils/ai-client'
-import { AiConfigSchema, ChapterSchema, CharacterSchema } from '../../database/entities'
+import { resolveUserAiConfig } from '../../utils/ai-configs'
+import { ChapterSchema, CharacterSchema } from '../../database/entities'
 
 const checkSchema = z.object({
   novelId: z.number().int().positive(),
   chapterId: z.number().int().positive(),
+  aiConfigId: z.number().int().positive().optional(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -13,19 +15,10 @@ export default defineEventHandler(async (event) => {
   const data = checkSchema.parse(body)
   const em = useEm(event)
 
-  const resolved = await (async () => {
-    const config = await em.findOne(AiConfigSchema, { user: auth.userId, purpose: 'consistency_check', enabled: true }, { populate: ['aiModel'] })
-      || await em.findOne(AiConfigSchema, { user: auth.userId, purpose: 'extraction', enabled: true }, { populate: ['aiModel'] })
-    if (!config || !config.aiModel) {
-      throw createError({ statusCode: 400, message: '未找到一致性检查或信息提取的 AI 配置' })
-    }
-    const m = config.aiModel as any
-    if (!m.enabled) throw createError({ statusCode: 400, message: `模型「${m.name}」已被禁用` })
-    return { apiUrl: m.apiUrl, apiKey: m.apiKey, model: m.model, maxTokens: m.maxTokens, temperature: config.temperature }
-  })()
+  const resolved = await resolveUserAiConfig(em, auth.userId, 'consistency_check', data.aiConfigId)
 
   const chapters = await em.find(ChapterSchema, {
-    novel: data.novelId,
+    novel: { id: data.novelId, user: auth.userId },
     deletedAt: null,
   }, { orderBy: { chapterNumber: 'ASC' } })
 

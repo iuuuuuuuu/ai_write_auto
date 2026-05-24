@@ -12,6 +12,7 @@ import {
   stopTrashCleanup
 } from '../services/trash-cleanup'
 import { ensureVectorTable } from '../services/vector-store'
+import { tryAutoLoadEmbedding } from '../services/embedding'
 
 export default defineNitroPlugin(async (nitroApp) => {
   const fileConfig = readDbConfig()
@@ -58,6 +59,8 @@ export default defineNitroPlugin(async (nitroApp) => {
     } catch (e) {
       console.warn('[db] Vector table creation skipped:', e)
     }
+
+    tryAutoLoadEmbedding()
 
     nitroApp.hooks.hook('close', async () => {
       stopScheduledBackup()

@@ -6,6 +6,7 @@ export interface AiRequestOptions {
   temperature?: number
   maxTokens?: number
   stream?: boolean
+  signal?: AbortSignal
 }
 
 export interface AiStreamChunk {
@@ -115,6 +116,10 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
   const controller = new AbortController()
   const connectTimeout = setTimeout(() => controller.abort(), 30000)
 
+  if (options.signal) {
+    options.signal.addEventListener('abort', () => controller.abort(), { once: true })
+  }
+
   let response: Response
   try {
     response = await fetch(options.apiUrl, {
@@ -152,7 +157,11 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
   let insideThink = false
 
   while (true) {
-    const { done, value } = await reader.read()
+    const readPromise = reader.read()
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('AI API 流式读取超时（30秒无数据）')), 30000)
+    )
+    const { done, value } = await Promise.race([readPromise, timeoutPromise])
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })

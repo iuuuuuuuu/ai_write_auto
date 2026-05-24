@@ -1,5 +1,6 @@
 import { AiConfigSchema } from '../../database/entities'
 import { callAi } from '../../utils/ai-client'
+import { getEmbeddingStatus } from '../../services/embedding'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -51,6 +52,7 @@ export default defineEventHandler(async (event) => {
     available: true,
     checkedAt,
     checkedConnectivity: shouldCheckConnectivity,
-    reason: null
+    reason: null,
+    rag: getEmbeddingStatus()
   }
 })

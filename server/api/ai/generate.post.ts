@@ -1,8 +1,9 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
+import { createRequestSignal } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
-import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema, ModelCostRateSchema } from '../../database/entities'
+import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema, ModelCostRateSchema, NovelOutlineSchema } from '../../database/entities'
 import { isEmbeddingReady } from '../../services/embedding'
 import { retrieveRelevant } from '../../services/character-rag'
 import { recordAiGeneration } from '../../utils/writing-stats'
@@ -33,13 +34,22 @@ export default defineEventHandler(async (event) => {
 
   const chapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
   const currentChapter = data.chapterId ? chapters.find(c => c.id === data.chapterId) : undefined
+  const precedingChapters = currentChapter
+    ? chapters.filter(c => c.chapterNumber < currentChapter.chapterNumber)
+    : chapters
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
   const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
   const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
 
+  let chapterOutline = data.chapterOutline
+  if (!chapterOutline && currentChapter) {
+    const outline = await em.findOne(NovelOutlineSchema, { novel: data.novelId, chapterNumber: currentChapter.chapterNumber })
+    if (outline) chapterOutline = outline.description
+  }
+
   let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
   if (isEmbeddingReady()) {
-    const query = [currentChapter?.title, data.chapterOutline, data.direction].filter(Boolean).join(' ')
+    const query = [currentChapter?.title, chapterOutline, data.direction].filter(Boolean).join(' ')
     if (query) {
       ragContext = await retrieveRelevant(data.novelId, query, 10)
     }
@@ -47,12 +57,12 @@ export default defineEventHandler(async (event) => {
 
   const messages = buildGenerationPrompt({
     novel,
-    chapters,
+    chapters: precedingChapters,
     characters,
     plotPoints,
     storyArcs,
     currentChapter: currentChapter ? { title: currentChapter.title, chapterNumber: currentChapter.chapterNumber } : undefined,
-    currentChapterOutline: data.chapterOutline,
+    currentChapterOutline: chapterOutline,
     userDirection: data.direction,
     ragContext
   })
@@ -91,7 +101,8 @@ export default defineEventHandler(async (event) => {
           messages,
           temperature,
           maxTokens: data.maxTokens || aiConfig.maxTokens || 4096,
-          stream: true
+          stream: true,
+          signal: createRequestSignal(event)
         })) {
           if (chunk.content) {
             fullContent += chunk.content

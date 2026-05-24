@@ -371,11 +371,13 @@ export function buildRegenerationPrompt(context: {
   characters: any[]
   plotPoints: any[]
   storyArcs?: any[]
+  currentChapter?: { title: string; chapterNumber: number }
   currentChapterOutline?: string
   previousResult: string
   feedback: string
+  ragContext?: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }>
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const { novel, chapters, characters, plotPoints, storyArcs, currentChapterOutline, previousResult, feedback } = context
+  const { novel, chapters, characters, plotPoints, storyArcs, currentChapter, currentChapterOutline, previousResult, feedback, ragContext } = context
 
   const systemPrompt = `你是一位专业的小说作家。用户对上一次生成的章节内容不满意，并提供了修改反馈。请根据反馈重新生成章节内容。
 
@@ -384,28 +386,56 @@ export function buildRegenerationPrompt(context: {
 - 保持与已有章节一致的写作风格和叙事视角
 - 不要简单地在原文基础上修补，而是重新构思并生成
 - 保留原文中用户没有提出异议的优秀部分
-- 确保角色性格和行为的连贯性${novel.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
+- 确保角色性格和行为的连贯性
+- 必须在一个完整的段落结尾处停止，不要在句子中间截断${novel.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
 
   let userPrompt = `## 小说信息\n标题：${novel.title}\n`
   if (novel.genre) userPrompt += `类型：${novel.genre}\n`
   if (novel.worldSetting) userPrompt += `\n## 世界观设定\n${novel.worldSetting}\n`
 
-  if (characters.length > 0) {
+  if (currentChapter) {
+    userPrompt += `\n## 当前章节\n第${currentChapter.chapterNumber}章「${currentChapter.title}」\n`
+  }
+
+  if (ragContext?.length) {
+    userPrompt += `\n## 相关角色事件（基于本章检索）\n`
+    for (const item of ragContext) {
+      userPrompt += `- ${item.characterName}：${item.content}\n`
+    }
+  } else if (characters.length > 0) {
     userPrompt += `\n## 角色档案\n`
     for (const char of characters.slice(0, 10)) {
       userPrompt += `- ${char.name}`
       if (char.description) userPrompt += `：${char.description}`
       if (char.traits) userPrompt += `（性格：${char.traits}）`
+      if (char.relationships) userPrompt += `（关系：${char.relationships}）`
       userPrompt += '\n'
     }
   }
 
   if (chapters.length > 0) {
-    const recentChapters = chapters.slice(-3)
-    userPrompt += `\n## 近期章节摘要\n`
-    for (const ch of recentChapters) {
+    userPrompt += `\n## 近期章节\n`
+    const currentIdx = currentChapter
+      ? chapters.findIndex(ch => ch.chapterNumber === currentChapter.chapterNumber)
+      : chapters.length
+    const precedingChapters = chapters.slice(Math.max(0, currentIdx - 5), currentIdx)
+    for (const ch of precedingChapters) {
       if (ch.summary) {
         userPrompt += `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}\n`
+      }
+    }
+    const lastChapter = precedingChapters[precedingChapters.length - 1]
+    if (lastChapter?.content) {
+      userPrompt += `\n## 上一章全文（第${lastChapter.chapterNumber}章）\n${lastChapter.content.slice(-3000)}\n`
+    }
+  }
+
+  if (plotPoints.length > 0) {
+    const active = plotPoints.filter((p: any) => p.status !== 'resolved')
+    if (active.length > 0) {
+      userPrompt += `\n## 活跃剧情线索\n`
+      for (const p of active.slice(0, 10)) {
+        userPrompt += `- [${p.type}/${p.status}] ${p.description}\n`
       }
     }
   }
@@ -416,7 +446,11 @@ export function buildRegenerationPrompt(context: {
 
   userPrompt += `\n## 上次生成的内容（用户不满意）\n${previousResult.slice(0, 4000)}\n`
   userPrompt += `\n## 用户反馈\n${feedback}\n`
-  userPrompt += `\n请根据以上反馈重新生成本章内容。`
+  if (currentChapter) {
+    userPrompt += `\n请根据以上反馈重新生成第${currentChapter.chapterNumber}章「${currentChapter.title}」的内容。不要包含章节标题，直接从正文开始。`
+  } else {
+    userPrompt += `\n请根据以上反馈重新生成本章内容。`
+  }
 
   return [
     { role: 'system', content: systemPrompt },

@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
     },
     {
       role: 'user' as const,
-      content: `${charInfo ? `## 角色档案\n${charInfo}\n\n` : ''}## 章节内容\n${chapter.content.slice(0, 10000)}`
+      content: `## 小说信息\n标题：${novel.title}${novel.genre ? `\n类型：${novel.genre}` : ''}\n章节：第${chapter.chapterNumber}章「${chapter.title}」\n\n${charInfo ? `## 角色档案\n${charInfo}\n\n` : ''}## 章节内容\n${chapter.content.slice(0, 10000)}`
     }
   ]
 

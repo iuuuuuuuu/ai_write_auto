@@ -1,8 +1,11 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
+import { createRequestSignal } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildRegenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema, ModelCostRateSchema } from '../../database/entities'
+import { isEmbeddingReady } from '../../services/embedding'
+import { retrieveRelevant } from '../../services/character-rag'
 
 const regenerateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -37,15 +40,25 @@ export default defineEventHandler(async (event) => {
     ? chapters.find(ch => ch.id === data.chapterId)
     : undefined
 
+  let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
+  if (isEmbeddingReady()) {
+    const query = [currentChapter?.title, data.feedback].filter(Boolean).join(' ')
+    if (query) {
+      ragContext = await retrieveRelevant(data.novelId, query, 10)
+    }
+  }
+
   const messages = buildRegenerationPrompt({
     novel,
     chapters,
     characters,
     plotPoints,
     storyArcs,
+    currentChapter: currentChapter ? { title: currentChapter.title, chapterNumber: currentChapter.chapterNumber } : undefined,
     currentChapterOutline: currentChapter?.summary || undefined,
     previousResult: data.previousResult,
-    feedback: data.feedback
+    feedback: data.feedback,
+    ragContext
   })
 
   const task = em.create(GenerationTaskSchema, {
@@ -83,7 +96,8 @@ export default defineEventHandler(async (event) => {
           messages,
           temperature,
           maxTokens: data.maxTokens || aiConfig.maxTokens || 4096,
-          stream: true
+          stream: true,
+          signal: createRequestSignal(event)
         })) {
           if (chunk.content) {
             fullContent += chunk.content

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
-import { resolveUserAiConfig } from '../../utils/ai-configs'
+import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, NovelOutlineSchema, GenerationTaskSchema } from '../../database/entities'
 import { recordAiGeneration } from '../../utils/writing-stats'
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
+  const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
 
   const task = em.create(GenerationTaskSchema, {
     novel: data.novelId,
@@ -55,6 +55,8 @@ export default defineEventHandler(async (event) => {
   const encoder = new TextEncoder()
   const stream = new ReadableStream({
     async start(controller) {
+      const encoder = new TextEncoder()
+      controller.enqueue(encoder.encode(': connected\n\n'))
       try {
         for (
           let chapterNum = data.fromChapter;

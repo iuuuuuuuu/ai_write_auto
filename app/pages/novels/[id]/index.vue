@@ -211,7 +211,7 @@ const outlineStreamItems = computed(() => {
   const regex = /\{\s*"chapterNumber"\s*:\s*(\d+)\s*,\s*"description"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g
   let match
   while ((match = regex.exec(text)) !== null) {
-    items.push({ chapterNumber: parseInt(match[1]), description: match[2].replace(/\\"/g, '"').replace(/\\n/g, '\n') })
+    items.push({ chapterNumber: parseInt(match[1]!), description: match[2]!.replace(/\\"/g, '"').replace(/\\n/g, '\n') })
   }
   return items
 })

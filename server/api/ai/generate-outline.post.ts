@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { createStreamResponse } from '../../utils/ai-stream'
-import { resolveUserAiConfig } from '../../utils/ai-configs'
-import { NovelSchema } from '../../database/entities'
+import { resolveNovelAiConfig } from '../../utils/ai-configs'
+import { NovelSchema, CharacterSchema } from '../../database/entities'
 
 const outlineGenSchema = z.object({
   novelId: z.number().int().positive(),
@@ -26,7 +26,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
+  const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
+  const characters = await em.find(CharacterSchema, { novel: data.novelId })
 
   const startChapter = data.startChapter || 1
   const existingContext = data.existingOutlines?.length ?
@@ -35,6 +36,12 @@ export default defineEventHandler(async (event) => {
         .map((item) => `第${item.chapterNumber}章：${item.description}`)
         .join('\n')}`
     : ''
+
+  const characterContext = characters.length > 0
+    ? `\n角色：${characters.slice(0, 15).map(c => `${c.name}${c.description ? `(${c.description})` : ''}`).join('、')}`
+    : ''
+
+  const worldContext = novel.worldSetting ? `\n世界观设定：${novel.worldSetting.slice(0, 500)}` : ''
 
   const messages = [
     {
@@ -47,7 +54,7 @@ export default defineEventHandler(async (event) => {
     },
     {
       role: 'user' as const,
-      content: `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}\n故事核心想法：${data.idea}${existingContext}`
+      content: `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}${worldContext}${characterContext}\n\n故事核心想法：${data.idea}${existingContext}`
     }
   ]
 
