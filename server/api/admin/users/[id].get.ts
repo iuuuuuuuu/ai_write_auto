@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const [configs, novels, usage] = await Promise.all([
-    em.find(AiConfigSchema, { user: id }),
+    em.find(AiConfigSchema, { user: id }, { populate: ['aiModel'] }),
     em.find(NovelSchema, { user: id }),
     em.find(TokenUsageSchema, { user: id }),
   ])
@@ -34,20 +34,27 @@ export default defineEventHandler(async (event) => {
       role: user.role,
       createdAt: user.createdAt,
     },
-    aiConfigs: configs.map((config) => ({
-      id: config.id,
-      name: config.name,
-      purpose: config.purpose,
-      apiUrl: config.apiUrl,
-      model: config.model,
-      temperature: config.temperature,
-      maxTokens: config.maxTokens,
-      isDefault: config.isDefault,
-      enabled: config.enabled,
-      maskedApiKey: maskApiKey(config.apiKey),
-      createdAt: config.createdAt,
-      updatedAt: config.updatedAt
-    })),
+    aiConfigs: configs.map((config) => {
+      const aiModel = config.aiModel as any
+      return {
+        id: config.id,
+        purpose: config.purpose,
+        temperature: config.temperature,
+        isDefault: config.isDefault,
+        enabled: config.enabled,
+        aiModel: aiModel ? {
+          id: aiModel.id,
+          name: aiModel.name,
+          model: aiModel.model,
+          apiUrl: aiModel.apiUrl,
+          maxTokens: aiModel.maxTokens,
+          maskedApiKey: maskApiKey(aiModel.apiKey),
+          enabled: aiModel.enabled
+        } : null,
+        createdAt: config.createdAt,
+        updatedAt: config.updatedAt
+      }
+    }),
     novels: activeNovels,
     stats: {
       novels: activeNovels.length,

@@ -29,8 +29,6 @@ const newNovelWorldSetting = shallowRef('')
 const newNovelStyleGuide = shallowRef('')
 const selectedTemplateId = shallowRef<number | null>(null)
 const creatingNovel = shallowRef(false)
-const generatingWorldbuilding = shallowRef(false)
-const generatingDescription = shallowRef(false)
 const creatingSampleNovel = shallowRef(false)
 const showOnboardingTips = shallowRef(false)
 const createStep = shallowRef(1)
@@ -200,45 +198,55 @@ async function handleCreateNovel() {
   }
 }
 
+const { streaming: generatingDescription, startStream: streamDescription } = useAiStream()
+
 async function generateDescription() {
   const title = newNovelTitle.value.trim()
   const genre = newNovelGenre.value
   if (!title || !genre) return
-  generatingDescription.value = true
-  try {
-    const tpl = selectedTemplateId.value
-      ? novelTemplates.value.find(t => t.id === selectedTemplateId.value)
-      : null
-    const result = await post<{ description: string }>('/api/ai/suggest-description', {
-      title,
-      genre,
-      template: tpl?.name || undefined
-    })
-    if (result.description) newNovelDescription.value = result.description
-  } catch {
-    // useApi handles error display
-  } finally {
-    generatingDescription.value = false
-  }
+  const tpl = selectedTemplateId.value
+    ? novelTemplates.value.find(t => t.id === selectedTemplateId.value)
+    : null
+  newNovelDescription.value = ''
+  await streamDescription({
+    url: '/api/ai/suggest-description',
+    body: { title, genre, template: tpl?.name || undefined },
+    onChunk: (content) => { newNovelDescription.value += content },
+    onError: (err) => { message.error(err) }
+  })
 }
+
+const { streaming: generatingWorldbuilding, startStream: streamWorldbuilding } = useAiStream()
 
 async function generateWorldbuilding() {
   const title = newNovelTitle.value.trim()
   if (!title) return
-  generatingWorldbuilding.value = true
-  try {
-    const result = await post<{ worldSetting: string; styleGuide: string }>('/api/ai/worldbuilding', {
+  newNovelWorldSetting.value = ''
+  newNovelStyleGuide.value = ''
+  let buffer = ''
+  await streamWorldbuilding({
+    url: '/api/ai/worldbuilding',
+    body: {
       title,
       description: newNovelDescription.value.trim() || undefined,
       genre: newNovelGenre.value || undefined
-    })
-    if (result.worldSetting) newNovelWorldSetting.value = result.worldSetting
-    if (result.styleGuide) newNovelStyleGuide.value = result.styleGuide
-  } catch {
-    // useApi handles error display
-  } finally {
-    generatingWorldbuilding.value = false
-  }
+    },
+    onChunk: (content) => {
+      buffer += content
+      newNovelWorldSetting.value = buffer
+    },
+    onDone: (fullContent) => {
+      try {
+        const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
+        const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
+        newNovelWorldSetting.value = parsed.worldSetting || fullContent
+        newNovelStyleGuide.value = parsed.styleGuide || ''
+      } catch {
+        newNovelWorldSetting.value = fullContent
+      }
+    },
+    onError: (err) => { message.error(err) }
+  })
 }
 
 function getStatusLabel(status: string) {

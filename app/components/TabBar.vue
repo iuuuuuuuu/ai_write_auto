@@ -12,7 +12,8 @@ const isRefreshing = ref(false)
 function handleRefresh() {
   if (isRefreshing.value) return
   isRefreshing.value = true
-  useState('page-refresh-key').value++
+  const key = useState<number>('page-refresh-key', () => 0)
+  key.value++
   setTimeout(() => { isRefreshing.value = false }, 600)
 }
 

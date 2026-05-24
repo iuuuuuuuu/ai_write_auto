@@ -22,6 +22,9 @@ function serializeModel(model: any) {
     model: model.model,
     maxTokens: model.maxTokens,
     enabled: model.enabled,
+    lastCheckAt: model.lastCheckAt?.toISOString?.() || model.lastCheckAt || null,
+    lastCheckAvailable: model.lastCheckAvailable,
+    lastCheckReason: model.lastCheckReason,
     createdAt: model.createdAt,
     updatedAt: model.updatedAt
   }

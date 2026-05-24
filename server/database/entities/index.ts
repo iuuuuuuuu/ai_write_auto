@@ -18,7 +18,7 @@ export interface SiteConfig {
 }
 
 export interface AiModel {
-  [OptionalProps]?: 'id' | 'enabled' | 'createdAt' | 'updatedAt'
+  [OptionalProps]?: 'id' | 'enabled' | 'lastCheckAt' | 'lastCheckAvailable' | 'lastCheckReason' | 'createdAt' | 'updatedAt'
   id: number
   user: User
   name: string
@@ -27,6 +27,9 @@ export interface AiModel {
   model: string
   maxTokens: number
   enabled: boolean
+  lastCheckAt: Date | null
+  lastCheckAvailable: boolean | null
+  lastCheckReason: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -372,6 +375,9 @@ export const AiModelSchema = new EntitySchema<AiModel>({
     model: { type: 'string' },
     maxTokens: { type: 'number', fieldName: 'max_tokens', default: 4096 },
     enabled: { type: 'boolean', default: true },
+    lastCheckAt: { type: UnixTimestampType, fieldName: 'last_check_at', nullable: true, default: null },
+    lastCheckAvailable: { type: 'boolean', fieldName: 'last_check_available', nullable: true, default: null },
+    lastCheckReason: { type: 'string', fieldName: 'last_check_reason', nullable: true, default: null },
     createdAt: {
       type: UnixTimestampType,
       fieldName: 'created_at',

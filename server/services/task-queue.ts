@@ -34,6 +34,7 @@ async function resolveConfigForPurpose(em: any, purpose: string): Promise<Resolv
   const aiModel = config.aiModel as any
   if (!aiModel.enabled) return null
   return {
+    id: config.id,
     configId: config.id,
     modelId: aiModel.id,
     apiUrl: aiModel.apiUrl,

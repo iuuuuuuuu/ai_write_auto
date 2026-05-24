@@ -47,6 +47,42 @@ export async function callAi(options: AiRequestOptions): Promise<string> {
   return stripThinking(content)
 }
 
+export interface AiResultWithUsage {
+  content: string
+  inputTokens: number
+  outputTokens: number
+}
+
+export async function callAiWithUsage(options: AiRequestOptions): Promise<AiResultWithUsage> {
+  const response = await fetch(options.apiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${options.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: options.model,
+      messages: options.messages,
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens ?? 4096,
+      stream: false,
+    }),
+  })
+
+  if (!response.ok) {
+    const err = await response.text()
+    throw new Error(`AI API error (${response.status}): ${err}`)
+  }
+
+  const data = await response.json()
+  const content = data.choices[0]?.message?.content || ''
+  return {
+    content: stripThinking(content),
+    inputTokens: data.usage?.prompt_tokens || 0,
+    outputTokens: data.usage?.completion_tokens || 0
+  }
+}
+
 export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStreamChunk> {
   const response = await fetch(options.apiUrl, {
     method: 'POST',

@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { callAi } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
+import { createStreamResponse } from '../../utils/ai-stream'
 
 const worldbuildingSchema = z.object({
   title: z.string().min(1),
@@ -34,23 +34,12 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  const result = await callAi({
+  return createStreamResponse(event, {
     apiUrl: aiConfig.apiUrl,
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     messages,
     temperature: 0.85,
     maxTokens: 1500
-  })
-
-  try {
-    const jsonMatch = result.match(/\{[\s\S]*\}/)
-    const parsed = JSON.parse(jsonMatch?.[0] || result)
-    return {
-      worldSetting: String(parsed.worldSetting || ''),
-      styleGuide: String(parsed.styleGuide || '')
-    }
-  } catch {
-    return { worldSetting: '', styleGuide: '', raw: result }
-  }
+  }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

@@ -5,6 +5,7 @@ const route = useRoute()
 const novelId = computed(() => Number(route.params.id))
 const message = useMessage()
 const { post, put, del: apiDel } = useApi()
+const { startStream } = useAiStream()
 const { updateActiveTabTitle, removeTab, activeTab, setActiveTab } = useTabs('user')
 
 function closeAndGoHome() {
@@ -503,9 +504,9 @@ async function regenerateOutlinesFromChapter() {
 
   generatingOutline.value = true
   try {
-    const result = await post<GenerateOutlineResponse>(
-      '/api/ai/generate-outline',
-      {
+    await startStream({
+      url: '/api/ai/generate-outline',
+      body: {
         novelId: novelId.value,
         idea,
         chapterCount: regenerateOutlineForm.chapterCount,
@@ -514,36 +515,44 @@ async function regenerateOutlinesFromChapter() {
           chapterNumber: outline.chapterNumber,
           description: outline.description
         }))
-      }
-    )
-    if (!result.outlines.length) {
-      message.warning(result.raw || 'AI 未返回可用大纲')
-      return
-    }
-
-    const preserved = sortedOutlines.value
-      .filter((outline) => outline.chapterNumber < regenerateOutlineForm.startChapter)
-      .map((outline, index) => ({
-        chapterNumber: outline.chapterNumber,
-        description: outline.description,
-        sortOrder: index
-      }))
-    const regenerated = result.outlines.map((outline, index) => ({
-      chapterNumber: outline.chapterNumber,
-      description: outline.description,
-      sortOrder: preserved.length + index
-    }))
-
-    outlineFormItems.value = [...preserved, ...regenerated]
-    editingOutlines.value = true
-    showRegenerateOutlineDialog.value = false
-    message.success('后续大纲已重新生成，请确认后保存')
-  } catch {
-    // useApi handles error display
+      },
+      onChunk: () => {},
+      onDone: (fullContent) => {
+        try {
+          const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
+          const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
+          const outlines = parsed.outlines || []
+          if (!outlines.length) {
+            message.warning('AI 未返回可用大纲')
+            return
+          }
+          const preserved = sortedOutlines.value
+            .filter((outline) => outline.chapterNumber < regenerateOutlineForm.startChapter)
+            .map((outline, index) => ({
+              chapterNumber: outline.chapterNumber,
+              description: outline.description,
+              sortOrder: index
+            }))
+          const regenerated = outlines.map((outline: any, index: number) => ({
+            chapterNumber: outline.chapterNumber,
+            description: outline.description,
+            sortOrder: preserved.length + index
+          }))
+          outlineFormItems.value = [...preserved, ...regenerated]
+          editingOutlines.value = true
+          showRegenerateOutlineDialog.value = false
+          message.success('后续大纲已重新生成，请确认后保存')
+        } catch {
+          message.warning('AI 返回格式异常')
+        }
+      },
+      onError: (err) => { message.error(err) }
+    })
   } finally {
     generatingOutline.value = false
   }
 }
+
 
 async function generateOutlines() {
   const idea = generateOutlineForm.idea.trim()
@@ -554,28 +563,37 @@ async function generateOutlines() {
 
   generatingOutline.value = true
   try {
-    const result = await post<GenerateOutlineResponse>(
-      '/api/ai/generate-outline',
-      {
+    await startStream({
+      url: '/api/ai/generate-outline',
+      body: {
         novelId: novelId.value,
         idea,
         chapterCount: generateOutlineForm.chapterCount
-      }
-    )
-    if (!result.outlines.length) {
-      message.warning(result.raw || 'AI 未返回可用大纲')
-      return
-    }
-    outlineFormItems.value = result.outlines.map((outline, index) => ({
-      chapterNumber: outline.chapterNumber,
-      description: outline.description,
-      sortOrder: outline.sortOrder ?? index
-    }))
-    editingOutlines.value = true
-    showGenerateOutlineDialog.value = false
-    message.success('AI 大纲已生成，请确认后保存')
-  } catch {
-    // useApi handles error display
+      },
+      onChunk: () => {},
+      onDone: (fullContent) => {
+        try {
+          const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
+          const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
+          const outlines = parsed.outlines || []
+          if (!outlines.length) {
+            message.warning('AI 未返回可用大纲')
+            return
+          }
+          outlineFormItems.value = outlines.map((outline: any, index: number) => ({
+            chapterNumber: outline.chapterNumber,
+            description: outline.description,
+            sortOrder: outline.sortOrder ?? index
+          }))
+          editingOutlines.value = true
+          showGenerateOutlineDialog.value = false
+          message.success('大纲已生成，请确认后保存')
+        } catch {
+          message.warning('AI 返回格式异常')
+        }
+      },
+      onError: (err) => { message.error(err) }
+    })
   } finally {
     generatingOutline.value = false
   }

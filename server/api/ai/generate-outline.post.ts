@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { callAi } from '../../utils/ai-client'
+import { createStreamResponse } from '../../utils/ai-stream'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { NovelSchema } from '../../database/entities'
 
@@ -51,20 +51,12 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  const result = await callAi({
+  return createStreamResponse(event, {
     apiUrl: aiConfig.apiUrl,
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
     messages,
     temperature: 0.8,
     maxTokens: 4000
-  })
-
-  try {
-    const jsonMatch = result.match(/\[[\s\S]*\]/)
-    const outlines = JSON.parse(jsonMatch?.[0] || result)
-    return { outlines }
-  } catch {
-    return { outlines: [], raw: result }
-  }
+  }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

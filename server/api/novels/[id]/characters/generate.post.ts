@@ -36,10 +36,13 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const aiConfig = await em.findOne(AiConfigSchema, { purpose: 'extraction' })
-  if (!aiConfig) {
-    throw createError({ statusCode: 500, message: 'No AI config available for extraction' })
+  const configEntry = await em.findOne(AiConfigSchema, { purpose: 'extraction', enabled: true }, { populate: ['aiModel'] })
+  if (!configEntry || !configEntry.aiModel) {
+    throw createError({ statusCode: 400, message: '未找到信息提取的 AI 配置' })
   }
+  const aiModel = configEntry.aiModel as any
+  if (!aiModel.enabled) throw createError({ statusCode: 400, message: `模型「${aiModel.name}」已被禁用` })
+  const aiConfig = { apiUrl: aiModel.apiUrl, apiKey: aiModel.apiKey, model: aiModel.model }
 
   const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
   const outlines = await em.find(NovelOutlineSchema, { novel: novelId }, {
