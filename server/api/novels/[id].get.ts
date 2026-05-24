@@ -9,15 +9,18 @@ export default defineEventHandler(async (event) => {
     id,
     user: auth.userId,
     deletedAt: null,
-  }, { populate: ['aiConfig'] })
+  }, { populate: ['aiConfig', 'aiConfig.aiModel'] })
 
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
+  const aiConfig = novel.aiConfig as any
+  const aiModel = aiConfig?.aiModel as any
+
   return {
     ...novel,
-    aiConfigId: (novel.aiConfig as any)?.id || null,
-    aiConfigName: (novel.aiConfig as any)?.name || null,
+    aiConfigId: aiConfig?.id || null,
+    aiConfigName: aiModel?.name || null,
   }
 })

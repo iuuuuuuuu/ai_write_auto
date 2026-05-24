@@ -13,14 +13,20 @@ const navItems = computed(() => [
     icon: 'lucide:layout-dashboard',
     to: '/dashboard'
   },
+  {
+    label: '模型库',
+    icon: 'lucide:brain',
+    to: '/models'
+  },
+  {
+    label: t('common.settings'),
+    icon: 'lucide:settings',
+    to: '/settings'
+  },
   { label: '回收站', icon: 'lucide:trash-2', to: '/trash' }
 ])
 
-const settingsItem = computed(() => ({
-  label: t('common.settings'),
-  icon: 'lucide:settings',
-  to: '/settings'
-}))
+const settingsItem = computed(() => null as any)
 
 function isActive(to: string) {
   return route.path.startsWith(to)
@@ -246,6 +252,7 @@ onMounted(() => {
 
                 <div class="px-3 py-3">
                   <NuxtLink
+                    v-if="settingsItem"
                     :to="settingsItem.to"
                     class="mb-2 flex h-11 items-center gap-3 rounded-[1.1rem] px-3 text-[14px] font-medium transition-all duration-200"
                     :class="[

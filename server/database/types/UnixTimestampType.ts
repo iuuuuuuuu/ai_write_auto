@@ -1,8 +1,9 @@
 import { Type } from '@mikro-orm/core'
 
 export class UnixTimestampType extends Type<Date | null, number | null> {
-  override convertToDatabaseValue(value: Date | null | undefined): number | null {
+  override convertToDatabaseValue(value: Date | number | null | undefined): number | null {
     if (value == null) return null
+    if (typeof value === 'number') return value > 1e12 ? Math.floor(value / 1000) : value
     return Math.floor(value.getTime() / 1000)
   }
 
@@ -16,6 +17,6 @@ export class UnixTimestampType extends Type<Date | null, number | null> {
   }
 
   override compareAsType(): string {
-    return 'number'
+    return 'date'
   }
 }

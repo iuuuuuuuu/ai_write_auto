@@ -14,6 +14,7 @@ import {
   GenerationTaskSchema,
   ChapterSchema,
   AiConfigSchema,
+  AiModelSchema,
   CharacterSchema,
   ChapterCharacterSchema,
   CharacterAppearanceSchema,
@@ -21,9 +22,27 @@ import {
   NovelSchema
 } from '../database/entities'
 import type { GenerationTask } from '../database/entities'
+import type { ResolvedAiConfig } from '../utils/ai-configs'
 
 const MAX_RETRIES = 3
 const POST_PROCESSING_TYPES = ['extract_summary', 'extract_characters', 'consistency_check']
+
+async function resolveConfigForPurpose(em: any, purpose: string): Promise<ResolvedAiConfig | null> {
+  const config = await em.findOne(AiConfigSchema, { purpose, enabled: true, isDefault: true }, { populate: ['aiModel'] })
+    || await em.findOne(AiConfigSchema, { purpose, enabled: true }, { populate: ['aiModel'] })
+  if (!config || !config.aiModel) return null
+  const aiModel = config.aiModel as any
+  if (!aiModel.enabled) return null
+  return {
+    configId: config.id,
+    modelId: aiModel.id,
+    apiUrl: aiModel.apiUrl,
+    apiKey: aiModel.apiKey,
+    model: aiModel.model,
+    temperature: config.temperature,
+    maxTokens: aiModel.maxTokens
+  }
+}
 
 type ExtractedCharacterRole = 'main' | 'supporting' | 'mentioned'
 
@@ -124,9 +143,7 @@ async function processTask(task: GenerationTask): Promise<void> {
         id: getEntityId(task.chapter)
       })
       if (chapter?.content) {
-        const aiConfig = await em.findOne(AiConfigSchema, {
-          purpose: 'extraction'
-        })
+        const aiConfig = await resolveConfigForPurpose(em, 'extraction')
         if (aiConfig) {
           const messages = buildSummaryPrompt(chapter.content)
           result = await callAi({
@@ -151,9 +168,7 @@ async function processTask(task: GenerationTask): Promise<void> {
         id: getEntityId(task.chapter)
       })
       if (chapter?.content) {
-        const aiConfig = await em.findOne(AiConfigSchema, {
-          purpose: 'extraction'
-        })
+        const aiConfig = await resolveConfigForPurpose(em, 'extraction')
         if (aiConfig) {
           const messages = buildCharacterExtractionPrompt(chapter.content)
           result = await callAi({
@@ -337,7 +352,7 @@ async function processTask(task: GenerationTask): Promise<void> {
       const totalChapters = allChapters.length
 
       if (totalChapters >= ARC_GROUP_SIZE) {
-        const aiConfig = await em.findOne(AiConfigSchema, { purpose: 'extraction' })
+        const aiConfig = await resolveConfigForPurpose(em, 'extraction')
         if (aiConfig) {
           const arcCount = Math.floor(totalChapters / ARC_GROUP_SIZE)
           for (let i = 0; i < arcCount; i++) {
@@ -397,8 +412,8 @@ async function processTask(task: GenerationTask): Promise<void> {
         .join('\n\n---\n\n')
 
       if (sampleText) {
-        const aiConfig = await em.findOne(AiConfigSchema, { purpose: 'style_analysis' })
-          || await em.findOne(AiConfigSchema, { purpose: 'extraction' })
+        const aiConfig = await resolveConfigForPurpose(em, 'style_analysis')
+          || await resolveConfigForPurpose(em, 'extraction')
 
         if (aiConfig) {
           const messages = [

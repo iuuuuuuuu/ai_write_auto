@@ -38,6 +38,7 @@ const naiveTheme = computed(() => ({
 
 // 全局 AI 连通性检测，启动时检测一次，之后每 5 分钟轮询
 const route = useRoute()
+const pageKey = useState('page-refresh-key', () => 0)
 if (import.meta.client && !route.path.startsWith('/setup') && !route.path.startsWith('/login')) {
   useAiConnectivity({
     immediate: true,
@@ -52,7 +53,7 @@ if (import.meta.client && !route.path.startsWith('/setup') && !route.path.starts
     <NMessageProvider>
       <NDialogProvider>
         <NuxtLayout>
-          <NuxtPage />
+          <NuxtPage :key="pageKey" />
         </NuxtLayout>
       </NDialogProvider>
     </NMessageProvider>

@@ -4,6 +4,8 @@ definePageMeta({ layout: 'admin', middleware: 'admin' })
 const { data: siteConfig, refresh } =
   await useFetch<Record<string, string>>('/api/settings/site')
 
+const { put } = useApi()
+
 const saving = shallowRef(false)
 const siteName = shallowRef('')
 const siteDescription = shallowRef('')
@@ -22,12 +24,9 @@ watch(
 async function save() {
   saving.value = true
   try {
-    await $fetch('/api/settings/site', {
-      method: 'PUT',
-      body: {
-        site_name: siteName.value,
-        site_description: siteDescription.value
-      }
+    await put('/api/settings/site', {
+      site_name: siteName.value,
+      site_description: siteDescription.value
     })
     await refresh()
   } finally {

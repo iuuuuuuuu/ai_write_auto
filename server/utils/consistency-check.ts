@@ -8,11 +8,12 @@ export async function runConsistencyCheck(
   novelId: number,
   chapterId: number
 ): Promise<Array<{ type: string; severity: string; description: string }>> {
-  let aiConfig = await em.findOne(AiConfigSchema, { user: userId, purpose: 'consistency_check', enabled: true })
-  if (!aiConfig) {
-    aiConfig = await em.findOne(AiConfigSchema, { user: userId, purpose: 'extraction', enabled: true })
-  }
-  if (!aiConfig) return []
+  const config = await em.findOne(AiConfigSchema, { user: userId, purpose: 'consistency_check', enabled: true }, { populate: ['aiModel'] })
+    || await em.findOne(AiConfigSchema, { user: userId, purpose: 'extraction', enabled: true }, { populate: ['aiModel'] })
+  if (!config || !config.aiModel) return []
+  const aiModel = config.aiModel as any
+  if (!aiModel.enabled) return []
+  const aiConfig = { apiUrl: aiModel.apiUrl, apiKey: aiModel.apiKey, model: aiModel.model }
 
   const chapters = await em.find(ChapterSchema, {
     novel: novelId,

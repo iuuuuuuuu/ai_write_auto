@@ -130,6 +130,7 @@ interface UpdateBackupSettingsResponse {
 const { t } = useI18n()
 const message = useMessage()
 const { confirm } = useConfirmDialog()
+const { get: apiGet, post, put, del: apiDel, request } = useApi()
 
 const exporting = ref(false)
 const loadingBackups = ref(false)
@@ -274,15 +275,14 @@ function notifyBackupFailureIfNeeded(settings: BackupSettings) {
 async function loadBackups(showSuccess = false) {
   loadingBackups.value = true
   try {
-    const result = await $fetch<BackupListResponse>('/api/settings/backup')
+    const result = await apiGet<BackupListResponse>('/api/settings/backup', {
+      successMessage: showSuccess ? '备份列表已刷新' : undefined
+    })
     backups.value = result.backups
     Object.assign(backupSettings, result.settings)
     notifyBackupFailureIfNeeded(result.settings)
-    if (showSuccess) {
-      message.success('备份列表已刷新')
-    }
   } catch {
-    message.error('备份列表加载失败')
+    // useApi handles error display
   } finally {
     loadingBackups.value = false
   }
@@ -291,7 +291,7 @@ async function loadBackups(showSuccess = false) {
 async function saveBackupSettings() {
   savingBackupSettings.value = true
   try {
-    const result = await $fetch<UpdateBackupSettingsResponse>(
+    const result = await request<UpdateBackupSettingsResponse>(
       '/api/settings/backup',
       {
         method: 'PATCH',
@@ -300,14 +300,14 @@ async function saveBackupSettings() {
           autoBackupOnStartup: backupSettings.autoBackupOnStartup,
           scheduleEnabled: backupSettings.scheduleEnabled,
           scheduleCron: backupSettings.scheduleCron
-        }
+        },
+        successMessage: '备份设置已保存'
       }
     )
     Object.assign(backupSettings, result.settings)
-    message.success('备份设置已保存')
     await loadBackups()
   } catch {
-    message.error('备份设置保存失败')
+    // useApi handles error display
   } finally {
     savingBackupSettings.value = false
   }
@@ -320,13 +320,11 @@ function applyBackupFrequencyPreset(cron: string) {
 async function runScheduledBackupNow() {
   runningScheduledBackupNow.value = true
   try {
-    const result = await $fetch<CreateBackupResponse>('/api/settings/backup', {
-      method: 'DELETE'
-    })
+    const result = await apiDel<CreateBackupResponse>('/api/settings/backup')
     message.success(`定时备份已立即执行：${result.name}`)
     await loadBackups()
   } catch {
-    message.error('立即执行定时备份失败')
+    // useApi handles error display
   } finally {
     runningScheduledBackupNow.value = false
   }
@@ -335,13 +333,11 @@ async function runScheduledBackupNow() {
 async function createBackup() {
   creatingBackup.value = true
   try {
-    const result = await $fetch<CreateBackupResponse>('/api/settings/backup', {
-      method: 'POST'
-    })
+    const result = await post<CreateBackupResponse>('/api/settings/backup')
     message.success(`备份已创建：${result.name}`)
     await loadBackups()
   } catch {
-    message.error('创建备份失败，请检查当前数据库连接和权限')
+    // useApi handles error display
   } finally {
     creatingBackup.value = false
   }
@@ -362,10 +358,7 @@ async function restoreBackup(backup: BackupItem) {
   const preRestorePlan = migrationPlan.value
 
   try {
-    const result = await $fetch<RestoreBackupResponse>('/api/settings/backup', {
-      method: 'PUT',
-      body: { name: backup.name }
-    })
+    const result = await put<RestoreBackupResponse>('/api/settings/backup', { name: backup.name }, { silent: true })
 
     if (!result.success) {
       lastRestoreResult.value = {
@@ -410,12 +403,12 @@ async function restoreBackup(backup: BackupItem) {
 async function loadMigrationPlan() {
   loadingPlan.value = true
   try {
-    migrationPlan.value = await $fetch<DatabaseMigrationPlan>(
-      '/api/settings/migration-plan'
+    migrationPlan.value = await apiGet<DatabaseMigrationPlan>(
+      '/api/settings/migration-plan',
+      { successMessage: '迁移预检已生成' }
     )
-    message.success('迁移预检已生成')
   } catch {
-    message.error('迁移预检失败')
+    // useApi handles error display
   } finally {
     loadingPlan.value = false
   }
@@ -464,15 +457,13 @@ async function runTargetPreflight() {
   migrationSwitchResult.value = null
   migrationValidationResult.value = null
   try {
-    targetPreflight.value = await $fetch<MigrationTargetPreflightResult>(
+    targetPreflight.value = await post<MigrationTargetPreflightResult>(
       '/api/settings/migration-target',
       {
-        method: 'POST',
-        body: {
-          target: buildTargetPayload(),
-          syncSchema: syncTargetSchema.value
-        }
-      }
+        target: buildTargetPayload(),
+        syncSchema: syncTargetSchema.value
+      },
+      { silent: true }
     )
 
     if (targetPreflight.value.success) {
@@ -499,15 +490,13 @@ async function executeMigration() {
 
   executingMigration.value = true
   try {
-    migrationResult.value = await $fetch<DatabaseMigrationResult>(
+    migrationResult.value = await post<DatabaseMigrationResult>(
       '/api/settings/migration-execute',
       {
-        method: 'POST',
-        body: {
-          target: buildTargetPayload(),
-          confirmEmptyTarget: true
-        }
-      }
+        target: buildTargetPayload(),
+        confirmEmptyTarget: true
+      },
+      { silent: true }
     )
 
     if (migrationResult.value.success) {
@@ -534,14 +523,12 @@ async function validateMigration() {
 
   validatingMigration.value = true
   try {
-    migrationValidationResult.value = await $fetch<MigrationValidationResult>(
+    migrationValidationResult.value = await post<MigrationValidationResult>(
       '/api/settings/migration-validate',
       {
-        method: 'POST',
-        body: {
-          target: buildTargetPayload()
-        }
-      }
+        target: buildTargetPayload()
+      },
+      { silent: true }
     )
 
     if (migrationValidationResult.value.success) {
@@ -568,15 +555,13 @@ async function switchDatabase() {
 
   switchingDatabase.value = true
   try {
-    migrationSwitchResult.value = await $fetch<MigrationSwitchResult>(
+    migrationSwitchResult.value = await post<MigrationSwitchResult>(
       '/api/settings/migration-switch',
       {
-        method: 'POST',
-        body: {
-          target: buildTargetPayload(),
-          confirmSwitch: true
-        }
-      }
+        target: buildTargetPayload(),
+        confirmSwitch: true
+      },
+      { silent: true }
     )
 
     if (migrationSwitchResult.value.success) {

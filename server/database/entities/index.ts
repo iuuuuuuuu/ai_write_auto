@@ -17,24 +17,33 @@ export interface SiteConfig {
   value: string
 }
 
+export interface AiModel {
+  [OptionalProps]?: 'id' | 'enabled' | 'createdAt' | 'updatedAt'
+  id: number
+  user: User
+  name: string
+  apiUrl: string
+  apiKey: string
+  model: string
+  maxTokens: number
+  enabled: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface AiConfig {
   [OptionalProps]?:
     | 'id'
     | 'temperature'
-    | 'maxTokens'
     | 'isDefault'
     | 'enabled'
     | 'createdAt'
     | 'updatedAt'
   id: number
   user: User
-  name: string
+  aiModel: AiModel
   purpose: 'generation' | 'extraction' | 'consistency_check' | 'style_analysis'
-  apiUrl: string
-  apiKey: string
-  model: string
   temperature: string | null
-  maxTokens: number | null
   isDefault: boolean
   enabled: boolean
   createdAt: Date
@@ -351,24 +360,41 @@ export const SiteConfigSchema = new EntitySchema<SiteConfig>({
   }
 })
 
+export const AiModelSchema = new EntitySchema<AiModel>({
+  name: 'AiModel',
+  tableName: 'ai_models',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    name: { type: 'string' },
+    apiUrl: { type: 'string', fieldName: 'api_url' },
+    apiKey: { type: 'string', fieldName: 'api_key' },
+    model: { type: 'string' },
+    maxTokens: { type: 'number', fieldName: 'max_tokens', default: 4096 },
+    enabled: { type: 'boolean', default: true },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    },
+    updatedAt: {
+      type: UnixTimestampType,
+      fieldName: 'updated_at',
+      onCreate: () => new Date(),
+      onUpdate: () => new Date()
+    }
+  }
+})
+
 export const AiConfigSchema = new EntitySchema<AiConfig>({
   name: 'AiConfig',
   tableName: 'ai_configs',
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
-    name: { type: 'string', default: '默认模型' },
+    aiModel: { kind: 'm:1', entity: () => 'AiModel', fieldName: 'ai_model_id' },
     purpose: { type: 'string' },
-    apiUrl: { type: 'string', fieldName: 'api_url' },
-    apiKey: { type: 'string', fieldName: 'api_key' },
-    model: { type: 'string' },
     temperature: { type: 'string', nullable: true, default: '0.7' },
-    maxTokens: {
-      type: 'number',
-      fieldName: 'max_tokens',
-      nullable: true,
-      default: 4096
-    },
     isDefault: { type: 'boolean', fieldName: 'is_default', default: false },
     enabled: { type: 'boolean', default: true },
     createdAt: {
@@ -881,6 +907,7 @@ export const ConsistencyIssueSchema = new EntitySchema<ConsistencyIssue>({
 export const allEntities = [
   UserSchema,
   SiteConfigSchema,
+  AiModelSchema,
   AiConfigSchema,
   NovelSchema,
   NovelOutlineSchema,

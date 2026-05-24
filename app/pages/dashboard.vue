@@ -6,6 +6,7 @@ const { user } = useAuth()
 const { createNovel } = useNovels()
 const router = useRouter()
 const message = useMessage()
+const { post, put } = useApi()
 const fileInput = ref<HTMLInputElement | null>(null)
 
 interface NovelItem {
@@ -29,14 +30,12 @@ const newNovelStyleGuide = shallowRef('')
 const selectedTemplateId = shallowRef<number | null>(null)
 const creatingNovel = shallowRef(false)
 const generatingWorldbuilding = shallowRef(false)
+const generatingDescription = shallowRef(false)
 const creatingSampleNovel = shallowRef(false)
 const showOnboardingTips = shallowRef(false)
 const createStep = shallowRef(1)
 const staggerRef = ref<HTMLElement | null>(null)
 useStaggerAnimation(staggerRef, { staggerDelay: 50 })
-
-const { steps, currentStep, showOnboarding, nextStep, complete } =
-  useOnboarding()
 
 const genreOptions = [
   { label: t('novel.genres.fantasy'), value: 'fantasy' },
@@ -71,12 +70,14 @@ interface NovelTemplateItem {
   defaultTemperature: string | null
 }
 
-const { data: novelTemplates } = await useFetch<NovelTemplateItem[]>('/api/admin/templates', {
-  default: () => []
+const { data: novelTemplatesResponse } = await useFetch<{ items: NovelTemplateItem[] }>('/api/admin/templates', {
+  default: () => ({ items: [] })
 })
 
+const novelTemplates = computed(() => novelTemplatesResponse.value?.items || [])
+
 const templateOptions = computed(() =>
-  (novelTemplates.value || []).map(t => ({ label: `${t.name} (${t.genre})`, value: t.id }))
+  novelTemplates.value.map(t => ({ label: `${t.name} (${t.genre})`, value: t.id }))
 )
 
 function applyTemplate(templateId: number | null) {
@@ -117,18 +118,12 @@ async function createSampleNovel() {
       styleGuide: '悬疑感、画面感、短段落推进，语言克制但保留诗意。'
     })
     await Promise.all([
-      $fetch(`/api/novels/${novel.id}/chapters`, {
-        method: 'POST',
-        body: {
-          title: '蓝月升起',
-          chapterNumber: 1,
-          content: sampleChapterContent
-        }
+      post(`/api/novels/${novel.id}/chapters`, {
+        title: '蓝月升起',
+        chapterNumber: 1,
+        content: sampleChapterContent
       }),
-      $fetch(`/api/novels/${novel.id}/outlines`, {
-        method: 'PUT',
-        body: { outlines: sampleNovelOutlines }
-      })
+      put(`/api/novels/${novel.id}/outlines`, { outlines: sampleNovelOutlines })
     ])
     await refreshNovels()
     router.push(`/novels/${novel.id}`)
@@ -205,23 +200,42 @@ async function handleCreateNovel() {
   }
 }
 
+async function generateDescription() {
+  const title = newNovelTitle.value.trim()
+  const genre = newNovelGenre.value
+  if (!title || !genre) return
+  generatingDescription.value = true
+  try {
+    const tpl = selectedTemplateId.value
+      ? novelTemplates.value.find(t => t.id === selectedTemplateId.value)
+      : null
+    const result = await post<{ description: string }>('/api/ai/suggest-description', {
+      title,
+      genre,
+      template: tpl?.name || undefined
+    })
+    if (result.description) newNovelDescription.value = result.description
+  } catch {
+    // useApi handles error display
+  } finally {
+    generatingDescription.value = false
+  }
+}
+
 async function generateWorldbuilding() {
   const title = newNovelTitle.value.trim()
   if (!title) return
   generatingWorldbuilding.value = true
   try {
-    const result = await $fetch<{ worldSetting: string; styleGuide: string }>('/api/ai/worldbuilding', {
-      method: 'POST',
-      body: {
-        title,
-        description: newNovelDescription.value.trim() || undefined,
-        genre: newNovelGenre.value || undefined
-      }
+    const result = await post<{ worldSetting: string; styleGuide: string }>('/api/ai/worldbuilding', {
+      title,
+      description: newNovelDescription.value.trim() || undefined,
+      genre: newNovelGenre.value || undefined
     })
     if (result.worldSetting) newNovelWorldSetting.value = result.worldSetting
     if (result.styleGuide) newNovelStyleGuide.value = result.styleGuide
   } catch {
-    message.error('生成设定失败，请稍后重试')
+    // useApi handles error display
   } finally {
     generatingWorldbuilding.value = false
   }
@@ -333,15 +347,11 @@ async function confirmImport() {
   importLoading.value = true
   try {
     const content = importPreview.value.map(ch => `${ch.title}\n\n${ch.content}`).join('\n\n')
-    const result = await $fetch<{ novelId: number; chaptersImported: number }>('/api/novels/import', {
-      method: 'POST',
-      body: {
-        title: importTitle.value.trim(),
-        content,
-        format: importFormat.value
-      }
-    })
-    message.success(`成功导入 ${result.chaptersImported} 个章节`)
+    const result = await post<{ novelId: number; chaptersImported: number }>('/api/novels/import', {
+      title: importTitle.value.trim(),
+      content,
+      format: importFormat.value
+    }, { successMessage: `成功导入 ${importPreview.value.length} 个章节` })
     showImportModal.value = false
     importTitle.value = ''
     importFile.value = null
@@ -349,8 +359,8 @@ async function confirmImport() {
     importStep.value = 'upload'
     await refreshNovels()
     router.push(`/novels/${result.novelId}`)
-  } catch (e: any) {
-    message.error(e?.data?.message || '导入失败')
+  } catch {
+    // useApi handles error display
   } finally {
     importLoading.value = false
   }
@@ -366,15 +376,6 @@ function resetImport() {
 
 <template>
   <div class="mx-auto max-w-7xl space-y-5">
-    <OnboardingTooltip
-      :steps="steps"
-      :current-step="currentStep"
-      :show="showOnboarding"
-      @next="nextStep"
-      @complete="complete"
-      @skip="complete"
-    />
-
     <!-- Greeting & Stats -->
     <section class="card-glass overflow-hidden rounded-[2rem] p-5 md:p-7">
       <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -619,22 +620,38 @@ function resetImport() {
 
       <!-- Step 1: Basic Info -->
       <div v-show="createStep === 1" class="space-y-3">
-        <div class="space-y-1">
-          <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('novel.novelTitle') }}</label>
-          <NInput v-model:value="newNovelTitle" :placeholder="t('novel.novelTitle')" size="large" autofocus @keyup.enter="createStep = 2" />
-        </div>
-        <div class="space-y-1">
-          <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('novel.description') }}</label>
-          <NInput v-model:value="newNovelDescription" type="textarea" :placeholder="t('novel.description')" :rows="3" />
-        </div>
-        <div class="space-y-1">
-          <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">{{ t('novel.genre') }}</label>
-          <NSelect v-model:value="newNovelGenre" :options="genreOptions" :placeholder="t('novel.genre')" clearable />
-        </div>
-        <div v-if="templateOptions.length > 0" class="space-y-1">
-          <label class="text-xs font-semibold text-(--ui-text-muted) uppercase tracking-wider">类型模板</label>
-          <NSelect v-model:value="selectedTemplateId" :options="templateOptions" placeholder="选择模板自动填充设定" clearable />
-        </div>
+        <NFormItem label="小说标题" required>
+          <NInput v-model:value="newNovelTitle" placeholder="输入小说标题" size="large" :disabled="generatingDescription" autofocus @keyup.enter="createStep = 2" />
+        </NFormItem>
+        <NFormItem :label="t('novel.genre')" required>
+          <NSelect v-model:value="newNovelGenre" :options="genreOptions" :placeholder="t('novel.genre')" :disabled="generatingDescription" clearable />
+        </NFormItem>
+        <NFormItem v-if="templateOptions.length > 0" label="类型模板">
+          <NSelect v-model:value="selectedTemplateId" :options="templateOptions" placeholder="选择模板自动填充设定" :disabled="generatingDescription" clearable />
+        </NFormItem>
+        <NFormItem label="简介">
+          <template #label>
+            <div class="flex w-full items-center justify-between">
+              <span>简介</span>
+              <NTooltip :disabled="!!(newNovelTitle.trim() && newNovelGenre)">
+                <template #trigger>
+                  <NButton
+                    size="tiny"
+                    quaternary
+                    :loading="generatingDescription"
+                    :disabled="!newNovelTitle.trim() || !newNovelGenre"
+                    @click="generateDescription"
+                  >
+                    <template #icon><Icon icon="lucide:sparkles" /></template>
+                    AI 生成
+                  </NButton>
+                </template>
+                请先填写标题和类型
+              </NTooltip>
+            </div>
+          </template>
+          <NInput v-model:value="newNovelDescription" type="textarea" placeholder="一句话概括故事核心，或点击 AI 生成" :rows="3" />
+        </NFormItem>
       </div>
 
       <!-- Step 2: Worldbuilding (optional) -->

@@ -39,6 +39,8 @@ const {
   params: queryParams
 })
 
+const { post, put, del: apiDel } = useApi()
+
 const showModal = ref(false)
 const editing = ref<PromptTemplate | null>(null)
 const form = ref({ name: '', content: '', category: 'generation' as string })
@@ -60,12 +62,9 @@ async function save() {
   saving.value = true
   try {
     if (editing.value) {
-      await $fetch(`/api/admin/prompts/${editing.value.id}`, {
-        method: 'PUT',
-        body: form.value
-      })
+      await put(`/api/admin/prompts/${editing.value.id}`, form.value)
     } else {
-      await $fetch('/api/admin/prompts', { method: 'POST', body: form.value })
+      await post('/api/admin/prompts', form.value)
     }
     showModal.value = false
     refresh()
@@ -78,7 +77,7 @@ const deleting = ref<number | null>(null)
 async function deletePrompt(id: number) {
   deleting.value = id
   try {
-    await $fetch(`/api/admin/prompts/${id}`, { method: 'DELETE' })
+    await apiDel(`/api/admin/prompts/${id}`)
     refresh()
   } finally {
     deleting.value = null

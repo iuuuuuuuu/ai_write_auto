@@ -4,14 +4,7 @@ definePageMeta({ layout: 'default' })
 const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
-
-function getErrorMessage(errorValue: unknown, fallback = '操作失败'): string {
-  if (typeof errorValue === 'object' && errorValue !== null && 'data' in errorValue) {
-    const data = (errorValue as { data?: { message?: string } }).data
-    if (data?.message) return data.message
-  }
-  return fallback
-}
+const { get: apiGet, post, del: apiDel } = useApi()
 
 interface TrashNovel {
   id: number
@@ -52,8 +45,8 @@ const chaptersTotalPages = ref(0)
 async function fetchTrash() {
   loading.value = true
   try {
-    const data = await $fetch<TrashResponse>('/api/novels/trash', {
-      params: { page: page.value, pageSize: pageSize.value }
+    const data = await apiGet<TrashResponse>('/api/novels/trash', {
+      query: { page: page.value, pageSize: pageSize.value }
     })
     novels.value = data.novels.items
     novelsTotal.value = data.novels.total
@@ -61,8 +54,8 @@ async function fetchTrash() {
     chapters.value = data.chapters.items
     chaptersTotal.value = data.chapters.total
     chaptersTotalPages.value = data.chapters.totalPages
-  } catch (e: any) {
-    message.error(e?.data?.message || '加载回收站失败')
+  } catch {
+    // useApi handles error display
   } finally {
     loading.value = false
   }
@@ -86,14 +79,12 @@ function formatDeletedAt(dateStr: string) {
 
 async function restore(type: 'novel' | 'chapter', id: number) {
   try {
-    await $fetch('/api/novels/trash', {
-      method: 'POST',
-      body: { type, id }
+    await post('/api/novels/trash', { type, id }, {
+      successMessage: type === 'novel' ? '小说已恢复' : '章节已恢复'
     })
-    message.success(type === 'novel' ? '小说已恢复' : '章节已恢复')
     await fetchTrash()
-  } catch (errorValue: unknown) {
-    message.error(getErrorMessage(errorValue, '恢复失败'))
+  } catch {
+    // useApi handles error display
   }
 }
 
@@ -106,14 +97,13 @@ function confirmDelete(type: 'novel' | 'chapter', item: TrashNovel | TrashChapte
     positiveButtonProps: { type: 'error' },
     onPositiveClick: async () => {
       try {
-        await $fetch('/api/novels/trash', {
-          method: 'DELETE',
-          body: { type, id: item.id }
+        await apiDel('/api/novels/trash', {
+          body: { type, id: item.id },
+          successMessage: '已永久删除'
         })
-        message.success('已永久删除')
         await fetchTrash()
-      } catch (errorValue: unknown) {
-        message.error(getErrorMessage(errorValue, '删除失败'))
+      } catch {
+        // useApi handles error display
       }
     }
   })

@@ -26,6 +26,7 @@ interface TaskItem {
 }
 
 const message = useMessage()
+const { get: apiGet, put } = useApi()
 const statusFilter = ref('all')
 const typeFilter = ref('all')
 
@@ -73,10 +74,6 @@ watch(
   { immediate: true }
 )
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : '任务操作失败'
-}
-
 function actionLabel(action: TaskAction) {
   const labels: Record<TaskAction, string> = {
     retry: '重试',
@@ -92,14 +89,12 @@ const operating = ref<number | null>(null)
 async function handleAction(taskId: number, action: TaskAction) {
   operating.value = taskId
   try {
-    await $fetch(`/api/admin/tasks/${taskId}`, {
-      method: 'PUT',
-      body: { action }
+    await put(`/api/admin/tasks/${taskId}`, { action }, {
+      successMessage: `任务已${actionLabel(action)}`
     })
     await refresh()
-    message.success(`任务已${actionLabel(action)}`)
-  } catch (error: unknown) {
-    message.error(getErrorMessage(error))
+  } catch {
+    // useApi handles error display
   } finally {
     operating.value = null
   }

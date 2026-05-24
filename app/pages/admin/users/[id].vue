@@ -40,6 +40,7 @@ interface AdminUserDetail {
 
 const route = useRoute()
 const userId = computed(() => Number(route.params.id))
+const { put } = useApi()
 
 const {
   data: detail,
@@ -65,10 +66,7 @@ async function updateRole(role: 'admin' | 'user') {
 
   savingRole.value = true
   try {
-    await $fetch(`/api/admin/users/${detail.value.user.id}`, {
-      method: 'PUT',
-      body: { role }
-    })
+    await put(`/api/admin/users/${detail.value.user.id}`, { role })
     await refresh()
   } finally {
     savingRole.value = false

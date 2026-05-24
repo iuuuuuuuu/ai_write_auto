@@ -14,6 +14,13 @@ export interface AiStreamChunk {
   usage?: { prompt_tokens: number; completion_tokens: number }
 }
 
+function stripThinking(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
+    .trim()
+}
+
 export async function callAi(options: AiRequestOptions): Promise<string> {
   const response = await fetch(options.apiUrl, {
     method: 'POST',
@@ -36,7 +43,8 @@ export async function callAi(options: AiRequestOptions): Promise<string> {
   }
 
   const data = await response.json()
-  return data.choices[0]?.message?.content || ''
+  const content = data.choices[0]?.message?.content || ''
+  return stripThinking(content)
 }
 
 export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStreamChunk> {
@@ -63,6 +71,7 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let insideThink = false
 
   while (true) {
     const { done, value } = await reader.read()
@@ -82,11 +91,22 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
       }
       try {
         const parsed = JSON.parse(data)
-        const delta = parsed.choices?.[0]?.delta?.content || ''
+        let delta = parsed.choices?.[0]?.delta?.content || ''
         const finishReason = parsed.choices?.[0]?.finish_reason
         const usage = parsed.usage
+
         if (delta) {
-          yield { content: delta, done: false, usage }
+          if (delta.includes('<think>') || delta.includes('<|think|>')) insideThink = true
+          if (insideThink) {
+            if (delta.includes('</think>') || delta.includes('<|/think|>')) {
+              insideThink = false
+              delta = delta.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
+              const afterClose = delta.split(/<\/think>|<\|\/think\|>/).pop() || ''
+              if (afterClose.trim()) yield { content: afterClose, done: false, usage }
+            }
+          } else {
+            yield { content: delta, done: false, usage }
+          }
         }
         if (finishReason === 'stop') {
           yield { content: '', done: true, usage }

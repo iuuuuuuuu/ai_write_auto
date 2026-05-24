@@ -1,22 +1,12 @@
 import { z } from 'zod'
 import { wrap } from '@mikro-orm/core'
-import { maskApiKey } from '../../utils/ai-configs'
-import { AiConfigSchema } from '../../database/entities'
+import { AiConfigSchema, AiModelSchema } from '../../database/entities'
 
-const aiConfigSchema = z.object({
+const configSchema = z.object({
   id: z.number().int().positive().optional(),
-  name: z.string().min(1).max(80),
-  purpose: z.enum([
-    'generation',
-    'extraction',
-    'consistency_check',
-    'style_analysis'
-  ]),
-  apiUrl: z.string().url(),
-  apiKey: z.string().optional(),
-  model: z.string().min(1),
+  aiModelId: z.number().int().positive(),
+  purpose: z.enum(['generation', 'extraction', 'consistency_check', 'style_analysis']),
   temperature: z.string().optional(),
-  maxTokens: z.number().int().positive().optional(),
   isDefault: z.boolean().optional(),
   enabled: z.boolean().optional()
 })
@@ -25,31 +15,44 @@ const deleteSchema = z.object({
   id: z.coerce.number().int().positive()
 })
 
-function serializeConfig(config: any) {
-  return {
-    ...config,
-    apiKey: '',
-    maskedApiKey: maskApiKey(config.apiKey)
-  }
-}
-
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const method = getMethod(event)
   const em = useEm(event)
 
   if (method === 'GET') {
-    const configs = await em.find(AiConfigSchema, { user: auth.userId })
-    return configs.map(serializeConfig)
+    const configs = await em.find(AiConfigSchema, { user: auth.userId }, { populate: ['aiModel'] })
+    return configs.map(c => ({
+      id: c.id,
+      purpose: c.purpose,
+      temperature: c.temperature,
+      isDefault: c.isDefault,
+      enabled: c.enabled,
+      aiModel: {
+        id: (c.aiModel as any).id,
+        name: (c.aiModel as any).name,
+        model: (c.aiModel as any).model,
+        maxTokens: (c.aiModel as any).maxTokens,
+        enabled: (c.aiModel as any).enabled
+      },
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt
+    }))
   }
 
   if (method === 'POST') {
     const body = await readBody(event)
-    const data = aiConfigSchema.parse(body)
+    const data = configSchema.parse(body)
+
+    const aiModel = await em.findOne(AiModelSchema, { id: data.aiModelId, user: auth.userId })
+    if (!aiModel) {
+      throw createError({ statusCode: 400, message: '所选模型不存在' })
+    }
+
     if (data.id) {
       const existing = await em.findOne(AiConfigSchema, { id: data.id, user: auth.userId })
       if (!existing) {
-        throw createError({ statusCode: 404, message: 'AI config not found' })
+        throw createError({ statusCode: 404, message: '配置不存在' })
       }
 
       if (data.isDefault) {
@@ -57,23 +60,14 @@ export default defineEventHandler(async (event) => {
       }
 
       wrap(existing).assign({
-        name: data.name,
+        aiModel: data.aiModelId,
         purpose: data.purpose,
-        apiUrl: data.apiUrl,
-        model: data.model,
         temperature: data.temperature,
-        maxTokens: data.maxTokens,
         isDefault: data.isDefault ?? existing.isDefault,
-        enabled: data.enabled ?? existing.enabled,
-        updatedAt: new Date(),
-        ...(data.apiKey ? { apiKey: data.apiKey } : {}),
+        enabled: data.enabled ?? existing.enabled
       })
       await em.flush()
-      return serializeConfig(existing)
-    }
-
-    if (!data.apiKey) {
-      throw createError({ statusCode: 400, message: 'API key is required' })
+      return { success: true, id: existing.id }
     }
 
     const existingForPurpose = await em.find(AiConfigSchema, { user: auth.userId, purpose: data.purpose })
@@ -84,18 +78,14 @@ export default defineEventHandler(async (event) => {
 
     const config = em.create(AiConfigSchema, {
       user: auth.userId,
-      name: data.name,
+      aiModel: data.aiModelId,
       purpose: data.purpose,
-      apiUrl: data.apiUrl,
-      apiKey: data.apiKey,
-      model: data.model,
       temperature: data.temperature,
-      maxTokens: data.maxTokens,
       isDefault,
-      enabled: data.enabled ?? true,
+      enabled: data.enabled ?? true
     })
     await em.flush()
-    return serializeConfig(config)
+    return { success: true, id: config.id }
   }
 
   if (method === 'DELETE') {
@@ -104,7 +94,7 @@ export default defineEventHandler(async (event) => {
 
     const existing = await em.findOne(AiConfigSchema, { id, user: auth.userId })
     if (!existing) {
-      throw createError({ statusCode: 404, message: 'AI config not found' })
+      throw createError({ statusCode: 404, message: '配置不存在' })
     }
 
     const wasDefault = existing.isDefault
@@ -115,7 +105,7 @@ export default defineEventHandler(async (event) => {
     if (wasDefault) {
       const remaining = await em.findOne(AiConfigSchema, { user: auth.userId, purpose })
       if (remaining) {
-        wrap(remaining).assign({ isDefault: true, updatedAt: new Date() })
+        wrap(remaining).assign({ isDefault: true })
         await em.flush()
       }
     }

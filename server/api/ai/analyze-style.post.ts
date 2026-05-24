@@ -17,13 +17,16 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  let aiConfig = await em.findOne(AiConfigSchema, { user: auth.userId, purpose: 'style_analysis' })
-  if (!aiConfig) {
-    aiConfig = await em.findOne(AiConfigSchema, { user: auth.userId, purpose: 'extraction' })
-    if (!aiConfig) {
-      throw createError({ statusCode: 400, message: 'No AI config found' })
+  const aiConfig = await (async () => {
+    const config = await em.findOne(AiConfigSchema, { user: auth.userId, purpose: 'style_analysis', enabled: true }, { populate: ['aiModel'] })
+      || await em.findOne(AiConfigSchema, { user: auth.userId, purpose: 'extraction', enabled: true }, { populate: ['aiModel'] })
+    if (!config || !config.aiModel) {
+      throw createError({ statusCode: 400, message: '未找到风格分析或信息提取的 AI 配置' })
     }
-  }
+    const m = config.aiModel as any
+    if (!m.enabled) throw createError({ statusCode: 400, message: `模型「${m.name}」已被禁用` })
+    return { apiUrl: m.apiUrl, apiKey: m.apiKey, model: m.model }
+  })()
 
   const chapters = await em.find(ChapterSchema, {
     novel: data.novelId,

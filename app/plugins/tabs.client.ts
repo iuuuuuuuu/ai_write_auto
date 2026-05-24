@@ -5,6 +5,7 @@ export default defineNuxtPlugin(() => {
 
   const TITLE_MAP: Record<string, string> = {
     '/dashboard': '仪表盘',
+    '/models': '模型库',
     '/settings': '设置',
     '/trash': '回收站',
     '/admin': '管理概览',

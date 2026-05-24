@@ -21,6 +21,8 @@ const {
   refresh
 } = usePagination<NovelTemplate>({ url: '/api/admin/templates' })
 
+const { post, put, del: apiDel } = useApi()
+
 const showModal = ref(false)
 const editing = ref<NovelTemplate | null>(null)
 const form = ref({
@@ -66,12 +68,9 @@ async function save() {
       defaultTemperature: form.value.defaultTemperature || null
     }
     if (editing.value) {
-      await $fetch(`/api/admin/templates/${editing.value.id}`, {
-        method: 'PUT',
-        body
-      })
+      await put(`/api/admin/templates/${editing.value.id}`, body)
     } else {
-      await $fetch('/api/admin/templates', { method: 'POST', body })
+      await post('/api/admin/templates', body)
     }
     showModal.value = false
     refresh()
@@ -84,7 +83,7 @@ const deleting = ref<number | null>(null)
 async function deleteTemplate(id: number) {
   deleting.value = id
   try {
-    await $fetch(`/api/admin/templates/${id}`, { method: 'DELETE' })
+    await apiDel(`/api/admin/templates/${id}`)
     refresh()
   } finally {
     deleting.value = null

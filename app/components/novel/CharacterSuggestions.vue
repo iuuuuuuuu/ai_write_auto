@@ -17,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 const message = useMessage()
+const { post } = useApi()
 const suggestions = ref<SuggestedCharacter[]>([])
 const loading = ref(false)
 const adoptingIds = ref<Set<string>>(new Set())
@@ -24,16 +25,16 @@ const adoptingIds = ref<Set<string>>(new Set())
 async function fetchSuggestions() {
   loading.value = true
   try {
-    const result = await $fetch<{ suggestions: SuggestedCharacter[] }>(
+    const result = await post<{ suggestions: SuggestedCharacter[] }>(
       `/api/novels/${props.novelId}/characters/suggest`,
-      { method: 'POST', body: { count: 3 } }
+      { count: 3 }
     )
     suggestions.value = result.suggestions
     if (!result.suggestions.length) {
       message.info('AI 暂无新的角色建议')
     }
-  } catch (e: any) {
-    message.error(e?.data?.message || '获取角色建议失败')
+  } catch {
+    // useApi handles error display
   } finally {
     loading.value = false
   }
@@ -44,21 +45,17 @@ async function adoptCharacter(character: SuggestedCharacter) {
   if (adoptingIds.value.has(key)) return
   adoptingIds.value.add(key)
   try {
-    await $fetch(`/api/novels/${props.novelId}/characters`, {
-      method: 'POST',
-      body: {
-        name: character.name,
-        description: character.description || undefined,
-        traits: character.traits || undefined,
-        relationships: character.relationships || undefined,
-        currentState: character.currentState || undefined
-      }
-    })
-    message.success(`已采纳角色「${character.name}」`)
+    await post(`/api/novels/${props.novelId}/characters`, {
+      name: character.name,
+      description: character.description || undefined,
+      traits: character.traits || undefined,
+      relationships: character.relationships || undefined,
+      currentState: character.currentState || undefined
+    }, { successMessage: `已采纳角色「${character.name}」` })
     suggestions.value = suggestions.value.filter(c => c.name !== character.name)
     emit('adopted')
   } catch {
-    message.error(`采纳「${character.name}」失败`)
+    // useApi handles error display
   } finally {
     adoptingIds.value.delete(key)
   }

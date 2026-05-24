@@ -13,6 +13,7 @@ import type { DraftRecoveryType } from '../../../../composables/useDraftRecovery
 const { t } = useI18n()
 const route = useRoute()
 const message = useMessage()
+const { put: apiPut } = useApi()
 const novelId = computed(() => Number(route.params.id))
 const chapterId = computed(() => Number(route.params.chapterId))
 const { updateActiveTabTitle } = useTabs('user')
@@ -75,16 +76,13 @@ async function saveNote() {
   if (savingNote.value) return
   savingNote.value = true
   try {
-    await $fetch(
+    await apiPut(
       `/api/novels/${novelId.value}/chapters/${chapterId.value}/notes`,
-      {
-        method: 'PUT',
-        body: { content: noteContent.value }
-      }
+      { content: noteContent.value }
     )
     await refreshChapterNote()
-  } catch (e: any) {
-    message.error(e?.data?.message || '笔记保存失败')
+  } catch {
+    // error toast handled by useApi
   } finally {
     savingNote.value = false
   }

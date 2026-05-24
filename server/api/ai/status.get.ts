@@ -11,27 +11,28 @@ export default defineEventHandler(async (event) => {
     user: auth.userId,
     purpose: 'generation',
     enabled: true
-  })
+  }, { populate: ['aiModel'] })
 
-  const config = configs.find((item) => item.isDefault) || configs[0]
+  const config = configs.find(item => item.isDefault) || configs[0]
   const checkedAt = new Date().toISOString()
 
-  if (!config) {
+  if (!config || !config.aiModel) {
     return {
       available: false,
       checkedAt,
       checkedConnectivity: shouldCheckConnectivity,
-      reason: '未配置可用的内容生成模型',
-      generationConfigs: []
+      reason: '未配置可用的内容生成模型'
     }
   }
+
+  const aiModel = config.aiModel as any
 
   if (shouldCheckConnectivity) {
     try {
       await callAi({
-        apiUrl: config.apiUrl,
-        apiKey: config.apiKey,
-        model: config.model,
+        apiUrl: aiModel.apiUrl,
+        apiKey: aiModel.apiKey,
+        model: aiModel.model,
         messages: [{ role: 'user', content: 'ping' }],
         temperature: 0,
         maxTokens: 8
@@ -41,13 +42,7 @@ export default defineEventHandler(async (event) => {
         available: false,
         checkedAt,
         checkedConnectivity: true,
-        reason: 'AI 连通性检测失败，请检查 API 地址、密钥或网络',
-        generationConfigs: configs.map((item) => ({
-          id: item.id,
-          name: item.name,
-          model: item.model,
-          isDefault: item.isDefault
-        }))
+        reason: 'AI 连通性检测失败，请检查 API 地址、密钥或网络'
       }
     }
   }
@@ -56,12 +51,6 @@ export default defineEventHandler(async (event) => {
     available: true,
     checkedAt,
     checkedConnectivity: shouldCheckConnectivity,
-    reason: null,
-    generationConfigs: configs.map((item) => ({
-      id: item.id,
-      name: item.name,
-      model: item.model,
-      isDefault: item.isDefault
-    }))
+    reason: null
   }
 })

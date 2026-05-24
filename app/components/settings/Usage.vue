@@ -12,6 +12,7 @@ onMounted(() => { setTimeout(() => { chartReady.value = true }, 150) })
 
 const { t } = useI18n()
 const message = useMessage()
+const { put, del: apiDel } = useApi()
 
 const days = ref(30)
 const { data: usage, refresh } = await useFetch('/api/stats/token-usage', {
@@ -42,12 +43,11 @@ function openCostForm(rate?: any) {
 async function saveCostRate() {
   savingCost.value = true
   try {
-    await $fetch('/api/settings/cost-rates', { method: 'PUT', body: costForm.value })
+    await put('/api/settings/cost-rates', costForm.value, { successMessage: '保存成功' })
     showCostForm.value = false
     await refreshCostRates()
-    message.success('保存成功')
-  } catch (e: any) {
-    message.error(e?.data?.message || '保存失败')
+  } catch {
+    // useApi handles error display
   } finally {
     savingCost.value = false
   }
@@ -55,11 +55,10 @@ async function saveCostRate() {
 
 async function deleteCostRate(id: number) {
   try {
-    await $fetch('/api/settings/cost-rates', { method: 'DELETE', query: { id } })
+    await apiDel('/api/settings/cost-rates', { query: { id }, successMessage: '已删除' })
     await refreshCostRates()
-    message.success('已删除')
-  } catch (e: any) {
-    message.error(e?.data?.message || '删除失败')
+  } catch {
+    // useApi handles error display
   }
 }
 

@@ -4,7 +4,14 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const novelId = computed(() => Number(route.params.id))
 const message = useMessage()
-const { updateActiveTabTitle } = useTabs('user')
+const { post, put, del: apiDel } = useApi()
+const { updateActiveTabTitle, removeTab, activeTab, setActiveTab } = useTabs('user')
+
+function closeAndGoHome() {
+  const tabId = activeTab.value?.id
+  setActiveTab('home')
+  if (tabId) removeTab(tabId)
+}
 
 interface NovelDetail {
   id: number
@@ -118,13 +125,13 @@ const { data: novel, refresh: refreshNovel } = await useFetch<NovelDetail>(
 )
 
 const { data: aiConfigs } = await useFetch<
-  Array<{ id: number; name: string; model: string; purpose: string; enabled: boolean }>
+  Array<{ id: number; purpose: string; enabled: boolean; aiModel: { id: number; name: string; model: string; enabled: boolean } }>
 >('/api/ai/config', { default: () => [] })
 
 const aiConfigOptions = computed(() => {
   return aiConfigs.value
-    .filter((c) => c.purpose === 'generation' && c.enabled)
-    .map((c) => ({ label: c.name, value: c.id }))
+    .filter((c) => c.purpose === 'generation' && c.enabled && c.aiModel?.enabled)
+    .map((c) => ({ label: `${c.aiModel.name} (${c.aiModel.model})`, value: c.id }))
 })
 
 const showAiSettingsModal = shallowRef(false)
@@ -145,19 +152,15 @@ function openAiSettings() {
 async function saveAiSettings() {
   savingAiSettings.value = true
   try {
-    await $fetch(`/api/novels/${novelId.value}`, {
-      method: 'PUT',
-      body: {
-        aiConfigId: aiSettingsForm.aiConfigId,
-        aiTemperature: aiSettingsForm.aiTemperature || undefined,
-        aiExtraPrompt: aiSettingsForm.aiExtraPrompt || undefined
-      }
-    })
-    message.success('AI 设定已保存')
+    await put(`/api/novels/${novelId.value}`, {
+      aiConfigId: aiSettingsForm.aiConfigId,
+      aiTemperature: aiSettingsForm.aiTemperature || undefined,
+      aiExtraPrompt: aiSettingsForm.aiExtraPrompt || undefined
+    }, { successMessage: 'AI 设定已保存' })
     showAiSettingsModal.value = false
     await refreshNovel()
   } catch {
-    message.error('AI 设定保存失败')
+    // useApi handles error display
   } finally {
     savingAiSettings.value = false
   }
@@ -172,14 +175,15 @@ watch(
 )
 
 const { data: chapters } = await useFetch<ChapterItem[]>(
-  `/api/novels/${novelId.value}/chapters`
+  `/api/novels/${novelId.value}/chapters`,
+  { immediate: !!novel.value, default: () => [] }
 )
 const { data: outlines, refresh: refreshOutlines } = await useFetch<
   OutlineItem[]
->(`/api/novels/${novelId.value}/outlines`, { default: () => [] })
+>(`/api/novels/${novelId.value}/outlines`, { immediate: !!novel.value, default: () => [] })
 const { data: characters, refresh: refreshCharacters } = await useFetch<
   CharacterItem[]
->(`/api/novels/${novelId.value}/characters`, { default: () => [] })
+>(`/api/novels/${novelId.value}/characters`, { immediate: !!novel.value, default: () => [] })
 const { confirmDelete } = useConfirmDialog()
 
 const showCharacterDialog = ref(false)
@@ -409,15 +413,11 @@ async function saveChapterOrder() {
   savingChapterOrder.value = true
   try {
     const orderedIds = chapters.value.map((c) => c.id)
-    await $fetch(`/api/novels/${novelId.value}/chapters/reorder`, {
-      method: 'PUT',
-      body: { orderedIds },
-    })
+    await put(`/api/novels/${novelId.value}/chapters/reorder`, { orderedIds }, { successMessage: '章节顺序已保存' })
     chapters.value = chapters.value.map((c, i) => ({ ...c, chapterNumber: i + 1 }))
     chapterReorderMode.value = false
-    message.success('章节顺序已保存')
-  } catch (e: any) {
-    message.error(e?.data?.message || '保存排序失败')
+  } catch {
+    // useApi handles error display
   } finally {
     savingChapterOrder.value = false
   }
@@ -431,14 +431,14 @@ async function createNewChapter() {
   creatingChapter.value = true
   try {
     const nextNumber = (chapters.value?.length || 0) + 1
-    const result = await $fetch<{ id: number }>(`/api/novels/${novelId.value}/chapters`, {
-      method: 'POST',
-      body: { title: newChapterTitle.value.trim(), chapterNumber: nextNumber },
+    const result = await post<{ id: number }>(`/api/novels/${novelId.value}/chapters`, {
+      title: newChapterTitle.value.trim(),
+      chapterNumber: nextNumber
     })
     showNewChapterDialog.value = false
     navigateTo(`/novels/${novelId.value}/chapters/${result.id}`)
-  } catch (e: any) {
-    message.error(e?.data?.message || '创建章节失败')
+  } catch {
+    // useApi handles error display
   } finally {
     creatingChapter.value = false
   }
@@ -469,16 +469,12 @@ async function saveOutlines() {
 
   savingOutlines.value = true
   try {
-    await $fetch(`/api/novels/${novelId.value}/outlines`, {
-      method: 'PUT',
-      body: { outlines: validOutlines }
-    })
-    message.success('大纲已保存')
+    await put(`/api/novels/${novelId.value}/outlines`, { outlines: validOutlines }, { successMessage: '大纲已保存' })
     editingOutlines.value = false
     await refreshOutlines()
     resetOutlineFormItems()
   } catch {
-    message.error('大纲保存失败')
+    // useApi handles error display
   } finally {
     savingOutlines.value = false
   }
@@ -507,20 +503,17 @@ async function regenerateOutlinesFromChapter() {
 
   generatingOutline.value = true
   try {
-    const result = await $fetch<GenerateOutlineResponse>(
+    const result = await post<GenerateOutlineResponse>(
       '/api/ai/generate-outline',
       {
-        method: 'POST',
-        body: {
-          novelId: novelId.value,
-          idea,
-          chapterCount: regenerateOutlineForm.chapterCount,
-          startChapter: regenerateOutlineForm.startChapter,
-          existingOutlines: sortedOutlines.value.map((outline) => ({
-            chapterNumber: outline.chapterNumber,
-            description: outline.description
-          }))
-        }
+        novelId: novelId.value,
+        idea,
+        chapterCount: regenerateOutlineForm.chapterCount,
+        startChapter: regenerateOutlineForm.startChapter,
+        existingOutlines: sortedOutlines.value.map((outline) => ({
+          chapterNumber: outline.chapterNumber,
+          description: outline.description
+        }))
       }
     )
     if (!result.outlines.length) {
@@ -545,8 +538,8 @@ async function regenerateOutlinesFromChapter() {
     editingOutlines.value = true
     showRegenerateOutlineDialog.value = false
     message.success('后续大纲已重新生成，请确认后保存')
-  } catch (e: any) {
-    message.error(e?.data?.message || 'AI 重新规划大纲失败')
+  } catch {
+    // useApi handles error display
   } finally {
     generatingOutline.value = false
   }
@@ -561,15 +554,12 @@ async function generateOutlines() {
 
   generatingOutline.value = true
   try {
-    const result = await $fetch<GenerateOutlineResponse>(
+    const result = await post<GenerateOutlineResponse>(
       '/api/ai/generate-outline',
       {
-        method: 'POST',
-        body: {
-          novelId: novelId.value,
-          idea,
-          chapterCount: generateOutlineForm.chapterCount
-        }
+        novelId: novelId.value,
+        idea,
+        chapterCount: generateOutlineForm.chapterCount
       }
     )
     if (!result.outlines.length) {
@@ -584,8 +574,8 @@ async function generateOutlines() {
     editingOutlines.value = true
     showGenerateOutlineDialog.value = false
     message.success('AI 大纲已生成，请确认后保存')
-  } catch (e: any) {
-    message.error(e?.data?.message || 'AI 生成大纲失败')
+  } catch {
+    // useApi handles error display
   } finally {
     generatingOutline.value = false
   }
@@ -789,22 +779,18 @@ async function saveCharacter() {
   try {
     const payload = getCharacterPayload()
     if (editingCharacterId.value) {
-      await $fetch(
+      await put(
         `/api/novels/${novelId.value}/characters/${editingCharacterId.value}`,
-        { method: 'PUT', body: payload }
+        payload,
+        { successMessage: '角色已更新' }
       )
-      message.success('角色已更新')
     } else {
-      await $fetch(`/api/novels/${novelId.value}/characters`, {
-        method: 'POST',
-        body: payload
-      })
-      message.success('角色已创建')
+      await post(`/api/novels/${novelId.value}/characters`, payload, { successMessage: '角色已创建' })
     }
     showCharacterDialog.value = false
     await refreshCharacters()
   } catch {
-    message.error(editingCharacterId.value ? '角色更新失败' : '角色创建失败')
+    // useApi handles error display
   } finally {
     savingCharacter.value = false
   }
@@ -814,10 +800,7 @@ async function deleteCharacter(character: CharacterItem) {
   const confirmed = await confirmDelete(character.name)
   if (!confirmed) return
   try {
-    await $fetch(`/api/novels/${novelId.value}/characters/${character.id}`, {
-      method: 'DELETE'
-    })
-    message.success('角色已删除')
+    await apiDel(`/api/novels/${novelId.value}/characters/${character.id}`, { successMessage: '角色已删除', silent: true })
     await refreshCharacters()
   } catch (e: any) {
     if (e?.statusCode === 409 || e?.data?.statusCode === 409) {
@@ -889,21 +872,18 @@ function openGenerateDialog() {
 async function generateCharacters() {
   generating.value = true
   try {
-    const result = await $fetch<{ generated: number }>(
+    const result = await post<{ generated: number }>(
       `/api/novels/${novelId.value}/characters/generate`,
       {
-        method: 'POST',
-        body: {
-          count: generateCount.value,
-          promptTemplateId: generatePromptId.value || undefined
-        }
+        count: generateCount.value,
+        promptTemplateId: generatePromptId.value || undefined
       }
     )
     message.success(`成功生成 ${result.generated} 个角色`)
     showGenerateDialog.value = false
     await refreshCharacters()
-  } catch (e: any) {
-    message.error(e?.data?.message || 'AI 生成角色失败')
+  } catch {
+    // useApi handles error display
   } finally {
     generating.value = false
   }
@@ -911,7 +891,7 @@ async function generateCharacters() {
 
 const { data: plotPoints, refresh: refreshPlotPoints } = await useFetch<
   PlotPointItem[]
->(`/api/novels/${novelId.value}/plot-points`, { default: () => [] })
+>(`/api/novels/${novelId.value}/plot-points`, { immediate: !!novel.value, default: () => [] })
 
 const showPlotPointDialog = ref(false)
 const addingPlotPoint = ref(false)
@@ -967,20 +947,16 @@ async function savePlotPoint() {
   }
   addingPlotPoint.value = true
   try {
-    await $fetch(`/api/novels/${novelId.value}/plot-points`, {
-      method: 'POST',
-      body: {
-        description,
-        type: plotPointForm.type,
-        status: plotPointForm.status,
-        chapterId: plotPointForm.chapterId || undefined
-      }
-    })
-    message.success('情节线索已添加')
+    await post(`/api/novels/${novelId.value}/plot-points`, {
+      description,
+      type: plotPointForm.type,
+      status: plotPointForm.status,
+      chapterId: plotPointForm.chapterId || undefined
+    }, { successMessage: '情节线索已添加' })
     showPlotPointDialog.value = false
     await refreshPlotPoints()
   } catch {
-    message.error('添加失败')
+    // useApi handles error display
   } finally {
     addingPlotPoint.value = false
   }
@@ -988,10 +964,11 @@ async function savePlotPoint() {
 </script>
 
 <template>
-  <div
-    v-if="novel"
-    class="mx-auto max-w-[1600px] space-y-4 2xl:px-2"
-  >
+  <div class="mx-auto max-w-[1600px] 2xl:px-2">
+    <div
+      v-if="novel"
+      class="space-y-4"
+    >
     <section class="card-glass p-4 lg:p-5">
       <div
         class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)]"
@@ -2505,5 +2482,14 @@ async function savePlotPoint() {
         </div>
       </template>
     </NModal>
+    </div>
+    <div v-else class="flex flex-col items-center justify-center py-20 text-center">
+      <Icon icon="lucide:book-x" class="size-12 text-(--ui-text-dimmed)/50 mb-4" />
+      <h2 class="text-lg font-semibold text-(--ui-text-highlighted)">小说未找到</h2>
+      <p class="mt-1 text-sm text-(--ui-text-muted)">该小说不存在或已被删除</p>
+      <NButton class="mt-4" size="small" @click="closeAndGoHome">
+        返回仪表盘
+      </NButton>
+    </div>
   </div>
 </template>

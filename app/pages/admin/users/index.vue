@@ -15,6 +15,7 @@ interface AdminUser {
 const search = shallowRef('')
 const deletingId = shallowRef<number | null>(null)
 const { confirmDelete } = useConfirmDialog()
+const { post, del: apiDel } = useApi()
 
 const queryParams = computed(() => {
   const p: Record<string, string> = {}
@@ -48,13 +49,10 @@ async function createUser() {
   if (!newUsername.value.trim() || !newPassword.value) return
   creating.value = true
   try {
-    await $fetch('/api/admin/users', {
-      method: 'POST',
-      body: {
-        username: newUsername.value.trim(),
-        password: newPassword.value,
-        role: newRole.value
-      }
+    await post('/api/admin/users', {
+      username: newUsername.value.trim(),
+      password: newPassword.value,
+      role: newRole.value
     })
     showCreateModal.value = false
     newUsername.value = ''
@@ -73,7 +71,7 @@ async function deleteUser(user: AdminUser) {
 
   deletingId.value = user.id
   try {
-    await $fetch(`/api/admin/users/${user.id}`, { method: 'DELETE' })
+    await apiDel(`/api/admin/users/${user.id}`)
     refresh()
   } finally {
     deletingId.value = null

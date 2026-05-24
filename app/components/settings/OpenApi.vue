@@ -7,6 +7,7 @@ interface ApiTokenItem {
 }
 
 const message = useMessage()
+const { post, del: apiDel } = useApi()
 const { data: tokens, refresh: refreshTokens } = await useFetch<ApiTokenItem[]>('/api/openapi/tokens', {
   default: () => []
 })
@@ -27,17 +28,14 @@ async function createToken() {
   if (!newTokenName.value.trim()) return
   creating.value = true
   try {
-    const result = await $fetch<{ id: number; name: string; token: string; createdAt: string }>(
+    const result = await post<{ id: number; name: string; token: string; createdAt: string }>(
       '/api/openapi/tokens',
-      {
-        method: 'POST',
-        body: { name: newTokenName.value.trim() }
-      }
+      { name: newTokenName.value.trim() }
     )
     createdToken.value = result.token
     await refreshTokens()
   } catch {
-    message.error('创建 Token 失败')
+    // useApi handles error display
   } finally {
     creating.value = false
   }
@@ -46,11 +44,10 @@ async function createToken() {
 async function deleteToken(id: number) {
   deletingId.value = id
   try {
-    await $fetch(`/api/openapi/tokens/${id}`, { method: 'DELETE' })
+    await apiDel(`/api/openapi/tokens/${id}`, { successMessage: 'Token 已删除' })
     await refreshTokens()
-    message.success('Token 已删除')
   } catch {
-    message.error('删除 Token 失败')
+    // useApi handles error display
   } finally {
     deletingId.value = null
   }

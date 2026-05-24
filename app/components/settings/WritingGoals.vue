@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const message = useMessage()
+const { put } = useApi()
 
 const { data: prefs, refresh } = await useFetch<Record<string, string>>('/api/settings/preferences', {
   default: () => ({})
@@ -19,10 +20,7 @@ watch(
 )
 
 async function savePreference(key: string, value: number) {
-  await $fetch('/api/settings/preferences', {
-    method: 'PUT',
-    body: { key, value: String(value) }
-  })
+  await put('/api/settings/preferences', { key, value: String(value) }, { silent: true })
 }
 
 async function saveGoals() {

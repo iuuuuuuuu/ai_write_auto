@@ -7,6 +7,14 @@ const { tabs, activeTab, setActiveTab, removeTab, renameTab, closeOtherTabs, clo
 
 const renamingTabId = ref<string | null>(null)
 const renameInput = ref('')
+const isRefreshing = ref(false)
+
+function handleRefresh() {
+  if (isRefreshing.value) return
+  isRefreshing.value = true
+  useState('page-refresh-key').value++
+  setTimeout(() => { isRefreshing.value = false }, 600)
+}
 
 const contextMenu = ref({ show: false, x: 0, y: 0, tabId: '' })
 
@@ -150,6 +158,15 @@ const contextMenuOptions = computed(() => [
         </div>
       </div>
 
+      <button
+        class="tab-refresh"
+        :class="{ 'is-spinning': isRefreshing }"
+        title="刷新当前页面"
+        @click="handleRefresh"
+      >
+        <Icon icon="lucide:refresh-cw" class="w-3.5 h-3.5" />
+      </button>
+
       <NDropdown
         :show="contextMenu.show"
         :x="contextMenu.x"
@@ -173,6 +190,33 @@ const contextMenuOptions = computed(() => [
   background: transparent;
   padding: 0 8px;
   user-select: none;
+}
+
+.tab-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: auto 4px;
+  border-radius: 6px;
+  color: var(--ui-text-dimmed);
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.tab-refresh:hover {
+  background: var(--ui-bg-muted);
+  color: var(--ui-text);
+}
+
+.tab-refresh.is-spinning :deep(svg) {
+  animation: spin-refresh 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes spin-refresh {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .tab-bar-scroll {

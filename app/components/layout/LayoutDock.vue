@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const props = defineProps<{
   navItems: Array<{ label: string; icon: string; to: string }>
-  settingsItem: { label: string; icon: string; to: string }
+  settingsItem: { label: string; icon: string; to: string } | null
   isActive: (to: string) => boolean
   isAdmin: boolean
 }>()
@@ -100,6 +100,7 @@ function toggleDarkMode() {
             />
           </button>
           <NuxtLink
+            v-if="settingsItem"
             :to="settingsItem.to"
             class="flex h-9 w-9 items-center justify-center rounded-full text-(--ui-text-dimmed) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
             :class="

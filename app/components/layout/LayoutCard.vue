@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const props = defineProps<{
   navItems: Array<{ label: string; icon: string; to: string }>
-  settingsItem: { label: string; icon: string; to: string }
+  settingsItem: { label: string; icon: string; to: string } | null
   isActive: (to: string) => boolean
   isAdmin: boolean
 }>()
@@ -166,7 +166,7 @@ function toggleSidebar() {
         </nav>
 
         <!-- Settings -->
-        <div class="px-2 pb-1 space-y-1">
+        <div v-if="settingsItem" class="px-2 pb-1 space-y-1">
           <NTooltip
             placement="right"
             :disabled="settings.sidebarExpanded"
