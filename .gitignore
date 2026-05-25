@@ -30,3 +30,4 @@ data/
 .playwright-mcp
 *-plan.md
 *plan*.md
+dist.tar.gz
