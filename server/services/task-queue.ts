@@ -27,9 +27,12 @@ import type { ResolvedAiConfig } from '../utils/ai-configs'
 const MAX_RETRIES = 3
 const POST_PROCESSING_TYPES = ['extract_summary', 'extract_characters', 'consistency_check']
 
-async function resolveConfigForPurpose(em: any, purpose: string): Promise<ResolvedAiConfig | null> {
-  const config = await em.findOne(AiConfigSchema, { purpose, enabled: true, isDefault: true }, { populate: ['aiModel'] })
-    || await em.findOne(AiConfigSchema, { purpose, enabled: true }, { populate: ['aiModel'] })
+async function resolveConfigForPurpose(em: any, purpose: string, userId?: number): Promise<ResolvedAiConfig | null> {
+  const filter: Record<string, unknown> = { purpose, enabled: true }
+  if (userId) filter.user = userId
+
+  const config = await em.findOne(AiConfigSchema, { ...filter, isDefault: true }, { populate: ['aiModel'] })
+    || await em.findOne(AiConfigSchema, filter, { populate: ['aiModel'] })
   if (!config || !config.aiModel) return null
   const aiModel = config.aiModel as any
   if (!aiModel.enabled) return null
@@ -138,13 +141,16 @@ async function processTask(task: GenerationTask): Promise<void> {
 
   try {
     let result = ''
+    const novelId = getEntityId(task.novel)
+    const novelEntity = await em.findOne(NovelSchema, { id: novelId }) as any
+    const userId = novelEntity ? getEntityId(novelEntity.user) : undefined
 
     if (task.type === 'extract_summary' && task.chapter) {
       const chapter = await em.findOne(ChapterSchema, {
         id: getEntityId(task.chapter)
       })
       if (chapter?.content) {
-        const aiConfig = await resolveConfigForPurpose(em, 'extraction')
+        const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildSummaryPrompt(chapter.content)
           result = await callAi({
@@ -169,7 +175,7 @@ async function processTask(task: GenerationTask): Promise<void> {
         id: getEntityId(task.chapter)
       })
       if (chapter?.content) {
-        const aiConfig = await resolveConfigForPurpose(em, 'extraction')
+        const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildCharacterExtractionPrompt(chapter.content)
           result = await callAi({
@@ -329,20 +335,14 @@ async function processTask(task: GenerationTask): Promise<void> {
 
     if (task.type === 'consistency_check' && task.chapter) {
       const chapterId = getEntityId(task.chapter)
-      const novelId = getEntityId(task.novel)
       const chapter = await em.findOne(ChapterSchema, { id: chapterId })
-      if (chapter) {
-        const novelEntity = await em.findOne('Novel', { id: novelId }) as any
-        const userId = novelEntity ? getEntityId(novelEntity.user) : 0
-        if (userId) {
-          const issues = await runConsistencyCheck(em, userId, novelId, chapterId)
-          result = `Found ${issues.length} consistency issues`
-        }
+      if (chapter && userId) {
+        const issues = await runConsistencyCheck(em, userId, novelId, chapterId)
+        result = `Found ${issues.length} consistency issues`
       }
     }
 
     if (task.type === 'generate_arc') {
-      const novelId = getEntityId(task.novel)
       const allChapters = await em.find(ChapterSchema, {
         novel: novelId,
         deletedAt: null,
@@ -353,7 +353,7 @@ async function processTask(task: GenerationTask): Promise<void> {
       const totalChapters = allChapters.length
 
       if (totalChapters >= ARC_GROUP_SIZE) {
-        const aiConfig = await resolveConfigForPurpose(em, 'extraction')
+        const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const arcCount = Math.floor(totalChapters / ARC_GROUP_SIZE)
           for (let i = 0; i < arcCount; i++) {
@@ -401,7 +401,6 @@ async function processTask(task: GenerationTask): Promise<void> {
     }
 
     if (task.type === 'style_analysis') {
-      const novelId = getEntityId(task.novel)
       const chapters = await em.find(ChapterSchema, {
         novel: novelId,
         deletedAt: null
@@ -413,8 +412,8 @@ async function processTask(task: GenerationTask): Promise<void> {
         .join('\n\n---\n\n')
 
       if (sampleText) {
-        const aiConfig = await resolveConfigForPurpose(em, 'style_analysis')
-          || await resolveConfigForPurpose(em, 'extraction')
+        const aiConfig = await resolveConfigForPurpose(em, 'style_analysis', userId)
+          || await resolveConfigForPurpose(em, 'extraction', userId)
 
         if (aiConfig) {
           const messages = [

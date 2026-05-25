@@ -40,7 +40,9 @@ export async function recordUsage(ctx: StreamContext, inputTokens: number, outpu
       estimatedCost
     })
     await ctx.em.flush()
-  } catch {}
+  } catch (e) {
+    console.warn('[ai-stream] Failed to record token usage:', e)
+  }
 }
 
 export interface StreamResponseOptions {
@@ -220,6 +222,20 @@ export function createTrackedStreamResponse(
             return
           }
         }
+
+        await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
+          status: 'completed',
+          result: fullContent,
+          tokensUsed: totalTokens || estimateTokens(fullContent),
+          completedAt: new Date()
+        })
+        if (fullContent) {
+          const outputTokens = totalTokens || estimateTokens(fullContent)
+          await recordUsage(ctx, 0, outputTokens)
+          if (tracked.onComplete) await tracked.onComplete(fullContent)
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '', done: true, taskId: tracked.taskId })}\n\n`))
+        controller.close()
       } catch (err: any) {
         await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
           status: 'failed',

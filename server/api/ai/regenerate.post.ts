@@ -90,6 +90,8 @@ export default defineEventHandler(async (event) => {
       let totalTokens = 0
 
       try {
+        let lastUsage: { prompt_tokens: number; completion_tokens: number } | undefined
+
         for await (const chunk of streamAi({
           apiUrl: aiConfig.apiUrl,
           apiKey: aiConfig.apiKey,
@@ -109,49 +111,49 @@ export default defineEventHandler(async (event) => {
             )
           }
           if (chunk.usage) {
+            lastUsage = chunk.usage
             totalTokens =
               (chunk.usage.prompt_tokens || 0) +
               (chunk.usage.completion_tokens || 0)
           }
-          if (chunk.done) {
-            await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
-              status: 'completed',
-              result: fullContent,
-              tokensUsed: totalTokens || estimateTokens(fullContent),
-              completedAt: new Date()
-            })
-
-            const inputTokens = chunk.usage?.prompt_tokens || 0
-            const outputTokens = chunk.usage?.completion_tokens || (fullContent ? estimateTokens(fullContent) : 0)
-            let estimatedCost: string | null = null
-
-            const costRate = await em.findOne(ModelCostRateSchema, { user: auth.userId, model: aiConfig.model })
-            if (costRate) {
-              const cost = (inputTokens * parseFloat(costRate.inputCostPer1k) / 1000)
-                + (outputTokens * parseFloat(costRate.outputCostPer1k) / 1000)
-              estimatedCost = cost.toFixed(6)
-            }
-
-            em.create(TokenUsageSchema, {
-              user: auth.userId,
-              aiConfig: aiConfig.id,
-              tokensInput: inputTokens,
-              tokensOutput: outputTokens,
-              estimatedCost
-            })
-            await em.flush()
-
-            await recordAiGeneration(em, auth.userId)
-
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ content: '', done: true, taskId })}\n\n`
-              )
-            )
-            controller.close()
-            return
-          }
+          if (chunk.done) break
         }
+
+        await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
+          status: 'completed',
+          result: fullContent,
+          tokensUsed: totalTokens || estimateTokens(fullContent),
+          completedAt: new Date()
+        })
+
+        const inputTokens = lastUsage?.prompt_tokens || 0
+        const outputTokens = lastUsage?.completion_tokens || (fullContent ? estimateTokens(fullContent) : 0)
+        let estimatedCost: string | null = null
+
+        const costRate = await em.findOne(ModelCostRateSchema, { user: auth.userId, model: aiConfig.model })
+        if (costRate) {
+          const cost = (inputTokens * parseFloat(costRate.inputCostPer1k) / 1000)
+            + (outputTokens * parseFloat(costRate.outputCostPer1k) / 1000)
+          estimatedCost = cost.toFixed(6)
+        }
+
+        em.create(TokenUsageSchema, {
+          user: auth.userId,
+          aiConfig: aiConfig.id,
+          tokensInput: inputTokens,
+          tokensOutput: outputTokens,
+          estimatedCost
+        })
+        await em.flush()
+
+        await recordAiGeneration(em, auth.userId)
+
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({ content: '', done: true, taskId })}\n\n`
+          )
+        )
+        controller.close()
       } catch (err: any) {
         await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
           status: 'failed',

@@ -1,39 +1,28 @@
-import { verifyToken, getTokenFromEvent } from '../utils/auth'
 import { ApiTokenSchema } from '../database/entities'
-import { getOrm } from '../database'
+
+const PUBLIC_PATHS = ['/api/setup', '/api/auth/login', '/api/auth/register', '/api/openapi/spec']
 
 export default defineEventHandler(async (event) => {
   const path = getRequestURL(event).pathname
 
-  // 跳过公开路径
-  if (
-    path.startsWith('/api/setup/') ||
-    path.startsWith('/api/auth/') ||
-    path === '/api/openapi/spec' ||
-    path === '/api/openapi/spec.json'
-  ) {
+  if (!path.startsWith('/api/') || PUBLIC_PATHS.some(p => path.startsWith(p))) {
     return
   }
-
-  if (event.context.auth) return
 
   const token = getTokenFromEvent(event)
   if (!token) return
 
-  // 先尝试 JWT
-  const jwtPayload = verifyToken(token)
-  if (jwtPayload) {
-    event.context.auth = jwtPayload
+  const payload = verifyToken(token)
+  if (payload) {
+    event.context.auth = payload
     return
   }
 
-  // 再尝试 API Token
   try {
-    const orm = getOrm()
-    if (!orm) return
-    const em = orm.em.fork()
-    const tokens = await em.find(ApiTokenSchema, {}, { populate: ['user'] })
+    const em = event.context.em
+    if (!em) return
     const bcrypt = await import('bcryptjs')
+    const tokens = await em.find(ApiTokenSchema, {}, { populate: ['user'] })
     for (const apiToken of tokens) {
       if (bcrypt.compareSync(token, apiToken.tokenHash)) {
         event.context.auth = {
@@ -46,7 +35,5 @@ export default defineEventHandler(async (event) => {
         return
       }
     }
-  } catch {
-    // ignore
-  }
+  } catch {}
 })

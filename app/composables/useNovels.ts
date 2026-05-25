@@ -23,7 +23,8 @@ export function useNovels() {
   const novels = useState<NovelSummary[]>('novels', () => [])
 
   async function fetchNovels() {
-    novels.value = await $fetch<NovelSummary[]>('/api/novels')
+    const data = await $fetch<{ items: NovelSummary[] }>('/api/novels')
+    novels.value = data.items
   }
 
   async function createNovel(data: NovelCreateInput) {

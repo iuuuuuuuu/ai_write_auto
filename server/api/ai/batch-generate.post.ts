@@ -71,7 +71,14 @@ export default defineEventHandler(async (event) => {
           chapterNum <= data.toChapter;
           chapterNum++
         ) {
-          if (signal.aborted) return
+          if (signal.aborted) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: 'cancelled', taskId, reason: 'client_disconnected' })}\n\n`
+              )
+            )
+            return
+          }
           await waitWhilePaused(controller, encoder)
           const currentStatus = await readTaskStatus()
           if (currentStatus === 'cancelled') {

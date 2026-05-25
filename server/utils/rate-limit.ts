@@ -2,8 +2,22 @@ const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
 
 const RATE_LIMIT_WINDOW = 60 * 1000
 const RATE_LIMIT_MAX = 20
+const CLEANUP_INTERVAL = 5 * 60 * 1000
+
+let lastCleanup = Date.now()
+
+function cleanupExpired() {
+  const now = Date.now()
+  if (now - lastCleanup < CLEANUP_INTERVAL) return
+  lastCleanup = now
+  for (const [key, entry] of rateLimitStore) {
+    if (now > entry.resetAt) rateLimitStore.delete(key)
+  }
+}
 
 export function checkRateLimit(userId: number): { allowed: boolean; remaining: number; resetIn: number } {
+  cleanupExpired()
+
   const key = `user:${userId}`
   const now = Date.now()
   const entry = rateLimitStore.get(key)
