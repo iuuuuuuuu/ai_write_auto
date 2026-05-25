@@ -35,6 +35,10 @@ async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Resp
   const connectTimeout = setTimeout(() => controller.abort(), AI_CONNECT_TIMEOUT_MS)
 
   if (options.signal) {
+    if (options.signal.aborted) {
+      clearTimeout(connectTimeout)
+      throw new Error('请求已被取消')
+    }
     options.signal.addEventListener('abort', () => controller.abort(), { once: true })
   }
 
@@ -98,53 +102,56 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
   let buffer = ''
   let insideThink = false
 
+  try {
+    while (true) {
+      let timeoutId: ReturnType<typeof setTimeout>
+      const readPromise = reader.read()
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('AI API 流式读取超时（30秒无数据）')), AI_STREAM_READ_TIMEOUT_MS)
+      })
+      const { done, value } = await Promise.race([readPromise, timeoutPromise])
+      clearTimeout(timeoutId!)
+      if (done) break
 
-  while (true) {
-    let timeoutId: ReturnType<typeof setTimeout>
-    const readPromise = reader.read()
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => reject(new Error('AI API 流式读取超时（30秒无数据）')), AI_STREAM_READ_TIMEOUT_MS)
-    })
-    const { done, value } = await Promise.race([readPromise, timeoutPromise])
-    clearTimeout(timeoutId!)
-    if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
 
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed || !trimmed.startsWith('data: ')) continue
-      const data = trimmed.slice(6)
-      if (data === '[DONE]') {
-        yield { content: '', done: true }
-        return
-      }
-      try {
-        const parsed = JSON.parse(data)
-        let delta = parsed.choices?.[0]?.delta?.content || ''
-        const finishReason = parsed.choices?.[0]?.finish_reason
-        const usage = parsed.usage
-
-        if (delta) {
-          if (delta.includes('<think>') || delta.includes('<|think|>')) insideThink = true
-          if (insideThink) {
-            if (delta.includes('</think>') || delta.includes('<|/think|>')) {
-              insideThink = false
-              delta = delta.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
-              const afterClose = delta.split(/<\/think>|<\|\/think\|>/).pop() || ''
-              if (afterClose.trim()) yield { content: afterClose, done: false, usage }
-            }
-          } else {
-            yield { content: delta, done: false, usage }
-          }
-        }
-        if (finishReason === 'stop') {
-          yield { content: '', done: true, usage }
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || !trimmed.startsWith('data: ')) continue
+        const data = trimmed.slice(6)
+        if (data === '[DONE]') {
+          yield { content: '', done: true }
           return
         }
-      } catch {}
+        try {
+          const parsed = JSON.parse(data)
+          let delta = parsed.choices?.[0]?.delta?.content || ''
+          const finishReason = parsed.choices?.[0]?.finish_reason
+          const usage = parsed.usage
+
+          if (delta) {
+            if (delta.includes('<think>') || delta.includes('<|think|>')) insideThink = true
+            if (insideThink) {
+              if (delta.includes('</think>') || delta.includes('<|/think|>')) {
+                insideThink = false
+                delta = delta.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
+                const afterClose = delta.split(/<\/think>|<\|\/think\|>/).pop() || ''
+                if (afterClose.trim()) yield { content: afterClose, done: false, usage }
+              }
+            } else {
+              yield { content: delta, done: false, usage }
+            }
+          }
+          if (finishReason === 'stop') {
+            yield { content: '', done: true, usage }
+            return
+          }
+        } catch {}
+      }
     }
+  } finally {
+    reader.cancel().catch(() => {})
   }
 }

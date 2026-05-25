@@ -108,6 +108,7 @@ export async function consumeSSEStream(options: SSEStreamOptions): Promise<strin
       }
     } finally {
       if (rafId) { cancelAnimationFrame(rafId); flushRAF() }
+      reader.cancel().catch(() => {})
     }
 
     options.onDone?.(fullContent)

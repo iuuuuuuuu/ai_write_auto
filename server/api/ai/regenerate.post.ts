@@ -6,6 +6,7 @@ import { buildRegenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema, ModelCostRateSchema } from '../../database/entities'
 import { isEmbeddingReady } from '../../services/embedding'
 import { retrieveRelevant } from '../../services/character-rag'
+import { recordAiGeneration } from '../../utils/writing-stats'
 
 const regenerateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -139,6 +140,8 @@ export default defineEventHandler(async (event) => {
               estimatedCost
             })
             await em.flush()
+
+            await recordAiGeneration(em, auth.userId)
 
             controller.enqueue(
               encoder.encode(

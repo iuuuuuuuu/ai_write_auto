@@ -44,6 +44,7 @@ export default defineEventHandler(async (event) => {
 
   async function waitWhilePaused(controller: ReadableStreamDefaultController<Uint8Array>, encoder: TextEncoder) {
     while ((await readTaskStatus()) === 'paused') {
+      if (signal.aborted) return
       controller.enqueue(
         encoder.encode(
           `data: ${JSON.stringify({ type: 'paused', taskId })}\n\n`
@@ -70,6 +71,7 @@ export default defineEventHandler(async (event) => {
           chapterNum <= data.toChapter;
           chapterNum++
         ) {
+          if (signal.aborted) return
           await waitWhilePaused(controller, encoder)
           const currentStatus = await readTaskStatus()
           if (currentStatus === 'cancelled') {
