@@ -1,27 +1,45 @@
 <script setup lang="ts">
+import { h } from 'vue'
+import { NTag, NButton as NBtn, NSwitch } from 'naive-ui'
+
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
 interface AdminAiConfig {
   id: number
   userId: number
-  user: { id: number; username: string; role: string } | null
-  name: string
+  username: string | null
   purpose: string
-  apiUrl: string
-  model: string
   temperature: string | null
-  maxTokens: number | null
   isDefault: boolean
   enabled: boolean
+  modelName: string
+  model: string
+  apiUrl: string
   maskedApiKey: string
-  updatedAt: string
+  maxTokens: number | null
+  modelEnabled: boolean
 }
 
 const search = shallowRef('')
+const filterUserId = shallowRef<number | null>(null)
+const message = useMessage()
+const dialog = useDialog()
+
+const { data: userList } = await useFetch<Array<{ id: number; username: string }>>('/api/admin/users', {
+  params: { pageSize: 100 },
+  transform: (data: any) => data.items || data,
+  default: () => []
+})
+
+const userOptions = computed(() => [
+  { label: '全部用户', value: null },
+  ...(userList.value || []).map((u: any) => ({ label: u.username, value: u.id }))
+])
 
 const queryParams = computed(() => {
   const params: Record<string, string> = {}
   if (search.value.trim()) params.search = search.value.trim()
+  if (filterUserId.value) params.userId = String(filterUserId.value)
   return params
 })
 
@@ -39,7 +57,12 @@ const {
   params: queryParams
 })
 
-const { confirmDelete } = useConfirmDialog()
+const purposeLabels: Record<string, string> = {
+  generation: '内容生成',
+  extraction: '信息提取',
+  consistency_check: '一致性检查',
+  style_analysis: '风格分析'
+}
 
 async function toggleEnabled(config: AdminAiConfig) {
   await $fetch(`/api/admin/ai-configs/${config.id}`, {
@@ -49,16 +72,92 @@ async function toggleEnabled(config: AdminAiConfig) {
   refresh()
 }
 
-async function deleteConfig(config: AdminAiConfig) {
-  const confirmed = await confirmDelete(config.name)
-  if (!confirmed) return
-  await $fetch(`/api/admin/ai-configs/${config.id}`, { method: 'DELETE' })
-  refresh()
+function deleteConfig(config: AdminAiConfig) {
+  dialog.warning({
+    title: '删除配置',
+    content: `确定要删除此配置吗？`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      await $fetch(`/api/admin/ai-configs/${config.id}`, { method: 'DELETE' })
+      refresh()
+    }
+  })
 }
+
+const columns = computed(() => [
+  {
+    title: '状态',
+    key: 'enabled',
+    width: 70,
+    render(row: AdminAiConfig) {
+      return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: () => toggleEnabled(row) })
+    }
+  },
+  {
+    title: '用途',
+    key: 'purpose',
+    width: 110,
+    render(row: AdminAiConfig) {
+      return h('div', { class: 'space-y-0.5' }, [
+        h('span', { class: 'text-xs' }, purposeLabels[row.purpose] || row.purpose),
+        row.isDefault ? h(NTag, { size: 'small', bordered: false, type: 'info' }, () => '默认') : null
+      ])
+    }
+  },
+  {
+    title: '模型',
+    key: 'model',
+    ellipsis: { tooltip: true },
+    render(row: AdminAiConfig) {
+      return h('div', { class: 'space-y-0.5' }, [
+        h('p', { class: 'text-xs font-medium' }, row.modelName || row.model),
+        h('p', { class: 'text-[11px] text-(--ui-text-dimmed) truncate' }, row.model)
+      ])
+    }
+  },
+  {
+    title: '用户',
+    key: 'username',
+    width: 100,
+    render(row: AdminAiConfig) {
+      if (row.username) {
+        return h('a', { href: `/admin/users/${row.userId}`, class: 'text-xs text-primary-500 hover:underline' }, row.username)
+      }
+      return h('span', { class: 'text-xs text-(--ui-text-dimmed)' }, `ID:${row.userId}`)
+    }
+  },
+  {
+    title: 'Temperature',
+    key: 'temperature',
+    width: 100,
+    render(row: AdminAiConfig) {
+      return h('span', { class: 'text-xs' }, row.temperature || '默认')
+    }
+  },
+  {
+    title: 'Max Tokens',
+    key: 'maxTokens',
+    width: 100,
+    render(row: AdminAiConfig) {
+      return h('span', { class: 'text-xs' }, row.maxTokens ? row.maxTokens.toLocaleString() : '-')
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 70,
+    render(row: AdminAiConfig) {
+      return h(NBtn, { size: 'tiny', quaternary: true, onClick: () => deleteConfig(row) }, {
+        icon: () => h(resolveComponent('Icon'), { icon: 'lucide:trash-2', class: 'w-3.5 h-3.5 text-red-500' })
+      })
+    }
+  }
+])
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="flex flex-col h-full space-y-4">
     <section class="card-glass relative overflow-hidden p-5 md:p-6">
       <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
@@ -67,140 +166,53 @@ async function deleteConfig(config: AdminAiConfig) {
             模型配置
           </h1>
           <p class="mt-1 max-w-2xl text-sm text-(--ui-text-muted)">
-            查阅用户配置的模型、用途和启用状态。密钥仅显示遮蔽结果。
+            查阅用户配置的模型、用途和启用状态。
           </p>
         </div>
-        <NInput
-          v-model:value="search"
-          class="sm:w-80"
-          placeholder="搜索用户、模型或地址"
-          clearable
-        >
-          <template #prefix>
-            <Icon
-              icon="lucide:search"
-              class="text-(--ui-text-dimmed)"
-            />
-          </template>
-        </NInput>
+        <div class="flex items-center gap-2 sm:w-auto w-full">
+          <NSelect
+            v-model:value="filterUserId"
+            :options="userOptions"
+            size="small"
+            placeholder="全部用户"
+            clearable
+            style="width: 140px"
+          />
+          <NInput
+            v-model:value="search"
+            class="flex-1 sm:w-60"
+            size="small"
+            placeholder="搜索模型或用途"
+            clearable
+          >
+            <template #prefix>
+              <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+            </template>
+          </NInput>
+        </div>
       </div>
     </section>
 
-    <div
-      v-if="pending"
-      class="space-y-3"
-    >
-      <NSkeleton
-        v-for="item in 6"
-        :key="item"
-        class="h-24 rounded-lg"
-        text
-      />
-    </div>
-    <div
-      v-else-if="!configs.length"
-      class="card-glass p-10 text-center text-sm text-(--ui-text-muted)"
-    >
-      暂无匹配模型配置
-    </div>
-    <template v-else>
-      <div class="grid gap-3">
-        <section
-          v-for="config in configs"
-          :key="config.id"
-          class="liquid-panel group p-4"
-        >
-          <div
-            class="grid gap-4 lg:grid-cols-[1fr_220px_160px] lg:items-center"
-          >
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <h2 class="font-semibold text-(--ui-text-highlighted)">
-                  {{ config.name }}
-                </h2>
-                <NTag
-                  v-if="config.isDefault"
-                  size="small"
-                >
-                  默认
-                </NTag>
-                <NTag
-                  :type="config.enabled ? 'success' : 'default'"
-                  size="small"
-                >
-                  {{ config.enabled ? '启用' : '停用' }}
-                </NTag>
-              </div>
-              <p class="mt-2 truncate text-sm text-(--ui-text-muted)">
-                {{ config.apiUrl }}
-              </p>
-              <p class="mt-1 text-xs text-(--ui-text-dimmed)">
-                Key {{ config.maskedApiKey }}
-              </p>
-            </div>
-            <div>
-              <p class="text-xs text-(--ui-text-dimmed)">模型</p>
-              <p class="mt-1 text-sm text-(--ui-text-highlighted)">
-                {{ config.model }}
-              </p>
-            </div>
-            <div class="lg:text-right">
-              <p class="text-xs text-(--ui-text-dimmed)">用户</p>
-              <NuxtLink
-                v-if="config.user"
-                :to="`/admin/users/${config.user.id}`"
-                class="mt-1 inline-block text-sm text-primary-400 hover:text-primary-300"
-              >
-                {{ config.user.username }}
-              </NuxtLink>
-              <p
-                v-else
-                class="mt-1 text-sm text-(--ui-text-muted)"
-              >
-                未知用户
-              </p>
-            </div>
-          </div>
-          <div class="mt-3 flex items-center justify-between">
-            <div class="flex flex-wrap gap-2 text-xs text-(--ui-text-muted)">
-              <span class="rounded-full bg-(--ui-bg-muted) px-2 py-1 ring-1 ring-(--ui-border)">{{
-                config.purpose
-              }}</span>
-              <span class="rounded-full bg-(--ui-bg-muted) px-2 py-1 ring-1 ring-(--ui-border)"
-                >Temperature {{ config.temperature || '未设置' }}</span
-              >
-              <span class="rounded-full bg-(--ui-bg-muted) px-2 py-1 ring-1 ring-(--ui-border)"
-                >Max {{ config.maxTokens || '未设置' }}</span
-              >
-            </div>
-            <div class="flex gap-1">
-              <NButton
-                size="small"
-                :type="config.enabled ? 'default' : 'primary'"
-                quaternary
-                round
-                @click="toggleEnabled(config)"
-              >
-                {{ config.enabled ? '停用' : '启用' }}
-              </NButton>
-              <NButton
-                size="small"
-                quaternary
-                circle
-                type="error"
-                @click="deleteConfig(config)"
-              >
-                <template #icon><Icon icon="lucide:trash-2" /></template>
-              </NButton>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div
-        v-if="totalPages > 1"
-        class="flex items-center justify-between pt-2"
+    <section class="card-glass p-3 sm:p-4 flex-1 flex flex-col min-h-0">
+      <NDataTable
+        :columns="columns"
+        :data="configs"
+        :loading="pending"
+        :bordered="false"
+        size="small"
+        :row-key="(row: AdminAiConfig) => row.id"
+        flex-height
+        class="flex-1"
       >
+        <template #empty>
+          <div class="py-8 text-center">
+            <Icon icon="lucide:settings" class="size-10 text-(--ui-text-dimmed)/30 mx-auto mb-3" />
+            <p class="text-sm text-(--ui-text-dimmed)">暂无模型配置</p>
+          </div>
+        </template>
+      </NDataTable>
+
+      <div class="flex items-center justify-between pt-3 border-t border-(--ui-border) mt-3">
         <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
         <NPagination
           :page="page"
@@ -209,6 +221,6 @@ async function deleteConfig(config: AdminAiConfig) {
           @update:page="goToPage"
         />
       </div>
-    </template>
+    </section>
   </div>
 </template>
