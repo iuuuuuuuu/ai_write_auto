@@ -20,25 +20,44 @@ export default defineNuxtPlugin(() => {
     '/admin/settings': '站点设置',
   }
 
+  const CHAPTER_PATH_RE = /^\/novels\/([^/]+)\/chapters\/[^/]+$/
+
   function resolveTitle(path: string): string {
     if (TITLE_MAP[path]) return TITLE_MAP[path]
-    if (/^\/novels\/[^/]+\/chapters\/[^/]+$/.test(path)) return '章节编辑'
+    if (CHAPTER_PATH_RE.test(path)) return '章节编辑'
     if (/^\/novels\/[^/]+$/.test(path)) return '小说详情'
     if (/^\/admin\/users\/[^/]+$/.test(path)) return '用户详情'
     if (/^\/admin\/novels\/[^/]+$/.test(path)) return '小说详情'
     return path
   }
 
-  router.afterEach((to) => {
+  function getNovelIdFromChapterPath(path: string): string | null {
+    const match = path.match(CHAPTER_PATH_RE)
+    return match ? match[1]! : null
+  }
+
+  router.afterEach((to, from) => {
     if (SKIP_PATHS.some(p => to.path.startsWith(p))) return
     if (to.path === '/') return
 
     const area = to.path.startsWith('/admin') ? 'admin' : 'user'
-    const { addTab, activateByPath } = useTabs(area as 'user' | 'admin')
+    const { addTab, activateByPath, tabs } = useTabs(area as 'user' | 'admin')
 
-    if (!activateByPath(to.path)) {
-      const title = resolveTitle(to.path)
-      addTab(to.path, { title })
+    if (activateByPath(to.path)) return
+
+    // Same-novel chapter switch: update current tab in-place instead of adding new
+    const toNovelId = getNovelIdFromChapterPath(to.path)
+    const fromNovelId = getNovelIdFromChapterPath(from.path)
+    if (toNovelId && fromNovelId && toNovelId === fromNovelId) {
+      const currentTab = tabs.value.find(t => t.path === from.path)
+      if (currentTab) {
+        currentTab.path = to.path
+        currentTab.title = resolveTitle(to.path)
+        return
+      }
     }
+
+    const title = resolveTitle(to.path)
+    addTab(to.path, { title })
   })
 })

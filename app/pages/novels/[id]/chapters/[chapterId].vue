@@ -13,6 +13,7 @@ import type { DraftRecoveryType } from '../../../../composables/useDraftRecovery
 const { t } = useI18n()
 const route = useRoute()
 const message = useMessage()
+const dialog = useDialog()
 const { put: apiPut } = useApi()
 const novelId = computed(() => Number(route.params.id))
 const chapterId = computed(() => Number(route.params.chapterId))
@@ -102,7 +103,7 @@ type ChapterListItem = {
   wordCount: number | null
 }
 
-const { data: allChapters } = await useFetch<Array<ChapterListItem>>(
+const { data: allChapters, refresh: refreshAllChapters } = await useFetch<Array<ChapterListItem>>(
   `/api/novels/${novelId.value}/chapters`
 )
 
@@ -138,6 +139,13 @@ const nextChapter = computed(() => {
 })
 function goToChapter(cid: number) {
   navigateTo(`/novels/${novelId.value}/chapters/${cid}`)
+  nextTick(() => setTimeout(scrollCurrentChapterIntoView, 100))
+}
+
+function openChapterInNewTab(cid: number) {
+  const path = `/novels/${novelId.value}/chapters/${cid}`
+  const { addTab } = useTabs('user')
+  addTab(path, { title: '章节编辑' })
 }
 
 function normalizeSearchText(value: string) {
@@ -167,6 +175,189 @@ function locateCurrentChapter() {
   )
   if (!currentVisible) chapterSearchQuery.value = ''
   scrollCurrentChapterIntoView()
+}
+
+const creatingChapter = ref(false)
+const showNewChapterDialog = ref(false)
+const newChapterTitle = ref('')
+const generatingTitle = ref(false)
+
+function openNewChapterDialog() {
+  const nextNum = (allChapters.value?.length || 0) + 1
+  newChapterTitle.value = `第${nextNum}章`
+  showNewChapterDialog.value = true
+}
+
+async function aiGenerateNewTitle() {
+  if (generatingTitle.value) return
+  generatingTitle.value = true
+  try {
+    const nextNum = (allChapters.value?.length || 0) + 1
+    const lastChapter = allChapters.value?.[allChapters.value.length - 1]
+    const hint = lastChapter ? `上一章标题：${lastChapter.title}` : ''
+    const resp = await $fetch<Response>('/api/ai/suggest-description', {
+      method: 'POST',
+      body: {
+        title: novelInfo.value?.title || '',
+        genre: novelInfo.value?.title || '',
+        template: `请为小说的第${nextNum}章生成一个章节标题（4-10个字）。${hint}\n只返回标题文字，不要序号、引号或任何解释。`
+      }
+    })
+    const text = typeof resp === 'string' ? resp : ''
+    const cleaned = text.replace(/["""''《》【】\n第\d+章\s]*/g, '').trim().slice(0, 20)
+    if (cleaned) newChapterTitle.value = `第${nextNum}章 ${cleaned}`
+  } catch {} finally {
+    generatingTitle.value = false
+  }
+}
+
+const deletingChapter = ref(false)
+function deleteCurrentChapter() {
+  dialog.warning({
+    title: '删除章节',
+    content: `确定要删除「${chapter.value?.title}」吗？删除后可在回收站恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      deletingChapter.value = true
+      try {
+        await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, { method: 'DELETE' })
+        const adjacent = nextChapter.value || prevChapter.value
+        if (adjacent) {
+          navigateTo(`/novels/${novelId.value}/chapters/${adjacent.id}`)
+        } else {
+          navigateTo(`/novels/${novelId.value}`)
+        }
+      } catch {
+      } finally {
+        deletingChapter.value = false
+      }
+    }
+  })
+}
+
+function confirmDeleteChapter(ch: { id: number; title: string }) {
+  dialog.warning({
+    title: '删除章节',
+    content: `确定要删除「${ch.title}」吗？删除后可在回收站恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await $fetch(`/api/novels/${novelId.value}/chapters/${ch.id}`, { method: 'DELETE' })
+        await refreshAllChapters()
+      } catch {}
+    }
+  })
+}
+
+const showDeletedChapters = ref(false)
+const deletedChapters = ref<Array<{ id: number; title: string; chapterNumber: number; wordCount: number | null; deletedAt: string }>>([])
+const loadingDeleted = ref(false)
+
+watch(showDeletedChapters, async (show) => {
+  if (!show) return
+  loadingDeleted.value = true
+  try {
+    const data = await $fetch<any>('/api/novels/trash', { params: { page: 1, pageSize: 50 } })
+    deletedChapters.value = (data.chapters?.items || []).filter(
+      (ch: any) => ch.novel?.id === novelId.value
+    )
+  } catch {} finally {
+    loadingDeleted.value = false
+  }
+})
+
+async function restoreChapter(id: number) {
+  try {
+    await $fetch('/api/novels/trash', { method: 'POST', body: { type: 'chapter', id } })
+    deletedChapters.value = deletedChapters.value.filter(ch => ch.id !== id)
+    await refreshAllChapters()
+    message.success('章节已恢复')
+  } catch {}
+}
+
+function permanentDeleteChapter(ch: { id: number; title: string }) {
+  dialog.error({
+    title: '永久删除',
+    content: `确定要永久删除「${ch.title}」吗？此操作不可撤销，数据将彻底清除。`,
+    positiveText: '永久删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await $fetch('/api/novels/trash', { method: 'DELETE', body: { type: 'chapter', id: ch.id } })
+        deletedChapters.value = deletedChapters.value.filter(c => c.id !== ch.id)
+        message.success('已永久删除')
+      } catch {}
+    }
+  })
+}
+
+const previewingDeletedChapter = ref<{ title: string; content: string } | null>(null)
+const showDeletedPreview = ref(false)
+
+async function previewDeletedChapter(id: number) {
+  try {
+    const data = await $fetch<any>('/api/novels/trash-preview', { params: { type: 'chapter', id } })
+    previewingDeletedChapter.value = { title: data.title, content: data.content || '（无内容）' }
+    showDeletedPreview.value = true
+  } catch {}
+}
+
+const deletedChapterColumns = computed(() => [
+  {
+    title: '章节',
+    key: 'title',
+    ellipsis: { tooltip: true },
+    render(row: any) {
+      return h('span', { class: 'text-xs' }, `第${row.chapterNumber}章 ${row.title}`)
+    }
+  },
+  {
+    title: '字数',
+    key: 'wordCount',
+    width: 60,
+    render(row: any) {
+      return h('span', { class: 'text-xs text-(--ui-text-dimmed)' }, `${row.wordCount || 0}`)
+    }
+  },
+  {
+    title: '操作',
+    key: 'actions',
+    width: 130,
+    render(row: any) {
+      return h('div', { class: 'flex items-center gap-1' }, [
+        h(resolveComponent('NButton'), { size: 'tiny', quaternary: true, onClick: () => previewDeletedChapter(row.id) }, {
+          icon: () => h(resolveComponent('Icon'), { icon: 'lucide:eye', class: 'w-3.5 h-3.5' })
+        }),
+        h(resolveComponent('NButton'), { size: 'tiny', quaternary: true, onClick: () => restoreChapter(row.id) }, {
+          icon: () => h(resolveComponent('Icon'), { icon: 'lucide:rotate-ccw', class: 'w-3.5 h-3.5' })
+        }),
+        h(resolveComponent('NButton'), { size: 'tiny', quaternary: true, onClick: () => permanentDeleteChapter(row) }, {
+          icon: () => h(resolveComponent('Icon'), { icon: 'lucide:trash-2', class: 'w-3.5 h-3.5 text-red-500' })
+        }),
+      ])
+    }
+  }
+])
+
+async function createNewChapter() {
+  if (!newChapterTitle.value.trim()) return
+  if (creatingChapter.value) return
+  creatingChapter.value = true
+  try {
+    const nextNum = (allChapters.value?.length || 0) + 1
+    const result = await $fetch<{ id: number }>(`/api/novels/${novelId.value}/chapters`, {
+      method: 'POST',
+      body: { title: newChapterTitle.value.trim(), chapterNumber: nextNum }
+    })
+    showNewChapterDialog.value = false
+    await refreshAllChapters()
+    navigateTo(`/novels/${novelId.value}/chapters/${result.id}`)
+  } catch {
+  } finally {
+    creatingChapter.value = false
+  }
 }
 
 const { data: chapter, refresh: refreshChapter } = await useFetch<{
@@ -285,7 +476,7 @@ const conflictDetected = ref(false)
 const serverUpdatedAt = ref(chapter.value?.updatedAt || null)
 const consistencyWarningsRef = ref<{ refresh: () => void } | null>(null)
 const pageRootRef = ref<HTMLElement | null>(null)
-const pageHeight = ref('100%')
+const pageHeight = ref('calc(100dvh - 7.5rem)')
 let pageResizeObserver: ResizeObserver | null = null
 
 const editingChapterTitle = ref(false)
@@ -730,7 +921,7 @@ const chapterProgress = computed(() => {
 const saveStatusText = computed(() => {
   if (conflictDetected.value) return '保存冲突'
   if (saving.value) return '保存中...'
-  if (content.value !== chapter.value?.content) return '待保存'
+  if ((content.value || '') !== (chapter.value?.content || '')) return '待保存'
   if (lastSaved.value)
     return `已保存 ${lastSaved.value.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}`
   return '已同步'
@@ -895,6 +1086,35 @@ async function finishEditTitle() {
     await refreshChapter()
   } catch {}
   editingChapterTitle.value = false
+}
+
+const regeneratingTitle = ref(false)
+async function aiRegenerateCurrentTitle() {
+  if (regeneratingTitle.value) return
+  regeneratingTitle.value = true
+  try {
+    const chNum = chapter.value?.chapterNumber || 1
+    const contentHint = content.value ? content.value.slice(0, 500) : ''
+    const prompt = contentHint
+      ? `根据以下章节内容，生成一个合适的章节标题（4-10个字）。只返回标题文字，不要序号、引号或解释。\n\n章节内容片段：\n${contentHint}`
+      : `请为小说「${novelInfo.value?.title || ''}」的第${chNum}章生成一个章节标题（4-10个字）。只返回标题文字，不要序号、引号或解释。`
+    const resp = await $fetch<Response>('/api/ai/suggest-description', {
+      method: 'POST',
+      body: { title: novelInfo.value?.title || '', genre: novelInfo.value?.title || '', template: prompt }
+    })
+    const text = typeof resp === 'string' ? resp : ''
+    const cleaned = text.replace(/["""''《》【】\n]/g, '').trim().slice(0, 20)
+    if (cleaned) {
+      await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, {
+        method: 'PUT',
+        body: { title: cleaned }
+      })
+      await refreshChapter()
+      message.success(`标题已更新为「${cleaned}」`)
+    }
+  } catch {} finally {
+    regeneratingTitle.value = false
+  }
 }
 
 function handleTextSelect() {
@@ -1449,7 +1669,7 @@ function handleDocumentKeydown(e: KeyboardEvent) {
 /* ─────────────── 写作安全 ─────────────── */
 const hasUnsavedChanges = computed(() => {
   if (saving.value) return false
-  return content.value !== (chapter.value?.content || '')
+  return (content.value || '') !== (chapter.value?.content || '')
 })
 
 const editorPlainText = computed(() => getEditorPlainText())
@@ -1540,19 +1760,33 @@ onBeforeUnmount(() => {
         <div class="min-w-0 flex-1">
           <div
             v-if="!editingChapterTitle"
-            class="flex items-center gap-1 min-w-0 cursor-pointer group"
-            title="点击修改章节名"
-            @click="startEditTitle"
+            class="flex items-center gap-1 min-w-0"
           >
-            <p
-              class="truncate text-sm font-medium text-(--ui-text-highlighted) group-hover:text-(--ui-primary) transition-colors"
+            <div
+              class="flex items-center gap-1 min-w-0 cursor-pointer group"
+              title="点击修改章节名"
+              @click="startEditTitle"
             >
-              Ch.{{ chapter?.chapterNumber }} {{ chapter?.title }}
-            </p>
-            <Icon
-              icon="lucide:pencil"
-              class="w-3 h-3 shrink-0 text-(--ui-text-dimmed) group-hover:text-(--ui-primary) transition-colors"
-            />
+              <p
+                class="truncate text-sm font-medium text-(--ui-text-highlighted) group-hover:text-(--ui-primary) transition-colors"
+              >
+                Ch.{{ chapter?.chapterNumber }} {{ chapter?.title }}
+              </p>
+              <Icon
+                icon="lucide:pencil"
+                class="w-3 h-3 shrink-0 text-(--ui-text-dimmed) group-hover:text-(--ui-primary) transition-colors"
+              />
+            </div>
+            <button
+              type="button"
+              class="shrink-0 ml-1 p-0.5 rounded text-(--ui-text-dimmed) hover:text-primary-500 transition-colors"
+              :class="{ 'animate-spin': regeneratingTitle }"
+              title="AI 生成章节名"
+              :disabled="regeneratingTitle"
+              @click.stop="aiRegenerateCurrentTitle"
+            >
+              <Icon icon="lucide:sparkles" class="w-3.5 h-3.5" />
+            </button>
           </div>
           <input
             v-else
@@ -1980,6 +2214,29 @@ onBeforeUnmount(() => {
                     class="w-3.5 h-3.5"
                   />
                 </button>
+                <button
+                  type="button"
+                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--ui-text-dimmed) hover:bg-primary-50 hover:text-primary-500 transition-colors"
+                  title="新建章节"
+                  :disabled="creatingChapter"
+                  @click="openNewChapterDialog"
+                >
+                  <Icon
+                    icon="lucide:plus"
+                    class="w-3.5 h-3.5"
+                  />
+                </button>
+                <button
+                  type="button"
+                  class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--ui-text-dimmed) hover:bg-(--ui-bg-elevated)/70 hover:text-(--ui-text) transition-colors"
+                  title="已删除的章节"
+                  @click="showDeletedChapters = true"
+                >
+                  <Icon
+                    icon="lucide:archive-restore"
+                    class="w-3.5 h-3.5"
+                  />
+                </button>
               </div>
             </div>
 
@@ -1987,43 +2244,62 @@ onBeforeUnmount(() => {
               ref="chapterListRef"
               class="flex-1 overflow-y-auto px-2 pb-2 space-y-1"
             >
-              <button
+              <div
                 v-for="ch in filteredChapters"
                 :key="ch.id"
                 :ref="(el) => setChapterButtonRef(ch.id, el)"
-                class="w-full text-left rounded-md px-2.5 py-2 text-xs transition-colors group"
+                class="w-full flex items-center rounded-md px-2.5 py-2 text-xs transition-colors group"
                 :class="
                   ch.id === chapterId ?
                     'bg-(--ui-primary-100)/10 text-(--ui-primary-600) dark:text-(--ui-primary-400) border border-(--ui-primary-500)/20'
                   : 'hover:bg-(--ui-bg-elevated)/60 text-(--ui-text-muted)'
                 "
-                @click="goToChapter(ch.id)"
               >
-                <div class="flex items-center gap-1.5">
-                  <span
-                    class="text-[10px] font-mono shrink-0 w-8 text-right"
-                    :class="
-                      ch.id === chapterId ?
-                        'text-(--ui-primary-500)'
-                      : 'text-(--ui-text-dimmed)'
-                    "
-                    >Ch.{{ ch.chapterNumber }}</span
-                  >
-                  <span class="truncate flex-1 font-medium">{{
-                    ch.title
-                  }}</span>
-                </div>
-                <div class="flex items-center gap-2 mt-0.5 pl-[2.2rem]">
-                  <span class="text-[10px] text-(--ui-text-dimmed)"
-                    >{{ ch.wordCount || 0 }} 字</span
-                  >
-                  <span
-                    v-if="ch.status === 'completed'"
-                    class="text-[10px] text-emerald-500"
-                    >已完成</span
-                  >
-                </div>
-              </button>
+                <button
+                  class="flex-1 min-w-0 text-left"
+                  @click="goToChapter(ch.id)"
+                >
+                  <div class="flex items-center gap-1.5">
+                    <span
+                      class="text-[10px] font-mono shrink-0 w-8 text-right"
+                      :class="
+                        ch.id === chapterId ?
+                          'text-(--ui-primary-500)'
+                        : 'text-(--ui-text-dimmed)'
+                      "
+                      >Ch.{{ ch.chapterNumber }}</span
+                    >
+                    <span class="truncate flex-1 font-medium">{{
+                      ch.title
+                    }}</span>
+                  </div>
+                  <div class="flex items-center gap-2 mt-0.5 pl-[2.2rem]">
+                    <span class="text-[10px] text-(--ui-text-dimmed)"
+                      >{{ ch.wordCount || 0 }} 字</span
+                    >
+                    <span
+                      v-if="ch.status === 'completed'"
+                      class="text-[10px] text-emerald-500"
+                      >已完成</span
+                    >
+                  </div>
+                </button>
+                <button
+                  v-if="ch.id !== chapterId"
+                  class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 text-(--ui-text-dimmed) hover:text-primary-500 transition-all"
+                  title="在新标签页打开"
+                  @click.stop="openChapterInNewTab(ch.id)"
+                >
+                  <Icon icon="lucide:external-link" class="w-3 h-3" />
+                </button>
+                <button
+                  class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 text-(--ui-text-dimmed) hover:text-red-500 transition-all"
+                  title="删除章节"
+                  @click.stop="confirmDeleteChapter(ch)"
+                >
+                  <Icon icon="lucide:trash-2" class="w-3 h-3" />
+                </button>
+              </div>
               <div
                 v-if="!allChapters?.length"
                 class="text-center py-6 text-xs text-(--ui-text-dimmed)"
@@ -2395,7 +2671,7 @@ onBeforeUnmount(() => {
           <!-- AI Action Result -->
           <div
             v-if="aiActionResult"
-            class="mt-3 w-full p-4 rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 border-l-2 border-l-primary-400 shadow-sm"
+            class="mt-3 w-full p-4 rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 border-l-2 border-l-primary-400 shadow-sm max-h-[50vh] overflow-y-auto"
           >
             <div class="flex items-center justify-between mb-2">
               <div class="flex items-center gap-2">
@@ -3023,6 +3299,54 @@ onBeforeUnmount(() => {
         </div>
       </template>
     </NModal>
+
+    <!-- New Chapter Dialog -->
+    <NModal v-model:show="showNewChapterDialog" preset="card" title="新建章节" style="max-width: 400px">
+      <div class="space-y-3">
+        <NInput
+          v-model:value="newChapterTitle"
+          placeholder="请输入章节标题"
+          autofocus
+          @keydown.enter="createNewChapter"
+        />
+        <NButton size="tiny" quaternary :loading="generatingTitle" @click="aiGenerateNewTitle">
+          <template #icon><Icon icon="lucide:sparkles" class="w-3.5 h-3.5" /></template>
+          AI 生成标题
+        </NButton>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton size="small" @click="showNewChapterDialog = false">取消</NButton>
+          <NButton size="small" type="primary" :loading="creatingChapter" @click="createNewChapter">创建</NButton>
+        </div>
+      </template>
+    </NModal>
+
+    <!-- Deleted Chapters Dialog -->
+    <NModal v-model:show="showDeletedChapters" preset="card" title="已删除的章节" style="max-width: 650px">
+      <div v-if="loadingDeleted" class="py-8 flex justify-center">
+        <NSpin size="medium" />
+      </div>
+      <div v-else-if="!deletedChapters.length" class="py-8 text-center text-sm text-(--ui-text-dimmed)">
+        没有已删除的章节
+      </div>
+      <NDataTable
+        v-else
+        :columns="deletedChapterColumns"
+        :data="deletedChapters"
+        :bordered="false"
+        size="small"
+        :max-height="400"
+        :row-key="(row: any) => row.id"
+      />
+    </NModal>
+
+    <!-- Deleted Chapter Preview -->
+    <NModal v-model:show="showDeletedPreview" preset="card" :title="previewingDeletedChapter?.title || '预览'" style="max-width: 600px; max-height: 80vh">
+      <div v-if="previewingDeletedChapter" class="max-h-[60vh] overflow-y-auto rounded-lg bg-(--ui-bg-muted) p-4 text-sm leading-relaxed whitespace-pre-wrap text-(--ui-text)">
+        {{ previewingDeletedChapter.content }}
+      </div>
+    </NModal>
   </div>
 </template>
 
@@ -3067,11 +3391,15 @@ onBeforeUnmount(() => {
 }
 
 .chapter-writing-surface :deep(.milkdown) {
-  min-height: 100%;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
 }
 
 .chapter-writing-surface :deep(.ProseMirror) {
-  min-height: 100%;
+  flex: 1;
+  width: 100%;
   max-width: none;
   padding: 0;
   color: var(--ui-text);
@@ -3090,7 +3418,7 @@ onBeforeUnmount(() => {
 
 .chapter-writing-surface :deep(.ProseMirror p) {
   margin: 0 0 0.85rem;
-  max-width: min(72ch, 100%);
+  max-width: none;
   text-wrap: pretty;
   text-indent: 2em;
 }

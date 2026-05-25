@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
   if (data.expectedUpdatedAt) {
     const serverTime = new Date(chapter.updatedAt).getTime()
     const clientTime = new Date(data.expectedUpdatedAt).getTime()
-    if (serverTime > clientTime) {
+    if (serverTime - clientTime > 5000) {
       throw createError({
         statusCode: 409,
         message: 'Conflict: chapter was modified in another tab'
@@ -91,5 +91,5 @@ export default defineEventHandler(async (event) => {
     await enqueuePostProcessing(novelId, chapterId)
   }
 
-  return chapter
+  return { ...chapter, updatedAt: new Date().toISOString() }
 })

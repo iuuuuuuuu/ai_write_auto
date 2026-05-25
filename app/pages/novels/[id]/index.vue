@@ -191,6 +191,30 @@ const showCharacterDialog = ref(false)
 const showNewChapterDialog = ref(false)
 const newChapterTitle = ref('')
 const creatingChapter = ref(false)
+const generatingChapterTitle = ref(false)
+
+async function aiGenerateChapterTitle() {
+  if (generatingChapterTitle.value) return
+  generatingChapterTitle.value = true
+  try {
+    const nextNum = (chapters.value?.length || 0) + 1
+    const lastChapter = chapters.value?.[chapters.value.length - 1]
+    const hint = lastChapter ? `上一章标题：${lastChapter.title}` : ''
+    const resp = await $fetch<any>('/api/ai/suggest-description', {
+      method: 'POST',
+      body: {
+        title: novel.value?.title || '',
+        genre: novel.value?.genre || '',
+        template: `请为小说的第${nextNum}章生成一个章节标题（4-10个字）。${hint}\n只返回标题文字，不要序号、引号或任何解释。`
+      }
+    })
+    const text = typeof resp === 'string' ? resp : ''
+    const cleaned = text.replace(/["""''《》【】\n第\d+章\s]*/g, '').trim().slice(0, 20)
+    if (cleaned) newChapterTitle.value = `第${nextNum}章 ${cleaned}`
+  } catch {} finally {
+    generatingChapterTitle.value = false
+  }
+}
 const editingCharacterId = ref<number | null>(null)
 const savingCharacter = ref(false)
 const characterFormRef = ref<{ validate: () => Promise<void> } | null>(null)
@@ -224,6 +248,8 @@ const regenerateOutlineForm = reactive({
   chapterCount: 10,
   idea: ''
 })
+const outlineSearchQuery = shallowRef('')
+const plotPointSearchQuery = shallowRef('')
 const characterSearchQuery = shallowRef('')
 const characterAppearanceFilter = shallowRef<CharacterAppearanceFilter>('all')
 const expandedCharacterIds = shallowRef<number[]>([])
@@ -330,6 +356,29 @@ const sortedOutlines = computed(() => {
       left.sortOrder - right.sortOrder ||
       left.chapterNumber - right.chapterNumber
     )
+  })
+})
+
+const filteredOutlines = computed(() => {
+  const query = normalizeSearchText(outlineSearchQuery.value)
+  if (!query) return sortedOutlines.value
+  return sortedOutlines.value.filter((outline) => {
+    const searchable = normalizeSearchText(
+      `${outline.chapterNumber} ${outline.description}`
+    )
+    return searchable.includes(query)
+  })
+})
+
+const filteredPlotPoints = computed(() => {
+  const query = normalizeSearchText(plotPointSearchQuery.value)
+  if (!query) return plotPoints.value || []
+  return (plotPoints.value || []).filter((point) => {
+    const chapterInfo = chapters.value?.find((c) => c.id === point.chapterId)
+    const searchable = normalizeSearchText(
+      `${point.description} ${getPlotPointTypeLabel(point.type)} ${chapterInfo?.chapterNumber || ''} ${chapterInfo?.title || ''}`
+    )
+    return searchable.includes(query)
   })
 })
 
@@ -779,6 +828,14 @@ function openEditCharacterDialog(character: CharacterItem) {
   characterForm.traits = character.traits || ''
   characterForm.relationships = character.relationships || ''
   showCharacterDialog.value = true
+}
+
+const showCharacterDetail = ref(false)
+const detailCharacter = ref<CharacterItem | null>(null)
+
+function openCharacterDetail(character: CharacterItem) {
+  detailCharacter.value = character
+  showCharacterDetail.value = true
 }
 
 function getFirstFormErrorMessage(error: unknown) {
@@ -1408,9 +1465,25 @@ async function savePlotPoint() {
         </div>
       </div>
 
+      <div v-if="!editingOutlines && sortedOutlines.length" class="mb-3">
+        <NInput
+          v-model:value="outlineSearchQuery"
+          clearable
+          size="small"
+          placeholder="搜索章节号或大纲内容"
+        >
+          <template #prefix>
+            <Icon
+              icon="lucide:search"
+              class="size-4 text-(--ui-text-dimmed)"
+            />
+          </template>
+        </NInput>
+      </div>
+
       <div
         v-if="editingOutlines"
-        class="space-y-2"
+        class="max-h-[420px] space-y-2 overflow-y-auto pr-1"
       >
         <div
           v-for="(outline, index) in outlineFormItems"
@@ -1467,11 +1540,22 @@ async function savePlotPoint() {
       </div>
 
       <div
+        v-else-if="!filteredOutlines.length"
+        class="py-8 text-center"
+      >
+        <Icon
+          icon="lucide:search-x"
+          class="mx-auto size-8 text-(--ui-text-dimmed)"
+        />
+        <p class="mt-2 text-sm text-(--ui-text-muted)">没有匹配的大纲</p>
+      </div>
+
+      <div
         v-else
-        class="grid gap-2 md:grid-cols-2 xl:grid-cols-3"
+        class="grid max-h-[420px] gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3"
       >
         <article
-          v-for="outline in sortedOutlines"
+          v-for="outline in filteredOutlines"
           :key="`${outline.chapterNumber}-${outline.sortOrder}`"
           class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
         >
@@ -1514,6 +1598,22 @@ async function savePlotPoint() {
         </NButton>
       </div>
 
+      <div v-if="plotPoints?.length" class="mb-3">
+        <NInput
+          v-model:value="plotPointSearchQuery"
+          clearable
+          size="small"
+          placeholder="搜索情节描述、类型或关联章节"
+        >
+          <template #prefix>
+            <Icon
+              icon="lucide:search"
+              class="size-4 text-(--ui-text-dimmed)"
+            />
+          </template>
+        </NInput>
+      </div>
+
       <div
         v-if="!plotPoints?.length"
         class="rounded-lg bg-(--ui-bg-muted)/30 py-8 text-center text-sm text-(--ui-text-muted)"
@@ -1522,11 +1622,22 @@ async function savePlotPoint() {
       </div>
 
       <div
+        v-else-if="!filteredPlotPoints.length"
+        class="py-8 text-center"
+      >
+        <Icon
+          icon="lucide:search-x"
+          class="mx-auto size-8 text-(--ui-text-dimmed)"
+        />
+        <p class="mt-2 text-sm text-(--ui-text-muted)">没有匹配的情节线索</p>
+      </div>
+
+      <div
         v-else
-        class="space-y-2"
+        class="max-h-[420px] space-y-2 overflow-y-auto pr-1"
       >
         <div
-          v-for="point in plotPoints"
+          v-for="point in filteredPlotPoints"
           :key="point.id"
           class="flex items-start gap-3 rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
         >
@@ -1657,6 +1768,7 @@ async function savePlotPoint() {
             </NButton>
           </div>
         </div>
+        <div class="max-h-[520px] overflow-y-auto pr-1">
         <div
           v-if="!chapters?.length"
           class="py-10 text-center text-sm text-(--ui-text-muted)"
@@ -1766,10 +1878,12 @@ async function savePlotPoint() {
             </NuxtLink>
           </template>
         </TransitionGroup>
+        </div>
       </section>
 
       <section
-        class="card-glass flex min-h-[620px] flex-col overflow-hidden p-4 lg:p-5"
+        class="card-glass flex flex-col overflow-hidden p-4 lg:p-5"
+        style="max-height: 720px;"
       >
         <div class="flex flex-col gap-3">
           <div
@@ -1868,7 +1982,7 @@ async function savePlotPoint() {
           </div>
         </div>
 
-        <div v-show="characterViewMode === 'cards'">
+        <div v-show="characterViewMode === 'cards'" class="flex-1 min-h-0 flex flex-col">
           <div
             v-if="!sortedCharacters.length"
             class="flex flex-1 items-center justify-center py-10 text-center text-sm text-(--ui-text-muted)"
@@ -1895,12 +2009,12 @@ async function savePlotPoint() {
           </div>
           <div
             v-else
-            class="mt-4 grid max-h-[calc(100dvh-260px)] min-h-0 gap-3 overflow-y-auto pr-1 md:grid-cols-2 2xl:grid-cols-3"
+            class="mt-4 grid min-h-0 gap-3 overflow-y-auto pr-1 md:grid-cols-2 2xl:grid-cols-3"
           >
             <article
               v-for="character in filteredCharacters"
               :key="character.id"
-              class="flex min-h-[250px] flex-col rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3 transition-all duration-200 hover:bg-(--ui-bg-muted) hover:-translate-y-0.5 hover:shadow-md"
+              class="relative flex flex-col rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3 transition-all duration-200 hover:bg-(--ui-bg-muted) hover:-translate-y-0.5 hover:shadow-md hover:z-10"
             >
               <div class="flex items-start gap-2.5">
                 <div
@@ -1937,6 +2051,20 @@ async function savePlotPoint() {
                       </div>
                     </div>
                     <div class="flex shrink-0 items-center gap-1">
+                      <NTooltip>
+                        <template #trigger>
+                          <button
+                            class="flex size-7 items-center justify-center rounded-md text-(--ui-text-dimmed) transition-colors hover:bg-(--ui-bg-elevated) hover:text-(--ui-text)"
+                            @click="openCharacterDetail(character)"
+                          >
+                            <Icon
+                              icon="lucide:eye"
+                              class="size-3.5"
+                            />
+                          </button>
+                        </template>
+                        查看角色
+                      </NTooltip>
                       <NTooltip>
                         <template #trigger>
                           <button
@@ -2030,7 +2158,7 @@ async function savePlotPoint() {
                   故事弧线
                 </p>
                 <p
-                  class="mt-0.5 line-clamp-3 leading-relaxed text-(--ui-text-muted)"
+                  class="mt-0.5 leading-relaxed text-(--ui-text-muted)"
                 >
                   {{ character.overallArc }}
                 </p>
@@ -2109,11 +2237,17 @@ async function savePlotPoint() {
       title="新建章节"
       class="max-w-sm"
     >
-      <NInput
-        v-model:value="newChapterTitle"
-        placeholder="请输入章节标题"
-        @keydown.enter="createNewChapter"
-      />
+      <div class="space-y-3">
+        <NInput
+          v-model:value="newChapterTitle"
+          placeholder="请输入章节标题"
+          @keydown.enter="createNewChapter"
+        />
+        <NButton size="tiny" quaternary :loading="generatingChapterTitle" @click="aiGenerateChapterTitle">
+          <template #icon><Icon icon="lucide:sparkles" class="w-3.5 h-3.5" /></template>
+          AI 生成标题
+        </NButton>
+      </div>
       <template #footer>
         <div class="flex justify-end gap-2">
           <NButton @click="showNewChapterDialog = false">取消</NButton>
@@ -2599,5 +2733,72 @@ async function savePlotPoint() {
         返回仪表盘
       </NButton>
     </div>
+
+    <!-- Character Detail Modal -->
+    <NModal v-model:show="showCharacterDetail" preset="card" :title="detailCharacter?.name || '角色详情'" style="max-width: 600px; max-height: 85vh">
+      <div v-if="detailCharacter" class="space-y-4 overflow-y-auto max-h-[65vh]">
+        <div v-if="detailCharacter.description" class="space-y-1">
+          <p class="text-xs font-medium text-(--ui-text-dimmed)">简介</p>
+          <p class="text-sm leading-relaxed text-(--ui-text)">{{ detailCharacter.description }}</p>
+        </div>
+
+        <div v-if="detailCharacter.traits" class="space-y-1">
+          <p class="text-xs font-medium text-(--ui-text-dimmed)">性格特征</p>
+          <p class="text-sm leading-relaxed text-(--ui-text)">{{ detailCharacter.traits }}</p>
+        </div>
+
+        <div v-if="detailCharacter.relationships" class="space-y-1">
+          <p class="text-xs font-medium text-(--ui-text-dimmed)">人物关系</p>
+          <p class="text-sm leading-relaxed text-(--ui-text)">{{ detailCharacter.relationships }}</p>
+        </div>
+
+        <div v-if="detailCharacter.currentState" class="space-y-1">
+          <p class="text-xs font-medium text-(--ui-text-dimmed)">当前状态</p>
+          <p class="text-sm leading-relaxed text-(--ui-text)">{{ detailCharacter.currentState }}</p>
+        </div>
+
+        <div v-if="detailCharacter.overallArc" class="space-y-1">
+          <p class="text-xs font-medium text-(--ui-text-dimmed)">故事弧线</p>
+          <p class="text-sm leading-relaxed text-(--ui-text) whitespace-pre-wrap">{{ detailCharacter.overallArc }}</p>
+        </div>
+
+        <div class="flex flex-wrap gap-3 text-xs text-(--ui-text-dimmed)">
+          <span v-if="detailCharacter.firstAppearanceChapter">首次出场：第{{ detailCharacter.firstAppearanceChapter }}章</span>
+          <span v-if="detailCharacter.lastAppearanceChapter">最近出场：第{{ detailCharacter.lastAppearanceChapter }}章</span>
+          <span>出场 {{ detailCharacter.appearances.length }} 次</span>
+        </div>
+
+        <div v-if="detailCharacter.appearances.length" class="border-t border-(--ui-border) pt-3 space-y-2">
+          <p class="text-xs font-medium text-(--ui-text-dimmed)">出场记录</p>
+          <div
+            v-for="app in detailCharacter.appearances"
+            :key="`${app.chapterId}-${app.id}`"
+            class="rounded-lg bg-(--ui-bg-muted) px-3 py-2"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <NuxtLink
+                :to="`/novels/${novel?.id}/chapters/${app.chapterId}`"
+                class="text-xs font-medium text-primary-600 hover:underline"
+              >
+                Ch.{{ app.chapterNumber }} {{ app.chapterTitle }}
+              </NuxtLink>
+              <span class="text-[10px] text-(--ui-text-dimmed)">{{ getRoleLabel(app.role) }}</span>
+            </div>
+            <p v-if="app.background || app.snippet" class="mt-1 text-xs leading-relaxed text-(--ui-text-muted)">
+              {{ app.background || app.snippet }}
+            </p>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton size="small" @click="openEditCharacterDialog(detailCharacter!); showCharacterDetail = false">
+            <template #icon><Icon icon="lucide:pencil" class="w-3.5 h-3.5" /></template>
+            编辑
+          </NButton>
+          <NButton size="small" @click="showCharacterDetail = false">关闭</NButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>

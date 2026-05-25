@@ -4,7 +4,7 @@ definePageMeta({ layout: 'default' })
 const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
-const { get: apiGet, post, del: apiDel } = useApi()
+const { get: apiGet, post, del: apiDel, put } = useApi()
 
 interface TrashNovel {
   id: number
@@ -42,6 +42,14 @@ const chaptersTotal = ref(0)
 const novelsTotalPages = ref(0)
 const chaptersTotalPages = ref(0)
 
+const retentionDays = ref(30)
+const savingRetention = ref(false)
+
+const showPreview = ref(false)
+const previewLoading = ref(false)
+const previewData = ref<any>(null)
+const previewType = ref<'novel' | 'chapter'>('chapter')
+
 async function fetchTrash() {
   loading.value = true
   try {
@@ -55,13 +63,45 @@ async function fetchTrash() {
     chaptersTotal.value = data.chapters.total
     chaptersTotalPages.value = data.chapters.totalPages
   } catch {
-    // useApi handles error display
   } finally {
     loading.value = false
   }
 }
 
-onMounted(fetchTrash)
+async function fetchRetentionDays() {
+  try {
+    const site = await apiGet<Record<string, string>>('/api/settings/site', { silent: true })
+    retentionDays.value = parseInt(site.trash_retention_days || '30') || 30
+  } catch {}
+}
+
+async function saveRetentionDays() {
+  savingRetention.value = true
+  try {
+    await put('/api/settings/site', { key: 'trash_retention_days', value: String(retentionDays.value) }, { successMessage: '保留天数已更新' })
+  } catch {} finally {
+    savingRetention.value = false
+  }
+}
+
+async function previewItem(type: 'novel' | 'chapter', id: number) {
+  previewType.value = type
+  previewLoading.value = true
+  showPreview.value = true
+  previewData.value = null
+  try {
+    previewData.value = await apiGet('/api/novels/trash-preview', { query: { type, id }, silent: true })
+  } catch {
+    previewData.value = null
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchTrash()
+  fetchRetentionDays()
+})
 
 function goToPage(p: number) {
   page.value = p
@@ -83,9 +123,7 @@ async function restore(type: 'novel' | 'chapter', id: number) {
       successMessage: type === 'novel' ? '小说已恢复' : '章节已恢复'
     })
     await fetchTrash()
-  } catch {
-    // useApi handles error display
-  }
+  } catch {}
 }
 
 function confirmDelete(type: 'novel' | 'chapter', item: TrashNovel | TrashChapter) {
@@ -102,16 +140,13 @@ function confirmDelete(type: 'novel' | 'chapter', item: TrashNovel | TrashChapte
           successMessage: '已永久删除'
         })
         await fetchTrash()
-      } catch {
-        // useApi handles error display
-      }
+      } catch {}
     }
   })
 }
 
-const currentItems = computed(() => activeTab.value === 'novels' ? novels.value : chapters.value)
-const currentTotal = computed(() => activeTab.value === 'novels' ? novelsTotal.value : chaptersTotal.value)
 const currentTotalPages = computed(() => activeTab.value === 'novels' ? novelsTotalPages.value : chaptersTotalPages.value)
+const currentTotal = computed(() => activeTab.value === 'novels' ? novelsTotal.value : chaptersTotal.value)
 
 function getStatusLabel(status: string) {
   if (status === 'completed') return '已完结'
@@ -136,9 +171,14 @@ function getStatusLabel(status: string) {
             {{ t('trash.title') }}
           </h1>
           <p class="mt-1 text-sm text-(--ui-text-muted)">
-            已删除的小说和章节，30 天后将自动清理
+            已删除的小说和章节，{{ retentionDays }} 天后将自动清理
           </p>
         </div>
+      </div>
+      <div class="relative z-10 mt-4 flex items-center gap-2">
+        <span class="text-xs text-(--ui-text-muted)">自动清理天数：</span>
+        <NInputNumber v-model:value="retentionDays" size="tiny" :min="1" :max="365" :step="1" style="width: 80px" />
+        <NButton size="tiny" secondary :loading="savingRetention" @click="saveRetentionDays">保存</NButton>
       </div>
     </section>
 
@@ -183,6 +223,9 @@ function getStatusLabel(status: string) {
                 </div>
               </div>
               <div class="shrink-0 flex items-center gap-2">
+                <NButton size="small" round quaternary @click="previewItem('novel', novel.id)">
+                  <template #icon><Icon icon="lucide:eye" class="size-3.5" /></template>
+                </NButton>
                 <NButton size="small" round @click="restore('novel', novel.id)">
                   <template #icon><Icon icon="lucide:rotate-ccw" class="size-3.5" /></template>
                   恢复
@@ -229,6 +272,9 @@ function getStatusLabel(status: string) {
                 </div>
               </div>
               <div class="shrink-0 flex items-center gap-2">
+                <NButton size="small" round quaternary @click="previewItem('chapter', chapter.id)">
+                  <template #icon><Icon icon="lucide:eye" class="size-3.5" /></template>
+                </NButton>
                 <NButton size="small" round @click="restore('chapter', chapter.id)">
                   <template #icon><Icon icon="lucide:rotate-ccw" class="size-3.5" /></template>
                   恢复
@@ -255,5 +301,40 @@ function getStatusLabel(status: string) {
         @update:page-size="(s) => { pageSize = s; page = 1; fetchTrash() }"
       />
     </div>
+
+    <!-- Preview Modal -->
+    <NModal v-model:show="showPreview" preset="card" :title="previewData?.title || '预览'" style="max-width: 700px; max-height: 80vh">
+      <div v-if="previewLoading" class="py-12 flex justify-center">
+        <NSpin size="medium" />
+      </div>
+      <div v-else-if="previewData" class="space-y-3">
+        <div v-if="previewType === 'novel'" class="space-y-2">
+          <p v-if="previewData.description" class="text-sm text-(--ui-text-muted)">{{ previewData.description }}</p>
+          <div class="flex gap-2 text-xs text-(--ui-text-dimmed)">
+            <span v-if="previewData.genre">类型：{{ previewData.genre }}</span>
+            <span>状态：{{ getStatusLabel(previewData.status) }}</span>
+          </div>
+          <div v-if="previewData.chapters?.length" class="mt-3">
+            <p class="text-xs font-medium text-(--ui-text-muted) mb-2">包含章节（{{ previewData.chapters.length }}）：</p>
+            <div class="space-y-1 max-h-60 overflow-y-auto">
+              <div v-for="ch in previewData.chapters" :key="ch.id" class="text-xs text-(--ui-text-dimmed) px-2 py-1 rounded bg-(--ui-bg-muted)">
+                第{{ ch.chapterNumber }}章 {{ ch.title }} <span v-if="ch.wordCount" class="ml-2 opacity-60">{{ ch.wordCount }}字</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-else class="space-y-2">
+          <div class="flex gap-3 text-xs text-(--ui-text-dimmed)">
+            <span>来自：{{ previewData.novelTitle }}</span>
+            <span>第{{ previewData.chapterNumber }}章</span>
+            <span v-if="previewData.wordCount">{{ previewData.wordCount }}字</span>
+          </div>
+          <div class="max-h-[50vh] overflow-y-auto rounded-lg bg-(--ui-bg-muted) p-4 text-sm leading-relaxed whitespace-pre-wrap text-(--ui-text)">
+            {{ previewData.content || '（无内容）' }}
+          </div>
+        </div>
+      </div>
+      <div v-else class="py-8 text-center text-sm text-(--ui-text-dimmed)">加载失败</div>
+    </NModal>
   </div>
 </template>

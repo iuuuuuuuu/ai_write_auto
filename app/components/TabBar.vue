@@ -120,43 +120,45 @@ const contextMenuOptions = computed(() => [
   <ClientOnly>
     <div class="tab-bar">
       <div class="tab-bar-scroll">
-        <div
-          v-for="(tab, index) in tabs"
-          :key="tab.id"
-          class="tab-item"
-          :class="{
-            active: tab.id === activeTab?.id,
-            'drag-over': dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
-          }"
-          draggable="true"
-          @dragstart="handleDragStart($event, index)"
-          @dragover="handleDragOver($event, index)"
-          @drop="handleDrop($event, index)"
-          @dragend="handleDragEnd"
-          @click="handleTabClick(tab)"
-          @dblclick="handleDoubleClick(tab)"
-          @contextmenu="handleContextMenu($event, tab)"
-        >
-          <div class="tab-content">
-            <input
-              v-if="renamingTabId === tab.id"
-              v-model="renameInput"
-              class="tab-rename-input"
-              @keydown.enter="commitRename"
-              @keydown.escape="cancelRename"
-              @blur="commitRename"
-              @click.stop
-            />
-            <span v-else class="tab-title">{{ getTabTitle(tab) }}</span>
-          </div>
-          <button
-            v-if="tab.closable"
-            class="tab-close"
-            @click.stop="removeTab(tab.id)"
+        <TransitionGroup name="tab-transition">
+          <div
+            v-for="(tab, index) in tabs"
+            :key="tab.id"
+            class="tab-item"
+            :class="{
+              active: tab.id === activeTab?.id,
+              'drag-over': dragState.dragging && dragState.overIndex === index && dragState.fromIndex !== index,
+            }"
+            draggable="true"
+            @dragstart="handleDragStart($event, index)"
+            @dragover="handleDragOver($event, index)"
+            @drop="handleDrop($event, index)"
+            @dragend="handleDragEnd"
+            @click="handleTabClick(tab)"
+            @dblclick="handleDoubleClick(tab)"
+            @contextmenu="handleContextMenu($event, tab)"
           >
-            <Icon icon="lucide:x" class="w-3 h-3" />
-          </button>
-        </div>
+            <div class="tab-content">
+              <input
+                v-if="renamingTabId === tab.id"
+                v-model="renameInput"
+                class="tab-rename-input"
+                @keydown.enter="commitRename"
+                @keydown.escape="cancelRename"
+                @blur="commitRename"
+                @click.stop
+              />
+              <span v-else class="tab-title">{{ getTabTitle(tab) }}</span>
+            </div>
+            <button
+              v-if="tab.closable"
+              class="tab-close"
+              @click.stop="removeTab(tab.id)"
+            >
+              <Icon icon="lucide:x" class="w-3 h-3" />
+            </button>
+          </div>
+        </TransitionGroup>
       </div>
 
       <button
@@ -350,5 +352,27 @@ const contextMenuOptions = computed(() => [
 
 .tab-item[draggable="true"]:active {
   cursor: grabbing;
+}
+
+.tab-transition-enter-active {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-transition-leave-active {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab-transition-enter-from {
+  opacity: 0;
+  transform: translateY(-8px) scale(0.9);
+}
+
+.tab-transition-leave-to {
+  opacity: 0;
+  transform: scale(0.85);
+}
+
+.tab-transition-move {
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 </style>
