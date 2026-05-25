@@ -106,6 +106,7 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
   let buffer = ''
   let insideThink = false
   let thinkBuffer = ''
+  let hasContent = false
 
   try {
     while (true) {
@@ -127,6 +128,7 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
         if (!trimmed || !trimmed.startsWith('data: ')) continue
         const data = trimmed.slice(6)
         if (data === '[DONE]') {
+          if (!hasContent) break
           yield { content: '', done: true }
           return
         }
@@ -137,6 +139,7 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
           const usage = parsed.usage
 
           if (delta) {
+            hasContent = true
             if (insideThink) {
               thinkBuffer += delta
               if (thinkBuffer.includes('</think>') || thinkBuffer.includes('<|/think|>')) {
@@ -161,7 +164,8 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
               yield { content: delta, done: false, usage }
             }
           }
-          if (finishReason === 'stop') {
+          if (finishReason === 'stop' || finishReason === 'length') {
+            if (!hasContent) break
             yield { content: '', done: true, usage }
             return
           }
@@ -170,5 +174,18 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
     }
   } finally {
     reader.cancel().catch(() => {})
+  }
+
+  // Fallback: stream ended with no content — model doesn't support streaming
+  if (!hasContent) {
+    const fallbackResponse = await doFetch(options, false)
+    const fallbackData = await fallbackResponse.json()
+    const content = fallbackData.choices?.[0]?.message?.content || ''
+    const usage = fallbackData.usage
+    const cleaned = stripThinking(content)
+    if (cleaned) {
+      yield { content: cleaned, done: false, usage: { prompt_tokens: usage?.prompt_tokens || 0, completion_tokens: usage?.completion_tokens || 0 } }
+    }
+    yield { content: '', done: true, usage: { prompt_tokens: usage?.prompt_tokens || 0, completion_tokens: usage?.completion_tokens || 0 } }
   }
 }

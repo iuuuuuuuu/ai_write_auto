@@ -22,17 +22,33 @@ export default defineEventHandler(async (event) => {
     apiKey = existing.apiKey
   }
 
+  let available = false
+  let reason: string | null = null
+
   try {
     await callAi({
       apiUrl: data.apiUrl,
       apiKey,
       model: data.model,
-      messages: [{ role: 'user', content: 'ping' }],
+      messages: [{ role: 'user', content: '1+1' }],
       temperature: 0,
-      maxTokens: 8
+      maxTokens: 10
     })
-    return { available: true, reason: null }
+    available = true
   } catch (e: any) {
-    return { available: false, reason: e.message || '连通性检测失败' }
+    reason = e.message || '连通性检测失败'
   }
+
+  // If testing an existing model, persist the check result
+  if (data.existingModelId) {
+    const model = await em.findOne(AiModelSchema, { id: data.existingModelId, user: auth.userId })
+    if (model) {
+      model.lastCheckAt = new Date()
+      model.lastCheckAvailable = available
+      model.lastCheckReason = reason
+      await em.flush()
+    }
+  }
+
+  return { available, reason }
 })

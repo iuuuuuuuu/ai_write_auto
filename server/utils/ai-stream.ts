@@ -171,6 +171,11 @@ export interface TrackedStreamOptions {
   taskId: number
   trackStats?: boolean
   onComplete?: (fullContent: string) => Promise<void>
+  autoExtend?: boolean
+}
+
+function estimateTargetChars(maxTokens: number): number {
+  return Math.round(maxTokens * 0.55)
 }
 
 export function createTrackedStreamResponse(
@@ -190,10 +195,61 @@ export function createTrackedStreamResponse(
 
       controller.enqueue(encoder.encode(': connected\n\n'))
       try {
-        const { fullContent, inputTokens, outputTokens } = await collectStream(
+        let fullContent = ''
+        let totalInputTokens = 0
+        let totalOutputTokens = 0
+
+        const { fullContent: firstContent, inputTokens, outputTokens } = await collectStream(
           options, signal,
           (content) => send({ content, done: false })
         )
+
+        fullContent = firstContent
+        totalInputTokens += inputTokens
+        totalOutputTokens += outputTokens
+
+        // Auto-extend: if content is far below target, continue generating
+        if (tracked.autoExtend !== false && fullContent && options.maxTokens) {
+          const targetChars = estimateTargetChars(options.maxTokens)
+          const currentChars = fullContent.replace(/\s/g, '').length
+          const MAX_EXTEND_ROUNDS = 3
+
+          for (let round = 0; round < MAX_EXTEND_ROUNDS; round++) {
+            if (signal.aborted) break
+            const remaining = targetChars - currentChars - fullContent.replace(/\s/g, '').length + currentChars
+            const actualRemaining = targetChars - fullContent.replace(/\s/g, '').length
+            if (actualRemaining < targetChars * 0.3) break
+
+            const remainingTokens = Math.min(
+              options.maxTokens,
+              Math.round(actualRemaining / 0.55) + 200
+            )
+
+            const extendMessages = [
+              ...options.messages,
+              {
+                role: 'assistant' as const,
+                content: fullContent
+              },
+              {
+                role: 'user' as const,
+                content: `请从上文断点处自然续写，不要重复已有内容，不要加任何标题或分隔符。剩余约${actualRemaining}字需要补充，写到合适的段落结尾处停止。`
+              }
+            ]
+
+            const { fullContent: extContent, inputTokens: extIn, outputTokens: extOut } = await collectStream(
+              { ...options, messages: extendMessages, maxTokens: remainingTokens },
+              signal,
+              (content) => send({ content, done: false })
+            )
+
+            if (!extContent || extContent.replace(/\s/g, '').length < 50) break
+
+            fullContent += extContent
+            totalInputTokens += extIn
+            totalOutputTokens += extOut
+          }
+        }
 
         if (!fullContent) {
           await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
@@ -205,7 +261,7 @@ export function createTrackedStreamResponse(
           return
         }
 
-        const totalTokens = inputTokens + outputTokens
+        const totalTokens = totalInputTokens + totalOutputTokens
 
         await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
           status: 'completed',
@@ -214,7 +270,7 @@ export function createTrackedStreamResponse(
           completedAt: new Date()
         })
 
-        await recordUsage(ctx, inputTokens, outputTokens)
+        await recordUsage(ctx, totalInputTokens, totalOutputTokens)
         if (tracked.trackStats) await recordAiGeneration(ctx.em, ctx.userId)
         if (tracked.onComplete && fullContent) await tracked.onComplete(fullContent)
 

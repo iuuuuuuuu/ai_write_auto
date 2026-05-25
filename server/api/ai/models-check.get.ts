@@ -25,9 +25,9 @@ export default defineEventHandler(async (event) => {
       apiUrl: model.apiUrl,
       apiKey: model.apiKey,
       model: model.model,
-      messages: [{ role: 'user', content: 'ping' }],
+      messages: [{ role: 'user', content: '1+1' }],
       temperature: 0,
-      maxTokens: 8
+      maxTokens: 10
     })
     available = true
   } catch (e: any) {

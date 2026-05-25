@@ -1448,6 +1448,7 @@ function handleDocumentKeydown(e: KeyboardEvent) {
 
 /* ─────────────── 写作安全 ─────────────── */
 const hasUnsavedChanges = computed(() => {
+  if (saving.value) return false
   return content.value !== (chapter.value?.content || '')
 })
 
@@ -1486,12 +1487,9 @@ onMounted(() => {
   })
 })
 
-onBeforeRouteLeave(() => {
+onBeforeRouteLeave(async () => {
   if (hasUnsavedChanges.value) {
-    const answer = window.confirm(
-      '当前章节有未保存的更改，离开将丢失修改。是否继续？'
-    )
-    if (!answer) return false
+    await saveContent()
   }
 })
 

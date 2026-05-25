@@ -176,6 +176,9 @@ async function testModelForm() {
     } else {
       message.error(result.reason || '连通性测试失败')
     }
+    if (modelForm.id) {
+      await refreshModels()
+    }
   } catch (e: any) {
     message.error(e?.data?.message || '测试请求失败')
   } finally {
