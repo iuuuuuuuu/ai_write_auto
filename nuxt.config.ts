@@ -38,6 +38,12 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()],
+    css: {
+      devSourcemap: false,
+    },
+    build: {
+      cssMinify: true,
+    },
     optimizeDeps: {
       include: [
         '@iconify/vue',
