@@ -1,6 +1,7 @@
 import { getOrm } from '../database'
-import { callAi } from '../utils/ai-client'
+import { callAiWithUsage } from '../utils/ai-client'
 import { runConsistencyCheck } from '../utils/consistency-check'
+import { recordUsage, type StreamContext } from '../utils/ai-stream'
 import {
   buildSummaryPrompt,
   buildCharacterExtractionPrompt,
@@ -143,6 +144,8 @@ async function processTask(task: GenerationTask): Promise<void> {
 
   try {
     let result = ''
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
     const novelId = getEntityId(task.novel)
     const novelEntity = await em.findOne(NovelSchema, { id: novelId }) as any
     const userId = novelEntity ? getEntityId(novelEntity.user) : undefined
@@ -155,7 +158,7 @@ async function processTask(task: GenerationTask): Promise<void> {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildSummaryPrompt(chapter.content)
-          result = await callAi({
+          const aiResult = await callAiWithUsage({
             apiUrl: aiConfig.apiUrl,
             apiKey: aiConfig.apiKey,
             model: aiConfig.model,
@@ -163,6 +166,9 @@ async function processTask(task: GenerationTask): Promise<void> {
             temperature: 0.3,
             maxTokens: 500
           })
+          result = aiResult.content
+          totalInputTokens += aiResult.inputTokens
+          totalOutputTokens += aiResult.outputTokens
           await em.nativeUpdate(
             ChapterSchema,
             { id: chapter.id },
@@ -180,7 +186,7 @@ async function processTask(task: GenerationTask): Promise<void> {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildCharacterExtractionPrompt(chapter.content)
-          result = await callAi({
+          const aiResult = await callAiWithUsage({
             apiUrl: aiConfig.apiUrl,
             apiKey: aiConfig.apiKey,
             model: aiConfig.model,
@@ -188,6 +194,9 @@ async function processTask(task: GenerationTask): Promise<void> {
             temperature: 0.2,
             maxTokens: 2000
           })
+          result = aiResult.content
+          totalInputTokens += aiResult.inputTokens
+          totalOutputTokens += aiResult.outputTokens
 
           const chars = parseExtractedCharacters(result)
           for (const char of chars) {
@@ -284,7 +293,7 @@ async function processTask(task: GenerationTask): Promise<void> {
                 chapter.content,
                 appearances.map(a => ({ snippet: a.snippet, background: a.background }))
               )
-              const chapterStory = await callAi({
+              const storyResult = await callAiWithUsage({
                 apiUrl: aiConfig.apiUrl,
                 apiKey: aiConfig.apiKey,
                 model: aiConfig.model,
@@ -292,6 +301,9 @@ async function processTask(task: GenerationTask): Promise<void> {
                 temperature: 0.3,
                 maxTokens: 500
               })
+              const chapterStory = storyResult.content
+              totalInputTokens += storyResult.inputTokens
+              totalOutputTokens += storyResult.outputTokens
               cc.chapterStory = chapterStory
 
               const arcMessages = buildOverallArcPrompt(
@@ -301,7 +313,7 @@ async function processTask(task: GenerationTask): Promise<void> {
                 chapterStory,
                 chapter.chapterNumber
               )
-              const updatedArc = await callAi({
+              const arcResult = await callAiWithUsage({
                 apiUrl: aiConfig.apiUrl,
                 apiKey: aiConfig.apiKey,
                 model: aiConfig.model,
@@ -309,7 +321,9 @@ async function processTask(task: GenerationTask): Promise<void> {
                 temperature: 0.3,
                 maxTokens: 800
               })
-              charEntity.overallArc = updatedArc
+              totalInputTokens += arcResult.inputTokens
+              totalOutputTokens += arcResult.outputTokens
+              charEntity.overallArc = arcResult.content
             } catch (storyErr) {
               console.warn(`[task-queue] Failed to generate story/arc for character ${charEntity.name}:`, storyErr instanceof Error ? storyErr.message : storyErr)
             }
@@ -379,7 +393,7 @@ async function processTask(task: GenerationTask): Promise<void> {
             if (summaries.length < 3) continue
 
             const messages = buildStoryArcPrompt(summaries, startChapter, endChapter)
-            const arcSummary = await callAi({
+            const arcResult = await callAiWithUsage({
               apiUrl: aiConfig.apiUrl,
               apiKey: aiConfig.apiKey,
               model: aiConfig.model,
@@ -387,6 +401,9 @@ async function processTask(task: GenerationTask): Promise<void> {
               temperature: 0.3,
               maxTokens: 500
             })
+            const arcSummary = arcResult.content
+            totalInputTokens += arcResult.inputTokens
+            totalOutputTokens += arcResult.outputTokens
 
             em.create(StoryArcSchema, {
               novel: novelId,
@@ -422,7 +439,7 @@ async function processTask(task: GenerationTask): Promise<void> {
             { role: 'system' as const, content: '你是一位文学评论家和写作风格分析师。请分析以下文本的写作风格，包括：叙事视角、句式特点、用词习惯、节奏感、修辞手法、情感基调。输出简洁的风格指南（200字以内），可直接用于指导 AI 续写时保持一致风格。' },
             { role: 'user' as const, content: `请分析以下小说片段的写作风格：\n\n${sampleText}` }
           ]
-          const styleGuide = await callAi({
+          const styleResult = await callAiWithUsage({
             apiUrl: aiConfig.apiUrl,
             apiKey: aiConfig.apiKey,
             model: aiConfig.model,
@@ -430,6 +447,9 @@ async function processTask(task: GenerationTask): Promise<void> {
             temperature: 0.3,
             maxTokens: 500
           })
+          const styleGuide = styleResult.content
+          totalInputTokens += styleResult.inputTokens
+          totalOutputTokens += styleResult.outputTokens
           if (styleGuide) {
             await em.nativeUpdate(NovelSchema, { id: novelId }, { styleGuide })
             result = styleGuide
@@ -444,9 +464,21 @@ async function processTask(task: GenerationTask): Promise<void> {
       {
         status: 'completed',
         result,
+        tokensUsed: totalInputTokens + totalOutputTokens,
         completedAt: new Date()
       }
     )
+
+    if (userId && (totalInputTokens || totalOutputTokens)) {
+      const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
+      if (aiConfig) {
+        await recordUsage(
+          { em, userId, configId: aiConfig.id, model: aiConfig.model } as StreamContext,
+          totalInputTokens,
+          totalOutputTokens
+        )
+      }
+    }
   } catch (err: unknown) {
     const errorMessage =
       err instanceof Error ? err.message : 'Unknown task error'
@@ -518,7 +550,7 @@ export async function enqueuePostProcessing(
 
   await em.flush()
 
-  setTimeout(() => processPendingTasks().catch(() => {}), 1000)
+  setTimeout(() => processPendingTasks().catch(() => {}), 5000)
 }
 
 export async function processPendingTasks(): Promise<void> {
@@ -535,10 +567,16 @@ export async function processPendingTasks(): Promise<void> {
       { status: 'pending' }
     )
 
+    // Check if any AI config is available before processing
+    const anyConfig = await em.findOne(AiConfigSchema, { enabled: true }, { populate: ['aiModel'] })
+    if (!anyConfig || !(anyConfig.aiModel as any)?.enabled) {
+      return
+    }
+
     const pending = await em.find(
       GenerationTaskSchema,
       { status: 'pending' },
-      { limit: 5 }
+      { limit: 3 }
     )
 
     for (const task of pending) {

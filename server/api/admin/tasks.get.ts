@@ -1,4 +1,4 @@
-import { GenerationTaskSchema, NovelSchema } from '../../database/entities'
+import { GenerationTaskSchema, NovelSchema, ChapterSchema } from '../../database/entities'
 import type { GenerationTask } from '../../database/entities'
 
 type TaskStatus = GenerationTask['status']
@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
 
   const status = typeof query.status === 'string' ? query.status : ''
   const type = typeof query.type === 'string' ? query.type : ''
+  const userIdFilter = query.userId ? parseInt(query.userId as string) : null
 
   const filter: TaskFilter = {}
   if (isTaskStatus(status)) filter.status = status
@@ -49,13 +50,29 @@ export default defineEventHandler(async (event) => {
   ])
 
   const novelIds = [...new Set(tasks.map((task) => getEntityId(task.novel)))]
-  const novels = novelIds.length ? await em.find(NovelSchema, { id: { $in: novelIds } }) : []
-  const novelsById = new Map(novels.map((n) => [n.id, { id: n.id, title: n.title }]))
+  const novels = novelIds.length ? await em.find(NovelSchema, { id: { $in: novelIds } }, { populate: ['user'] }) : []
+  const novelsById = new Map(novels.map((n) => [n.id, n]))
 
-  const items = tasks.map((task) => ({
-    ...task,
-    novel: novelsById.get(getEntityId(task.novel)) || null,
-  }))
+  const chapterIds = tasks.map(t => t.chapter ? getEntityId(t.chapter) : null).filter(Boolean) as number[]
+  const chapters = chapterIds.length ? await em.find(ChapterSchema, { id: { $in: chapterIds } }) : []
+  const chaptersById = new Map(chapters.map(c => [c.id, c]))
+
+  let items = tasks.map((task) => {
+    const novel = novelsById.get(getEntityId(task.novel))
+    const user = novel?.user as any
+    const chapter = task.chapter ? chaptersById.get(getEntityId(task.chapter)) : null
+    return {
+      ...task,
+      novel: novel ? { id: novel.id, title: novel.title } : null,
+      chapter: chapter ? { id: chapter.id, title: chapter.title, chapterNumber: chapter.chapterNumber } : null,
+      username: user?.username || null,
+      userId: user?.id || null,
+    }
+  })
+
+  if (userIdFilter) {
+    items = items.filter(item => item.userId === userIdFilter)
+  }
 
   const statusCounts = await Promise.all([
     em.count(GenerationTaskSchema, { status: 'pending' }),

@@ -12,7 +12,7 @@ import {
   stopTrashCleanup
 } from '../services/trash-cleanup'
 import { ensureVectorTable } from '../services/vector-store'
-import { tryAutoLoadEmbedding } from '../services/embedding'
+import { tryAutoLoadEmbedding, stopEmbedding } from '../services/embedding'
 import { processPendingTasks } from '../services/task-queue'
 
 export default defineNitroPlugin(async (nitroApp) => {
@@ -27,54 +27,49 @@ export default defineNitroPlugin(async (nitroApp) => {
     const schema = await syncDatabaseSchema(orm, 'startup')
     console.log(`[db] MikroORM initialized, schema ${schema.version} synced`)
 
-    try {
-      const backupName = await createStartupBackupIfEnabled(orm)
-      if (backupName) {
-        console.log(`[db] Startup SQLite backup created: ${backupName}`)
+    // Non-blocking background initialization
+    setTimeout(async () => {
+      try {
+        const backupName = await createStartupBackupIfEnabled(orm)
+        if (backupName) console.log(`[db] Startup SQLite backup created: ${backupName}`)
+      } catch {}
+
+      try {
+        startScheduledBackup(orm)
+        console.log('[db] Scheduled backup service started')
+      } catch {}
+
+      try {
+        startTrashCleanup(orm)
+        console.log('[db] Trash cleanup service started')
+      } catch {}
+
+      try {
+        await ensureFts(orm)
+        console.log('[db] FTS index ensured')
+      } catch (e) {
+        console.warn('[db] FTS index creation skipped:', e)
       }
-    } catch (e) {
-      console.warn('[db] Startup SQLite backup skipped:', e)
+
+      try {
+        await ensureVectorTable()
+        console.log('[db] Vector table ensured')
+      } catch {}
+
+      tryAutoLoadEmbedding()
+    }, 0)
+
+    // Delay task processing significantly - avoid blocking SSR with AI API timeouts
+    if (process.env.NODE_ENV === 'production') {
+      setTimeout(() => {
+        processPendingTasks().catch(() => {})
+      }, 60000)
     }
-
-    try {
-      startScheduledBackup(orm)
-      console.log('[db] Scheduled backup service started')
-    } catch (e) {
-      console.warn('[db] Scheduled backup service failed to start:', e)
-    }
-
-    try {
-      startTrashCleanup(orm)
-      console.log('[db] Trash cleanup service started')
-    } catch (e) {
-      console.warn('[db] Trash cleanup service failed to start:', e)
-    }
-
-    try {
-      await ensureFts(orm)
-      console.log('[db] FTS index ensured')
-    } catch (e) {
-      console.warn('[db] FTS index creation skipped:', e)
-    }
-
-    try {
-      await ensureVectorTable()
-      console.log('[db] Vector table ensured')
-    } catch (e) {
-      console.warn('[db] Vector table creation skipped:', e)
-    }
-
-    tryAutoLoadEmbedding()
-
-    setTimeout(() => {
-      processPendingTasks().catch(e => {
-        console.warn('[db] Startup task processing failed:', e)
-      })
-    }, 5000)
 
     nitroApp.hooks.hook('close', async () => {
       stopScheduledBackup()
       stopTrashCleanup()
+      stopEmbedding()
       await orm.close()
     })
   } catch (e) {

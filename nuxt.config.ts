@@ -3,7 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineNuxtConfig({
   devServer: {
     port: 4530,
-    host: '0.0.0.0'
+    host: 'localhost'
   },
 
   app: {

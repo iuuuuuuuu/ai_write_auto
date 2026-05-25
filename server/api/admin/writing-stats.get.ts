@@ -1,4 +1,4 @@
-import { WritingStatSchema, UserSchema } from '../../database/entities'
+import { WritingStatSchema } from '../../database/entities'
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
@@ -7,37 +7,50 @@ export default defineEventHandler(async (event) => {
   const pagination = parsePagination(event)
 
   const days = parseInt((query.days as string) || '30')
+  const userId = query.userId ? parseInt(query.userId as string) : null
   const since = new Date()
   since.setDate(since.getDate() - days)
   const sinceStr = since.toISOString().split('T')[0]
 
   const filter: Record<string, any> = { date: { $gte: sinceStr } }
+  if (userId) filter.user = userId
 
   const [stats, total] = await Promise.all([
     em.find(WritingStatSchema, filter, {
       limit: pagination.limit,
       offset: pagination.offset,
       orderBy: { date: 'DESC' },
+      populate: ['user'],
     }),
     em.count(WritingStatSchema, filter),
   ])
 
-  const userIds = [...new Set(stats.map((s) => s.user as any))]
-  const users = userIds.length ? await em.find(UserSchema, { id: { $in: userIds } }) : []
-  const usersById = new Map(users.map((u) => [u.id, { id: u.id, username: u.username }]))
+  const conn = em.getConnection()
+  const userCondition = userId ? ` AND user_id = ${userId}` : ''
+  const [sumRow] = await conn.execute(
+    `SELECT COALESCE(SUM(words_written),0) as tw, COALESCE(SUM(chapters_completed),0) as tc, COALESCE(SUM(ai_generations),0) as tg FROM writing_stats WHERE date >= ?${userCondition}`,
+    [sinceStr]
+  ) as any[]
 
-  const allStats = await em.find(WritingStatSchema, filter)
-  const totalWords = allStats.reduce((sum, s) => sum + (s.wordsWritten || 0), 0)
-  const totalChapters = allStats.reduce((sum, s) => sum + (s.chaptersCompleted || 0), 0)
-  const totalGenerations = allStats.reduce((sum, s) => sum + (s.aiGenerations || 0), 0)
-
-  const items = stats.map((s) => ({
-    ...s,
-    user: usersById.get(s.user as any) || null,
-  }))
+  const items = stats.map((s) => {
+    const user = s.user as any
+    return {
+      id: s.id,
+      date: s.date,
+      wordsWritten: s.wordsWritten,
+      chaptersCompleted: s.chaptersCompleted,
+      aiGenerations: s.aiGenerations,
+      username: user?.username || null,
+      userId: user?.id || null,
+    }
+  })
 
   return {
     ...paginatedResult(items, total, pagination),
-    summary: { totalWords, totalChapters, totalGenerations },
+    summary: {
+      totalWords: Number(sumRow?.tw || 0),
+      totalChapters: Number(sumRow?.tc || 0),
+      totalGenerations: Number(sumRow?.tg || 0),
+    },
   }
 })

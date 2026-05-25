@@ -1,4 +1,4 @@
-import { TokenUsageSchema, UserSchema, AiConfigSchema } from '../../database/entities'
+import { TokenUsageSchema } from '../../database/entities'
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
@@ -20,23 +20,32 @@ export default defineEventHandler(async (event) => {
       limit: pagination.limit,
       offset: pagination.offset,
       orderBy: { createdAt: 'DESC' },
+      populate: ['user'],
     }),
     em.count(TokenUsageSchema, filter),
   ])
 
-  const userIds = [...new Set(usage.map((u) => u.user as any))]
-  const users = userIds.length ? await em.find(UserSchema, { id: { $in: userIds } }) : []
-  const usersById = new Map(users.map((u) => [u.id, { id: u.id, username: u.username }]))
+  const conn = em.getConnection()
+  const [sumRow] = await conn.execute<{ ti: string; to: string; tc: string }>(
+    `SELECT COALESCE(SUM(tokens_input),0) as ti, COALESCE(SUM(tokens_output),0) as to2, COALESCE(SUM(CAST(estimated_cost AS REAL)),0) as tc FROM token_usage WHERE created_at >= ?`,
+    [Math.floor(since.getTime() / 1000)]
+  ) as any[]
+  const totalInput = Number(sumRow?.ti || 0)
+  const totalOutput = Number(sumRow?.to2 || 0)
+  const totalCost = Number(sumRow?.tc || 0)
 
-  const allUsage = await em.find(TokenUsageSchema, filter)
-  const totalInput = allUsage.reduce((sum, u) => sum + u.tokensInput, 0)
-  const totalOutput = allUsage.reduce((sum, u) => sum + u.tokensOutput, 0)
-  const totalCost = allUsage.reduce((sum, u) => sum + parseFloat(u.estimatedCost || '0'), 0)
-
-  const items = usage.map((u) => ({
-    ...u,
-    user: usersById.get(u.user as any) || null,
-  }))
+  const items = usage.map((u) => {
+    const user = u.user as any
+    return {
+      id: u.id,
+      tokensInput: u.tokensInput,
+      tokensOutput: u.tokensOutput,
+      estimatedCost: u.estimatedCost,
+      createdAt: u.createdAt,
+      username: user?.username || null,
+      userId: user?.id || null,
+    }
+  })
 
   return {
     ...paginatedResult(items, total, pagination),
@@ -45,7 +54,6 @@ export default defineEventHandler(async (event) => {
       totalOutput,
       totalTokens: totalInput + totalOutput,
       totalCost: totalCost.toFixed(4),
-      totalRecords: allUsage.length,
     },
   }
 })

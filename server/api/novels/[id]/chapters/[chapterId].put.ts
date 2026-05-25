@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
     id: chapterId,
     novel: novelId,
     deletedAt: null
-  })
+  }, { populate: ['content'] })
   if (!chapter)
     throw createError({ statusCode: 404, message: 'Chapter not found' })
 
@@ -77,16 +77,22 @@ export default defineEventHandler(async (event) => {
     const versions = await em.find(
       ChapterVersionSchema,
       { chapter: chapterId },
-      { orderBy: { versionNumber: 'ASC' } }
+      { orderBy: { versionNumber: 'DESC' }, limit: 1 }
     )
 
-    em.create(ChapterVersionSchema, {
-      chapter: chapterId,
-      versionNumber: versions.length + 1,
-      content: data.content!,
-      source: data.source || 'user_edited'
-    })
-    await em.flush()
+    const lastVersion = versions[0]
+    const isDuplicate = lastVersion && normalizeText(lastVersion.content) === normalizeText(data.content)
+
+    if (!isDuplicate) {
+      const versionCount = await em.count(ChapterVersionSchema, { chapter: chapterId })
+      em.create(ChapterVersionSchema, {
+        chapter: chapterId,
+        versionNumber: versionCount + 1,
+        content: data.content!,
+        source: data.source || 'user_edited'
+      })
+      await em.flush()
+    }
 
     await enqueuePostProcessing(novelId, chapterId)
   }

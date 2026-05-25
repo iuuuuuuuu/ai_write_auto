@@ -1,7 +1,6 @@
 import { Worker } from 'node:worker_threads'
-import { resolve, dirname } from 'node:path'
+import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 
 const MODEL_ID = 'Xenova/bge-small-zh-v1.5'
 const EMBEDDING_DIM = 512
@@ -135,7 +134,7 @@ function spawnWorker() {
     }
   })
 
-  worker.on('error', (err) => {
+  worker.on('error', (err: Error) => {
     console.error('[embedding] Worker crashed:', err.message)
     status = 'error'
     errorMessage = err.message
@@ -154,11 +153,16 @@ function spawnWorker() {
 
   // Tell worker to start loading
   worker.postMessage({ type: 'load' })
+  worker.unref()
 }
 
 function terminateWorker() {
   worker?.terminate()
   worker = null
+}
+
+export function stopEmbedding() {
+  terminateWorker()
 }
 
 function flushReadyCallbacks(err: Error | null) {
