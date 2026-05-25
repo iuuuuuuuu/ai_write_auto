@@ -143,7 +143,7 @@ export function buildGenerationPrompt(context: {
       const recentStart = Math.max(0, totalChapters - 10)
       userPrompt += `\n### 近期章节\n`
       for (let i = recentStart; i < totalChapters; i++) {
-        const ch = chapters[i]
+        const ch = chapters[i]!
         if (ch.summary) {
           userPrompt += `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}\n`
         }
@@ -155,7 +155,7 @@ export function buildGenerationPrompt(context: {
     const windowStart = Math.max(0, totalChapters - windowSize)
     userPrompt += `\n## 最近章节全文\n`
     for (let i = windowStart; i < totalChapters; i++) {
-      const ch = chapters[i]
+      const ch = chapters[i]!
       if (ch.content) {
         userPrompt += `\n### 第${ch.chapterNumber}章「${ch.title}」\n${ch.content}\n`
       }

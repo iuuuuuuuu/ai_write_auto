@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
   const chapters = await em.find(ChapterSchema, {
     novel: data.novelId,
     deletedAt: null,
-  }, { orderBy: { chapterNumber: 'ASC' }, limit: 5 })
+  }, { orderBy: { chapterNumber: 'ASC' }, limit: 5, populate: ['content'] })
 
   const sampleText = chapters
     .filter((c) => c.content)

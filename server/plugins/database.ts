@@ -13,6 +13,7 @@ import {
 } from '../services/trash-cleanup'
 import { ensureVectorTable } from '../services/vector-store'
 import { tryAutoLoadEmbedding } from '../services/embedding'
+import { processPendingTasks } from '../services/task-queue'
 
 export default defineNitroPlugin(async (nitroApp) => {
   const fileConfig = readDbConfig()
@@ -61,6 +62,12 @@ export default defineNitroPlugin(async (nitroApp) => {
     }
 
     tryAutoLoadEmbedding()
+
+    setTimeout(() => {
+      processPendingTasks().catch(e => {
+        console.warn('[db] Startup task processing failed:', e)
+      })
+    }, 5000)
 
     nitroApp.hooks.hook('close', async () => {
       stopScheduledBackup()

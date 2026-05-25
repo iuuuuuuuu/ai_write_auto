@@ -133,11 +133,12 @@ function parseExtractedCharacters(result: string): ExtractedCharacter[] {
 async function processTask(task: GenerationTask): Promise<void> {
   const em = getOrm().em.fork()
 
-  await em.nativeUpdate(
+  const updated = await em.nativeUpdate(
     GenerationTaskSchema,
-    { id: task.id },
+    { id: task.id, status: 'pending' },
     { status: 'running' }
   )
+  if (!updated) return
 
   try {
     let result = ''
@@ -148,7 +149,7 @@ async function processTask(task: GenerationTask): Promise<void> {
     if (task.type === 'extract_summary' && task.chapter) {
       const chapter = await em.findOne(ChapterSchema, {
         id: getEntityId(task.chapter)
-      })
+      }, { populate: ['content'] })
       if (chapter?.content) {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
@@ -173,7 +174,7 @@ async function processTask(task: GenerationTask): Promise<void> {
     if (task.type === 'extract_characters' && task.chapter) {
       const chapter = await em.findOne(ChapterSchema, {
         id: getEntityId(task.chapter)
-      })
+      }, { populate: ['content'] })
       if (chapter?.content) {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
@@ -187,7 +188,6 @@ async function processTask(task: GenerationTask): Promise<void> {
             maxTokens: 2000
           })
 
-          const novelId = getEntityId(task.novel)
           const chars = parseExtractedCharacters(result)
           for (const char of chars) {
             const existing = await em.findOne(CharacterSchema, {
@@ -320,7 +320,6 @@ async function processTask(task: GenerationTask): Promise<void> {
                 id: getEntityId(cc.character)
               })
               if (!charEntity) continue
-              const novelId = getEntityId(task.novel)
               if (cc.chapterStory) {
                 await indexCharacterEvent(charEntity.id, chapter.id, novelId, cc.chapterStory, 'chapter_story').catch(() => {})
               }
@@ -404,7 +403,7 @@ async function processTask(task: GenerationTask): Promise<void> {
       const chapters = await em.find(ChapterSchema, {
         novel: novelId,
         deletedAt: null
-      }, { orderBy: { chapterNumber: 'ASC' }, limit: 5 })
+      }, { orderBy: { chapterNumber: 'ASC' }, limit: 5, populate: ['content'] })
 
       const sampleText = chapters
         .filter(ch => ch.content)
@@ -516,7 +515,7 @@ export async function enqueuePostProcessing(
 
   await em.flush()
 
-  setTimeout(() => processPendingTasks(), 1000)
+  setTimeout(() => processPendingTasks().catch(() => {}), 1000)
 }
 
 export async function processPendingTasks(): Promise<void> {

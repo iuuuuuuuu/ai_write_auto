@@ -38,7 +38,7 @@ export default defineEventHandler(async (event) => {
     id: data.chapterId,
     novel: { user: auth.userId },
     deletedAt: null,
-  })
+  }, { populate: ['content'] })
   if (!chapter) {
     throw createError({ statusCode: 404, message: 'Chapter not found' })
   }

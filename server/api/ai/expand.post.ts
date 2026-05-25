@@ -26,7 +26,7 @@ export default defineEventHandler(async (event) => {
     id: data.chapterId,
     novel: { user: auth.userId },
     deletedAt: null,
-  })
+  }, { populate: ['content'] })
   if (!chapter) throw createError({ statusCode: 404, message: '章节不存在' })
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
 

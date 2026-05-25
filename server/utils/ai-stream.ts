@@ -2,6 +2,7 @@ import type { H3Event } from 'h3'
 import type { EntityManager } from '@mikro-orm/core'
 import { streamAi, type AiRequestOptions } from './ai-client'
 import { TokenUsageSchema, ModelCostRateSchema, GenerationTaskSchema } from '../database/entities'
+import { recordAiGeneration } from './writing-stats'
 
 export function createRequestSignal(event: H3Event): AbortSignal {
   const controller = new AbortController()
@@ -170,6 +171,7 @@ export function createInlineStreamResponse(event: H3Event, options: AiRequestOpt
 
 export interface TrackedStreamOptions {
   taskId: number
+  trackStats?: boolean
   onComplete?: (fullContent: string) => Promise<void>
 }
 
@@ -192,7 +194,8 @@ export function createTrackedStreamResponse(
       const encoder = new TextEncoder()
       controller.enqueue(encoder.encode(': connected\n\n'))
       let fullContent = ''
-      let totalTokens = 0
+      let inputTokens = 0
+      let outputTokens = 0
 
       try {
         for await (const chunk of streamAi({ ...options, stream: true, signal })) {
@@ -201,19 +204,24 @@ export function createTrackedStreamResponse(
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk.content, done: false })}\n\n`))
           }
           if (chunk.usage) {
-            totalTokens = (chunk.usage.prompt_tokens || 0) + (chunk.usage.completion_tokens || 0)
+            inputTokens = chunk.usage.prompt_tokens || inputTokens
+            outputTokens = chunk.usage.completion_tokens || outputTokens
           }
           if (chunk.done) {
+            if (!inputTokens && !outputTokens && fullContent) {
+              outputTokens = estimateTokens(fullContent)
+            }
+            const totalTokens = inputTokens + outputTokens
+
             await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
               status: 'completed',
               result: fullContent,
-              tokensUsed: totalTokens || estimateTokens(fullContent),
+              tokensUsed: totalTokens,
               completedAt: new Date()
             })
 
-            const inputTokens = chunk.usage?.prompt_tokens || 0
-            const outputTokens = chunk.usage?.completion_tokens || (fullContent ? estimateTokens(fullContent) : 0)
             await recordUsage(ctx, inputTokens, outputTokens)
+            if (tracked.trackStats) await recordAiGeneration(ctx.em, ctx.userId)
 
             if (tracked.onComplete) await tracked.onComplete(fullContent)
 
@@ -223,15 +231,20 @@ export function createTrackedStreamResponse(
           }
         }
 
+        if (!inputTokens && !outputTokens && fullContent) {
+          outputTokens = estimateTokens(fullContent)
+        }
+        const totalTokens = inputTokens + outputTokens
+
         await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
           status: 'completed',
           result: fullContent,
-          tokensUsed: totalTokens || estimateTokens(fullContent),
+          tokensUsed: totalTokens,
           completedAt: new Date()
         })
         if (fullContent) {
-          const outputTokens = totalTokens || estimateTokens(fullContent)
-          await recordUsage(ctx, 0, outputTokens)
+          await recordUsage(ctx, inputTokens, outputTokens)
+          if (tracked.trackStats) await recordAiGeneration(ctx.em, ctx.userId)
           if (tracked.onComplete) await tracked.onComplete(fullContent)
         }
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '', done: true, taskId: tracked.taskId })}\n\n`))

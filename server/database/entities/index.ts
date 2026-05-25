@@ -305,11 +305,12 @@ export interface SchemaMigration {
 }
 
 export interface ApiToken {
-  [OptionalProps]?: 'id' | 'lastUsedAt' | 'createdAt'
+  [OptionalProps]?: 'id' | 'tokenPrefix' | 'lastUsedAt' | 'createdAt'
   id: number
   user: User
   name: string
   tokenHash: string
+  tokenPrefix: string | null
   lastUsedAt: Date | null
   createdAt: Date
 }
@@ -865,6 +866,7 @@ export const ApiTokenSchema = new EntitySchema<ApiToken>({
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
     name: { type: 'string' },
     tokenHash: { type: 'string', fieldName: 'token_hash' },
+    tokenPrefix: { type: 'string', nullable: true, fieldName: 'token_prefix' },
     lastUsedAt: {
       type: UnixTimestampType,
       nullable: true,

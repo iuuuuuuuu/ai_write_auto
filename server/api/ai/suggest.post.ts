@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const chapter = await em.findOne(ChapterSchema, { id: data.chapterId, novel: data.novelId })
+  const chapter = await em.findOne(ChapterSchema, { id: data.chapterId, novel: data.novelId }, { populate: ['content'] })
   if (!chapter || !chapter.content) {
     throw createError({ statusCode: 400, message: 'Chapter has no content to review' })
   }

@@ -16,11 +16,13 @@ export default defineEventHandler(async (event) => {
   const rawToken = `ak_${nanoid(32)}`
   const bcrypt = await import('bcryptjs')
   const tokenHash = bcrypt.hashSync(rawToken, 10)
+  const tokenPrefix = rawToken.slice(0, 10)
 
   const token = em.create(ApiTokenSchema, {
     user: auth.userId,
     name: data.name,
-    tokenHash
+    tokenHash,
+    tokenPrefix
   })
   await em.flush()
 

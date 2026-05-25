@@ -22,8 +22,13 @@ export default defineEventHandler(async (event) => {
     const em = event.context.em
     if (!em) return
     const bcrypt = await import('bcryptjs')
-    const tokens = await em.find(ApiTokenSchema, {}, { populate: ['user'] })
-    for (const apiToken of tokens) {
+
+    const prefix = token.slice(0, 10)
+    const candidates = prefix
+      ? await em.find(ApiTokenSchema, { tokenPrefix: prefix }, { populate: ['user'] })
+      : await em.find(ApiTokenSchema, {}, { populate: ['user'] })
+
+    for (const apiToken of candidates) {
       if (bcrypt.compareSync(token, apiToken.tokenHash)) {
         event.context.auth = {
           userId: apiToken.user.id,

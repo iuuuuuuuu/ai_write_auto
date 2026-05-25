@@ -18,7 +18,7 @@ export async function runConsistencyCheck(
   const chapters = await em.find(ChapterSchema, {
     novel: novelId,
     deletedAt: null,
-  }, { orderBy: { chapterNumber: 'ASC' } })
+  }, { orderBy: { chapterNumber: 'ASC' }, populate: ['content'] })
 
   const targetChapter = chapters.find((c) => c.id === chapterId)
   if (!targetChapter || !targetChapter.content) return []

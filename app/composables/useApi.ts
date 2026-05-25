@@ -18,6 +18,11 @@ export function useApi() {
       if (successMessage) message.success(successMessage)
       return result as T
     } catch (error: any) {
+      if (error?.status === 401 || error?.statusCode === 401) {
+        const { user } = useAuth()
+        user.value = null
+        navigateTo('/login')
+      }
       if (!silent) {
         const msg = extractErrorMessage(error)
         message.error(msg)

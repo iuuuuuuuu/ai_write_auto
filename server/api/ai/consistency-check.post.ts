@@ -22,7 +22,7 @@ export default defineEventHandler(async (event) => {
   const chapters = await em.find(ChapterSchema, {
     novel: { id: data.novelId, user: auth.userId },
     deletedAt: null,
-  }, { orderBy: { chapterNumber: 'ASC' } })
+  }, { orderBy: { chapterNumber: 'ASC' }, populate: ['content'] })
 
   const targetChapter = chapters.find((c) => c.id === data.chapterId)
   if (!targetChapter) {

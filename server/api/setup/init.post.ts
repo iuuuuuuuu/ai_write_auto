@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { writeDbConfig, type DbConfig } from '../../database/db-config'
+import { readDbConfig, writeDbConfig, type DbConfig } from '../../database/db-config'
 import { initOrm, getOrm, testConnection, resetOrm } from '../../database'
 import { syncDatabaseSchema } from '../../database/schema-sync'
 import { hashPassword, signToken } from '../../utils/auth'
@@ -34,6 +34,11 @@ const setupSchema = z.object({
 })
 
 export default defineEventHandler(async (event) => {
+  const existingConfig = readDbConfig()
+  if (existingConfig) {
+    throw createError({ statusCode: 400, message: 'System already initialized' })
+  }
+
   const body = await readBody(event)
   const data = setupSchema.parse(body)
 
@@ -64,7 +69,7 @@ export default defineEventHandler(async (event) => {
   const em = getOrm().em.fork()
 
   const passwordHash = hashPassword(data.admin.password)
-  em.create(UserSchema, {
+  const adminUser = em.create(UserSchema, {
     username: data.admin.username,
     passwordHash,
     role: 'admin'
@@ -110,7 +115,7 @@ export default defineEventHandler(async (event) => {
   await em.flush()
 
   const token = signToken({
-    userId: 1,
+    userId: adminUser.id,
     username: data.admin.username,
     role: 'admin'
   })

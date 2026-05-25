@@ -96,7 +96,7 @@ export default defineEventHandler(async (event) => {
             )
           )
 
-          const chapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
+          const chapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' }, populate: ['content'] })
 
           const chapterOutline = outlines.find(
             (o) => o.chapterNumber === chapterNum
