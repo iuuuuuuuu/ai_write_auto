@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'Chapter has no content to review' })
   }
 
-  const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'consistency_check', data.aiConfigId)
+  const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
 
   const messages = buildSuggestionPrompt({

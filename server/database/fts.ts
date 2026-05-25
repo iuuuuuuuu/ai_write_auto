@@ -24,6 +24,31 @@ async function ensureSqliteFts5(orm: MikroORM): Promise<void> {
     )
   `)
 
+  // Verify FTS integrity; rebuild if corrupted
+  try {
+    await conn.execute(`INSERT INTO chapters_fts(chapters_fts) VALUES ('integrity-check')`)
+  } catch {
+    console.warn('[db] FTS index corrupted, rebuilding...')
+    await conn.execute(`DROP TRIGGER IF EXISTS chapters_fts_insert`)
+    await conn.execute(`DROP TRIGGER IF EXISTS chapters_fts_delete`)
+    await conn.execute(`DROP TRIGGER IF EXISTS chapters_fts_update`)
+    await conn.execute(`DROP TABLE IF EXISTS chapters_fts`)
+    await conn.execute(`
+      CREATE VIRTUAL TABLE chapters_fts USING fts5(
+        title,
+        content,
+        content='chapters',
+        content_rowid='id',
+        tokenize='unicode61'
+      )
+    `)
+    await conn.execute(`
+      INSERT INTO chapters_fts(rowid, title, content)
+      SELECT id, title, content FROM chapters WHERE content IS NOT NULL
+    `)
+    console.log('[db] FTS index rebuilt successfully')
+  }
+
   await conn.execute(`
     CREATE TRIGGER IF NOT EXISTS chapters_fts_insert AFTER INSERT ON chapters BEGIN
       INSERT INTO chapters_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
@@ -43,7 +68,7 @@ async function ensureSqliteFts5(orm: MikroORM): Promise<void> {
     END
   `)
 
-  // Rebuild index from existing data
+  // Populate index if empty
   const existingCount = await conn.execute(`SELECT COUNT(*) as cnt FROM chapters_fts`) as any
   const count = Array.isArray(existingCount) ? existingCount[0]?.cnt : 0
   if (!count || count === 0) {

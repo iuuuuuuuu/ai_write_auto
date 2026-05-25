@@ -4,17 +4,19 @@ export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const em = useEm(event)
 
-  const [users, novels, aiConfigs, tokenUsage] = await Promise.all([
+  const [users, novels, aiConfigs, usageCount] = await Promise.all([
     em.find(UserSchema, {}),
     em.find(NovelSchema, { deletedAt: null }),
     em.find(AiConfigSchema, {}),
-    em.find(TokenUsageSchema, {}),
+    em.count(TokenUsageSchema, {}),
   ])
 
-  const totalTokens = tokenUsage.reduce(
-    (sum, item) => sum + item.tokensInput + item.tokensOutput,
-    0
+  const conn = em.getConnection()
+  const [tokenSumRow] = await conn.execute<{ total: string }>(
+    'SELECT COALESCE(SUM(tokens_input + tokens_output), 0) as total FROM token_usage'
   )
+  const totalTokens = Number(tokenSumRow?.total || 0)
+
   const enabledAiConfigs = aiConfigs.filter((config) => config.enabled).length
 
   return {
@@ -35,7 +37,7 @@ export default defineEventHandler(async (event) => {
       disabled: aiConfigs.length - enabledAiConfigs
     },
     usage: {
-      requests: tokenUsage.length,
+      requests: usageCount,
       totalTokens
     }
   }

@@ -82,6 +82,7 @@ export default defineEventHandler(async (event) => {
   })
   em.create(SiteConfigSchema, { key: 'allow_registration', value: 'false' })
   em.create(SiteConfigSchema, { key: 'initialized', value: 'true' })
+  em.create(SiteConfigSchema, { key: 'db_instance_id', value: Date.now().toString(36) })
 
   // Seed novel templates
   const novelTemplates = [

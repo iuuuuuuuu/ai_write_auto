@@ -68,11 +68,11 @@ interface NovelTemplateItem {
   defaultTemperature: string | null
 }
 
-const { data: novelTemplatesResponse } = await useFetch<{ items: NovelTemplateItem[] }>('/api/admin/templates', {
-  default: () => ({ items: [] })
+const { data: novelTemplatesResponse } = await useFetch<NovelTemplateItem[]>('/api/novels/templates', {
+  default: () => []
 })
 
-const novelTemplates = computed(() => novelTemplatesResponse.value?.items || [])
+const novelTemplates = computed(() => novelTemplatesResponse.value || [])
 
 const templateOptions = computed(() =>
   novelTemplates.value.map(t => ({ label: `${t.name} (${t.genre})`, value: t.id }))

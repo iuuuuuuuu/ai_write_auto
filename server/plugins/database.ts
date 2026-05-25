@@ -17,7 +17,10 @@ import { processPendingTasks } from '../services/task-queue'
 
 export default defineNitroPlugin(async (nitroApp) => {
   const fileConfig = readDbConfig()
-  if (!fileConfig) return
+  if (!fileConfig) {
+    console.log('[db] No db-config.json found, skipping initialization')
+    return
+  }
 
   try {
     const orm = await initOrm(fileConfig)

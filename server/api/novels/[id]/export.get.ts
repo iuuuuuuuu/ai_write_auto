@@ -7,18 +7,20 @@ export default defineEventHandler(async (event) => {
   const format = (query.format as string) || 'txt'
   const em = useEm(event)
 
-  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId, deletedAt: null })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const chapters = await em.find(ChapterSchema, { novel: novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
+  const chapters = await em.find(ChapterSchema, { novel: novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' }, populate: ['content'] })
 
   if (format === 'epub') {
     const epub = (await import('epub-gen-memory')).default
+    const escapeHtml = (str: string) =>
+      str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
     const epubChapters = chapters.map((ch) => ({
       title: `第${ch.chapterNumber}章 ${ch.title}`,
-      content: (ch.content || '').split('\n').map((p: string) => `<p>${p}</p>`).join(''),
+      content: (ch.content || '').split('\n').map((p: string) => `<p>${escapeHtml(p)}</p>`).join(''),
     }))
 
     const buffer = await epub(

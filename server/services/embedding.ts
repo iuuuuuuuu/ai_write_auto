@@ -1,4 +1,7 @@
-import type { Pipeline } from '@huggingface/transformers'
+import { Worker } from 'node:worker_threads'
+import { resolve, dirname } from 'node:path'
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 const MODEL_ID = 'Xenova/bge-small-zh-v1.5'
 const EMBEDDING_DIM = 512
@@ -10,11 +13,13 @@ function isInChina(): boolean {
   return tz === 'Asia/Shanghai' || tz === 'Asia/Chongqing' || lang.startsWith('zh')
 }
 
-let pipeline: Pipeline | null = null
+let worker: Worker | null = null
 let status: 'idle' | 'downloading' | 'ready' | 'error' = 'idle'
 let progress = 0
 let errorMessage = ''
-let loadingPromise: Promise<void> | null = null
+let embedIdCounter = 0
+const pendingEmbeds = new Map<number, { resolve: (v: Float32Array[]) => void; reject: (e: Error) => void }>()
+const readyCallbacks: Array<{ resolve: () => void; reject: (e: Error) => void }> = []
 
 export function getEmbeddingDim(): number {
   return EMBEDDING_DIM
@@ -30,73 +35,151 @@ export function isEmbeddingReady(): boolean {
 
 export async function ensureModel(): Promise<void> {
   if (status === 'ready') return
-  if (loadingPromise) return loadingPromise
+  if (status === 'error') throw new Error(errorMessage)
 
-  loadingPromise = doLoadModel()
-  try {
-    await loadingPromise
-  } finally {
-    loadingPromise = null
+  if (status === 'idle') {
+    spawnWorker()
   }
+
+  return new Promise<void>((res, rej) => {
+    readyCallbacks.push({ resolve: res, reject: rej })
+  })
 }
 
-async function doLoadModel(): Promise<void> {
+function resolveWorkerPath(): string {
+  // Production: bundled alongside server chunks
+  const prodPath = resolve(process.cwd(), '.output/server/embedding-worker.mjs')
+  if (existsSync(prodPath)) return prodPath
+
+  // Dev: relative to this file's source location
+  const devPath = resolve(process.cwd(), 'server/services/embedding-worker.mjs')
+  if (existsSync(devPath)) return devPath
+
+  return devPath
+}
+
+function spawnWorker() {
+  if (worker || status === 'downloading') return
   status = 'downloading'
   progress = 0
   errorMessage = ''
 
+  const workerPath = resolveWorkerPath()
+
   try {
-    const { pipeline: createPipeline, env } = await import('@huggingface/transformers')
-    env.cacheDir = MODEL_CACHE_DIR
-    ;(env as any).logLevel = 'error'
-    if (process.env.HF_ENDPOINT) {
-      env.remoteHost = process.env.HF_ENDPOINT
-    } else if (!process.env.HF_ENDPOINT && isInChina()) {
-      env.remoteHost = 'https://hf-mirror.com'
+    worker = new Worker(workerPath)
+  } catch (err: any) {
+    status = 'error'
+    errorMessage = `Failed to spawn worker: ${err.message}`
+    console.error('[embedding] ✗', errorMessage)
+    flushReadyCallbacks(new Error(errorMessage))
+    return
+  }
+
+  const remoteHost = process.env.HF_ENDPOINT || (isInChina() ? 'https://hf-mirror.com' : undefined)
+
+  worker.postMessage({
+    type: 'init',
+    config: {
+      modelId: MODEL_ID,
+      cacheDir: MODEL_CACHE_DIR,
+      remoteHost
     }
+  })
 
-    let lastLoggedProgress = 0
-    const startTime = Date.now()
-
-    pipeline = await createPipeline('feature-extraction', MODEL_ID, {
-      dtype: 'fp32',
-      progress_callback: (p: any) => {
-        if (p.status === 'progress' && p.progress != null) {
-          progress = Math.round(p.progress)
-          if (progress - lastLoggedProgress >= 10) {
-            lastLoggedProgress = progress
+  worker.on('message', (msg) => {
+    switch (msg.type) {
+      case 'log':
+        console.log(msg.message)
+        break
+      case 'progress':
+        if (msg.progress > progress) {
+          progress = msg.progress
+          if (progress % 25 === 0 && progress < 100) {
             console.log(`[embedding] Downloading model... ${progress}%`)
           }
         }
-        if (p.status === 'done' && p.file) {
-          console.log(`[embedding] Downloaded: ${p.file}`)
+        break
+      case 'downloaded':
+        console.log(`[embedding] Downloaded: ${msg.file}`)
+        break
+      case 'ready':
+        status = 'ready'
+        progress = 100
+        console.log(`[embedding] ✓ Model ready (worker thread, ${msg.elapsed}s)`)
+        flushReadyCallbacks(null)
+        break
+      case 'error':
+        status = 'error'
+        errorMessage = msg.error
+        console.error('[embedding] ✗ Failed to load model:', msg.error)
+        flushReadyCallbacks(new Error(msg.error))
+        terminateWorker()
+        break
+      case 'embed-result': {
+        const pending = pendingEmbeds.get(msg.id)
+        if (pending) {
+          pendingEmbeds.delete(msg.id)
+          pending.resolve(msg.results.map((r: number[]) => new Float32Array(r)))
         }
+        break
       }
-    }) as Pipeline
+      case 'embed-error': {
+        const pending = pendingEmbeds.get(msg.id)
+        if (pending) {
+          pendingEmbeds.delete(msg.id)
+          pending.reject(new Error(msg.error))
+        }
+        break
+      }
+    }
+  })
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-    status = 'ready'
-    progress = 100
-    console.log(`[embedding] ✓ Model ready (${MODEL_ID}, fp32, ${elapsed}s)`)
-  } catch (err) {
+  worker.on('error', (err) => {
+    console.error('[embedding] Worker crashed:', err.message)
     status = 'error'
-    errorMessage = err instanceof Error ? err.message : 'Model load failed'
-    console.error('[embedding] ✗ Failed to load model:', errorMessage)
-    throw err
+    errorMessage = err.message
+    flushReadyCallbacks(new Error(err.message))
+    worker = null
+  })
+
+  worker.on('exit', (code) => {
+    if (code !== 0 && status !== 'ready') {
+      status = 'error'
+      errorMessage = `Worker exited with code ${code}`
+      flushReadyCallbacks(new Error(errorMessage))
+    }
+    worker = null
+  })
+
+  // Tell worker to start loading
+  worker.postMessage({ type: 'load' })
+}
+
+function terminateWorker() {
+  worker?.terminate()
+  worker = null
+}
+
+function flushReadyCallbacks(err: Error | null) {
+  const cbs = readyCallbacks.splice(0)
+  for (const cb of cbs) {
+    if (err) cb.reject(err)
+    else cb.resolve()
   }
 }
+
 export async function embed(texts: string[]): Promise<Float32Array[]> {
-  if (!pipeline) {
+  if (status !== 'ready') {
     await ensureModel()
   }
-  if (!pipeline) throw new Error('Embedding model not available')
+  if (!worker) throw new Error('Embedding worker not available')
 
-  const results: Float32Array[] = []
-  for (const text of texts) {
-    const output = await (pipeline as any)(text, { pooling: 'mean', normalize: true })
-    results.push(new Float32Array(output.data))
-  }
-  return results
+  const id = ++embedIdCounter
+  return new Promise<Float32Array[]>((resolve, reject) => {
+    pendingEmbeds.set(id, { resolve, reject })
+    worker!.postMessage({ type: 'embed', id, texts })
+  })
 }
 
 export async function embedSingle(text: string): Promise<Float32Array> {
@@ -106,8 +189,6 @@ export async function embedSingle(text: string): Promise<Float32Array> {
 }
 
 export function tryAutoLoadEmbedding() {
-  console.log('[embedding] Auto-loading model on startup...')
-  ensureModel().catch((err) => {
-    console.warn('[embedding] Auto-load failed (will retry on first use):', err.message)
-  })
+  console.log('[embedding] Starting model load in worker thread...')
+  spawnWorker()
 }
