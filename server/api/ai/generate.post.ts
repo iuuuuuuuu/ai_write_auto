@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
-import { createRequestSignal } from '../../utils/ai-stream'
+import { createRequestSignal, estimateTokens } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, TokenUsageSchema, ModelCostRateSchema, NovelOutlineSchema } from '../../database/entities'
@@ -121,31 +121,29 @@ export default defineEventHandler(async (event) => {
             await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
               status: 'completed',
               result: fullContent,
-              tokensUsed: totalTokens,
+              tokensUsed: totalTokens || estimateTokens(fullContent),
               completedAt: new Date()
             })
 
-            if (totalTokens > 0) {
-              const inputTokens = chunk.usage?.prompt_tokens || 0
-              const outputTokens = chunk.usage?.completion_tokens || 0
-              let estimatedCost: string | null = null
+            const inputTokens = chunk.usage?.prompt_tokens || 0
+            const outputTokens = chunk.usage?.completion_tokens || (fullContent ? estimateTokens(fullContent) : 0)
+            let estimatedCost: string | null = null
 
-              const costRate = await em.findOne(ModelCostRateSchema, { user: auth.userId, model: aiConfig.model })
-              if (costRate) {
-                const cost = (inputTokens * parseFloat(costRate.inputCostPer1k) / 1000)
-                  + (outputTokens * parseFloat(costRate.outputCostPer1k) / 1000)
-                estimatedCost = cost.toFixed(6)
-              }
-
-              em.create(TokenUsageSchema, {
-                user: auth.userId,
-                aiConfig: aiConfig.id,
-                tokensInput: inputTokens,
-                tokensOutput: outputTokens,
-                estimatedCost
-              })
-              await em.flush()
+            const costRate = await em.findOne(ModelCostRateSchema, { user: auth.userId, model: aiConfig.model })
+            if (costRate) {
+              const cost = (inputTokens * parseFloat(costRate.inputCostPer1k) / 1000)
+                + (outputTokens * parseFloat(costRate.outputCostPer1k) / 1000)
+              estimatedCost = cost.toFixed(6)
             }
+
+            em.create(TokenUsageSchema, {
+              user: auth.userId,
+              aiConfig: aiConfig.id,
+              tokensInput: inputTokens,
+              tokensOutput: outputTokens,
+              estimatedCost
+            })
+            await em.flush()
 
             await recordAiGeneration(em, auth.userId)
 

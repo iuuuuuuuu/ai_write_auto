@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { streamAi } from '../../utils/ai-client'
+import { createRequestSignal, recordUsage, estimateTokens } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, NovelOutlineSchema, GenerationTaskSchema } from '../../database/entities'
@@ -52,12 +53,18 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const encoder = new TextEncoder()
+  const signal = createRequestSignal(event)
+
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
       controller.enqueue(encoder.encode(': connected\n\n'))
       try {
+        const characters = await em.find(CharacterSchema, { novel: data.novelId })
+        const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
+        const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
+        const outlines = await em.find(NovelOutlineSchema, { novel: data.novelId }, { orderBy: { sortOrder: 'ASC' } })
+
         for (
           let chapterNum = data.fromChapter;
           chapterNum <= data.toChapter;
@@ -81,10 +88,6 @@ export default defineEventHandler(async (event) => {
           )
 
           const chapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' } })
-          const characters = await em.find(CharacterSchema, { novel: data.novelId })
-          const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
-          const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
-          const outlines = await em.find(NovelOutlineSchema, { novel: data.novelId }, { orderBy: { sortOrder: 'ASC' } })
 
           const chapterOutline = outlines.find(
             (o) => o.chapterNumber === chapterNum
@@ -101,6 +104,9 @@ export default defineEventHandler(async (event) => {
           })
 
           let generatedContent = ''
+          let inputTokens = 0
+          let outputTokens = 0
+          let chunkCount = 0
           for await (const chunk of streamAi({
             apiUrl: aiConfig.apiUrl,
             apiKey: aiConfig.apiKey,
@@ -108,16 +114,21 @@ export default defineEventHandler(async (event) => {
             temperature:
               novel.aiTemperature ? parseFloat(novel.aiTemperature) : parseFloat(aiConfig.temperature ?? '0.7'),
             maxTokens: aiConfig.maxTokens || 4096,
-            messages: prompt
+            messages: prompt,
+            stream: true,
+            signal
           })) {
-            const liveStatus = await readTaskStatus()
-            if (liveStatus === 'cancelled') {
-              controller.enqueue(
-                encoder.encode(
-                  `data: ${JSON.stringify({ type: 'cancelled', taskId })}\n\n`
+            chunkCount++
+            if (chunkCount % 20 === 0) {
+              const liveStatus = await readTaskStatus()
+              if (liveStatus === 'cancelled') {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({ type: 'cancelled', taskId })}\n\n`
+                  )
                 )
-              )
-              return
+                return
+              }
             }
 
             if (chunk.content) {
@@ -128,7 +139,16 @@ export default defineEventHandler(async (event) => {
                 )
               )
             }
+            if (chunk.usage) {
+              inputTokens = chunk.usage.prompt_tokens || inputTokens
+              outputTokens = chunk.usage.completion_tokens || outputTokens
+            }
           }
+
+          if (!inputTokens && !outputTokens && generatedContent) {
+            outputTokens = estimateTokens(generatedContent)
+          }
+          await recordUsage({ em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, inputTokens, outputTokens)
 
           const existingChapter = chapters.find(
             (c) => c.chapterNumber === chapterNum
@@ -192,5 +212,5 @@ export default defineEventHandler(async (event) => {
     Connection: 'keep-alive'
   })
 
-  return stream
+  return new Response(stream)
 })

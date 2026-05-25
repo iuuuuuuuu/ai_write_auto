@@ -395,6 +395,9 @@ export const AiModelSchema = new EntitySchema<AiModel>({
 export const AiConfigSchema = new EntitySchema<AiConfig>({
   name: 'AiConfig',
   tableName: 'ai_configs',
+  indexes: [
+    { properties: ['user', 'purpose'], name: 'idx_ai_configs_user_purpose' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
@@ -706,6 +709,9 @@ export const StoryArcSchema = new EntitySchema<StoryArc>({
 export const GenerationTaskSchema = new EntitySchema<GenerationTask>({
   name: 'GenerationTask',
   tableName: 'generation_tasks',
+  indexes: [
+    { properties: ['novel', 'status'], name: 'idx_generation_tasks_novel_status' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
@@ -742,6 +748,9 @@ export const GenerationTaskSchema = new EntitySchema<GenerationTask>({
 export const TokenUsageSchema = new EntitySchema<TokenUsage>({
   name: 'TokenUsage',
   tableName: 'token_usage',
+  indexes: [
+    { properties: ['user', 'createdAt'], name: 'idx_token_usage_user_created' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
@@ -872,6 +881,12 @@ export const ApiTokenSchema = new EntitySchema<ApiToken>({
 export const ModelCostRateSchema = new EntitySchema<ModelCostRate>({
   name: 'ModelCostRate',
   tableName: 'model_cost_rates',
+  indexes: [
+    { properties: ['user', 'model'], name: 'idx_model_cost_rates_user_model' }
+  ],
+  uniques: [
+    { properties: ['user', 'model'], name: 'uq_model_cost_rates_user_model' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },

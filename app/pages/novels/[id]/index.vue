@@ -531,10 +531,9 @@ async function regenerateOutlinesFromChapter() {
         }))
       },
       onChunk: (chunk) => { outlineStreamText.value += chunk },
-      onDone: (fullContent) => {
+      onDone: (fullContent, parsedJson) => {
         try {
-          const jsonMatch = fullContent.match(/\[[\s\S]*\]/)
-          const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
+          const parsed = parsedJson || JSON.parse((fullContent.match(/\[[\s\S]*\]/) || [fullContent])[0])
           const outlines = Array.isArray(parsed) ? parsed : (parsed.outlines || [])
           if (!outlines.length) {
             message.warning('AI 未返回可用大纲')
@@ -586,10 +585,9 @@ async function generateOutlines() {
         chapterCount: generateOutlineForm.chapterCount
       },
       onChunk: (chunk) => { outlineStreamText.value += chunk },
-      onDone: (fullContent) => {
+      onDone: (fullContent, parsedJson) => {
         try {
-          const jsonMatch = fullContent.match(/\[[\s\S]*\]/)
-          const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
+          const parsed = parsedJson || JSON.parse((fullContent.match(/\[[\s\S]*\]/) || [fullContent])[0])
           const outlines = Array.isArray(parsed) ? parsed : (parsed.outlines || [])
           if (!outlines.length) {
             message.warning('AI 未返回可用大纲')
@@ -914,10 +912,9 @@ async function generateCharacters() {
         promptTemplateId: generatePromptId.value || undefined
       },
       onChunk: (chunk) => { characterStreamText.value += chunk },
-      onDone: async (fullContent) => {
+      onDone: async (fullContent, parsedJson) => {
         try {
-          const jsonMatch = fullContent.match(/\[[\s\S]*\]/)
-          const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
+          const parsed = parsedJson || JSON.parse((fullContent.match(/\[[\s\S]*\]/) || [fullContent])[0])
           if (!Array.isArray(parsed) || !parsed.length) {
             message.warning('AI 未返回可用角色')
             return

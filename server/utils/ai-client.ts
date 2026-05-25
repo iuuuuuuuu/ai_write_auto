@@ -1,3 +1,5 @@
+import { AI_CONNECT_TIMEOUT_MS, AI_STREAM_READ_TIMEOUT_MS } from './ai-constants'
+
 export interface AiRequestOptions {
   apiUrl: string
   apiKey: string
@@ -15,6 +17,12 @@ export interface AiStreamChunk {
   usage?: { prompt_tokens: number; completion_tokens: number }
 }
 
+export interface AiResultWithUsage {
+  content: string
+  inputTokens: number
+  outputTokens: number
+}
+
 function stripThinking(text: string): string {
   return text
     .replace(/<think>[\s\S]*?<\/think>/g, '')
@@ -22,99 +30,9 @@ function stripThinking(text: string): string {
     .trim()
 }
 
-export async function callAi(options: AiRequestOptions): Promise<string> {
+async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Response> {
   const controller = new AbortController()
-  const connectTimeout = setTimeout(() => controller.abort(), 30000)
-
-  let response: Response
-  try {
-    response = await fetch(options.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${options.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: options.model,
-        messages: options.messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 4096,
-        stream: false,
-      }),
-      signal: controller.signal,
-    })
-  } catch (e: any) {
-    clearTimeout(connectTimeout)
-    if (e.name === 'AbortError') {
-      throw new Error(`AI API 连接超时（30秒），请检查 API 地址是否可达: ${options.apiUrl}`)
-    }
-    throw new Error(`AI API 连接失败: ${e.message}`)
-  }
-  clearTimeout(connectTimeout)
-
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`AI API error (${response.status}): ${err}`)
-  }
-
-  const data = await response.json()
-  const content = data.choices[0]?.message?.content || ''
-  return stripThinking(content)
-}
-
-export interface AiResultWithUsage {
-  content: string
-  inputTokens: number
-  outputTokens: number
-}
-
-export async function callAiWithUsage(options: AiRequestOptions): Promise<AiResultWithUsage> {
-  const controller = new AbortController()
-  const connectTimeout = setTimeout(() => controller.abort(), 30000)
-
-  let response: Response
-  try {
-    response = await fetch(options.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${options.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: options.model,
-        messages: options.messages,
-        temperature: options.temperature ?? 0.7,
-        max_tokens: options.maxTokens ?? 4096,
-        stream: false,
-      }),
-      signal: controller.signal,
-    })
-  } catch (e: any) {
-    clearTimeout(connectTimeout)
-    if (e.name === 'AbortError') {
-      throw new Error(`AI API 连接超时（30秒），请检查 API 地址是否可达: ${options.apiUrl}`)
-    }
-    throw new Error(`AI API 连接失败: ${e.message}`)
-  }
-  clearTimeout(connectTimeout)
-
-  if (!response.ok) {
-    const err = await response.text()
-    throw new Error(`AI API error (${response.status}): ${err}`)
-  }
-
-  const data = await response.json()
-  const content = data.choices[0]?.message?.content || ''
-  return {
-    content: stripThinking(content),
-    inputTokens: data.usage?.prompt_tokens || 0,
-    outputTokens: data.usage?.completion_tokens || 0
-  }
-}
-
-export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStreamChunk> {
-  const controller = new AbortController()
-  const connectTimeout = setTimeout(() => controller.abort(), 30000)
+  const connectTimeout = setTimeout(() => controller.abort(), AI_CONNECT_TIMEOUT_MS)
 
   if (options.signal) {
     options.signal.addEventListener('abort', () => controller.abort(), { once: true })
@@ -133,7 +51,7 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
         messages: options.messages,
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 4096,
-        stream: true,
+        stream,
       }),
       signal: controller.signal,
     })
@@ -151,17 +69,44 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
     throw new Error(`AI API error (${response.status}): ${err}`)
   }
 
+  return response
+}
+
+export async function callAi(options: AiRequestOptions): Promise<string> {
+  const response = await doFetch(options, false)
+  const data = await response.json()
+  const content = data.choices[0]?.message?.content || ''
+  return stripThinking(content)
+}
+
+export async function callAiWithUsage(options: AiRequestOptions): Promise<AiResultWithUsage> {
+  const response = await doFetch(options, false)
+  const data = await response.json()
+  const content = data.choices[0]?.message?.content || ''
+  return {
+    content: stripThinking(content),
+    inputTokens: data.usage?.prompt_tokens || 0,
+    outputTokens: data.usage?.completion_tokens || 0
+  }
+}
+
+export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStreamChunk> {
+  const response = await doFetch(options, true)
+
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
   let insideThink = false
 
+
   while (true) {
+    let timeoutId: ReturnType<typeof setTimeout>
     const readPromise = reader.read()
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('AI API 流式读取超时（30秒无数据）')), 30000)
-    )
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('AI API 流式读取超时（30秒无数据）')), AI_STREAM_READ_TIMEOUT_MS)
+    })
     const { done, value } = await Promise.race([readPromise, timeoutPromise])
+    clearTimeout(timeoutId!)
     if (done) break
 
     buffer += decoder.decode(value, { stream: true })

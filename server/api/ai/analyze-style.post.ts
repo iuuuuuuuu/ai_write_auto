@@ -1,6 +1,8 @@
 import { z } from 'zod'
-import { callAi } from '../../utils/ai-client'
+import { callAiWithUsage } from '../../utils/ai-client'
+import { recordUsage } from '../../utils/ai-stream'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
+import { buildStyleAnalysisPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema } from '../../database/entities'
 
 const styleSchema = z.object({
@@ -35,26 +37,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: 'No chapter content to analyze' })
   }
 
-  const messages = [
-    {
-      role: 'system' as const,
-      content: `你是一位文学风格分析师。请分析以下小说片段的写作风格，生成一份简洁的风格指南（200-400字），包含：
-1. 叙事视角（第一人称/第三人称/全知等）
-2. 句式特点（长句/短句/混合，是否多用修辞）
-3. 用词风格（文学性/口语化/简洁/华丽）
-4. 节奏感（快节奏/慢节奏/交替）
-5. 对话风格（简短/冗长/方言/书面）
-6. 描写偏好（重环境/重心理/重动作）
+  const messages = buildStyleAnalysisPrompt(sampleText)
 
-直接输出风格指南文本，不要标题或前缀。`,
-    },
-    {
-      role: 'user' as const,
-      content: sampleText,
-    },
-  ]
-
-  const styleGuide = await callAi({
+  const { content: styleGuide, inputTokens, outputTokens } = await callAiWithUsage({
     apiUrl: aiConfig.apiUrl,
     apiKey: aiConfig.apiKey,
     model: aiConfig.model,
@@ -62,6 +47,8 @@ export default defineEventHandler(async (event) => {
     temperature: 0.3,
     maxTokens: 1000,
   })
+
+  await recordUsage({ em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, inputTokens, outputTokens)
 
   await em.nativeUpdate(NovelSchema, { id: data.novelId }, { styleGuide, updatedAt: new Date() })
 

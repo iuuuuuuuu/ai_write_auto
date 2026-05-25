@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { streamAi } from '../../utils/ai-client'
-import { createRequestSignal } from '../../utils/ai-stream'
+import { createInlineStreamResponse } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
 
@@ -76,57 +75,12 @@ ${context}
     }
   ]
 
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive'
-  })
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder()
-      controller.enqueue(encoder.encode(': connected\n\n'))
-      try {
-        for await (const chunk of streamAi({
-          apiUrl: aiConfig.apiUrl,
-          apiKey: aiConfig.apiKey,
-          model: aiConfig.model,
-          messages,
-          temperature: parseFloat(aiConfig.temperature || '0.75'),
-          maxTokens: 1500,
-          stream: true,
-          signal: createRequestSignal(event)
-        })) {
-          if (chunk.content) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ content: chunk.content, done: false })}
-\n\n`
-              )
-            )
-          }
-          if (chunk.done) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ content: '', done: true })}
-\n\n`
-              )
-            )
-            controller.close()
-            return
-          }
-        }
-      } catch (err: any) {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ error: err.message, done: true })}
-\n\n`
-          )
-        )
-        controller.close()
-      }
-    }
-  })
-
-  return new Response(stream)
+  return createInlineStreamResponse(event, {
+    apiUrl: aiConfig.apiUrl,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    messages,
+    temperature: parseFloat(aiConfig.temperature || '0.75'),
+    maxTokens: 1500,
+  }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

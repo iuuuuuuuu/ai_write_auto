@@ -1,3 +1,5 @@
+import { consumeSSEStream } from '~/utils/sse-stream'
+
 export type Suggestion = {
   originalText: string
   suggestedText: string
@@ -9,6 +11,7 @@ export function useSuggestionMode(novelId: Ref<number>, chapterId: Ref<number>) 
   const suggestions = ref<Suggestion[]>([])
   const isActive = ref(false)
   const loading = ref(false)
+  const error = ref<string | null>(null)
 
   const pendingCount = computed(() =>
     suggestions.value.filter(s => s.status === 'pending').length
@@ -16,47 +19,25 @@ export function useSuggestionMode(novelId: Ref<number>, chapterId: Ref<number>) 
 
   async function fetchSuggestions(aiConfigId?: number) {
     loading.value = true
+    error.value = null
     try {
-      const response = await fetch('/api/ai/suggest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const fullContent = await consumeSSEStream({
+        url: '/api/ai/suggest',
+        body: {
           novelId: novelId.value,
           chapterId: chapterId.value,
           aiConfigId
-        })
-      })
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({ message: '请求失败' }))
-        throw new Error(err.message || `HTTP ${response.status}`)
-      }
-
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let fullContent = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (!trimmed || !trimmed.startsWith('data: ')) continue
-          try {
-            const data = JSON.parse(trimmed.slice(6))
-            if (data.content) fullContent += data.content
-            if (data.done && data.fullContent) fullContent = data.fullContent
-          } catch {}
+        },
+        onError(msg) {
+          error.value = msg
         }
-      }
+      })
 
       try {
-        const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
+        const jsonMatch = fullContent.match(/\[[\s\S]*\]/) || fullContent.match(/\{[\s\S]*\}/)
         const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
-        suggestions.value = (parsed.suggestions || []).map((s: any) => ({
+        const items = Array.isArray(parsed) ? parsed : (parsed.suggestions || [])
+        suggestions.value = items.map((s: any) => ({
           originalText: s.originalText || '',
           suggestedText: s.suggestedText || '',
           reason: s.reason || '',
@@ -64,8 +45,12 @@ export function useSuggestionMode(novelId: Ref<number>, chapterId: Ref<number>) 
         }))
       } catch {
         suggestions.value = []
+        if (!error.value) error.value = '解析建议结果失败'
       }
       isActive.value = suggestions.value.length > 0
+    } catch (e: any) {
+      error.value = e.message || '获取建议失败'
+      suggestions.value = []
     } finally {
       loading.value = false
     }
@@ -114,6 +99,7 @@ export function useSuggestionMode(novelId: Ref<number>, chapterId: Ref<number>) 
     suggestions,
     isActive,
     loading,
+    error,
     pendingCount,
     fetchSuggestions,
     acceptSuggestion,

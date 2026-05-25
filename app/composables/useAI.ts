@@ -1,3 +1,5 @@
+import { consumeSSEStream } from '~/utils/sse-stream'
+
 export function useAI() {
   const generating = ref(false)
   const streamContent = ref('')
@@ -9,49 +11,30 @@ export function useAI() {
     body: Record<string, any>,
     onChunk?: (content: string) => void
   ) {
+    if (abortController) {
+      abortController.abort()
+    }
+
     generating.value = true
     streamContent.value = ''
     error.value = null
     abortController = new AbortController()
 
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: abortController.signal
-      })
-
-      if (!response.ok) {
-        const err = await response
-          .json()
-          .catch(() => ({ message: 'Request failed' }))
-        throw new Error(err.message || `HTTP ${response.status}`)
-      }
-
-      const reader = response.body!.getReader()
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        const text = decoder.decode(value, { stream: true })
-        for (const line of text.split('\n')) {
-          if (!line.startsWith('data: ')) continue
-          try {
-            const data = JSON.parse(line.slice(6))
-            if (data.content) {
-              streamContent.value += data.content
-              onChunk?.(data.content)
-            }
-            if (data.error) {
-              error.value = data.error
-            }
-          } catch {}
+      await consumeSSEStream({
+        url: endpoint,
+        body,
+        signal: abortController.signal,
+        onChunk(content) {
+          streamContent.value += content
+          onChunk?.(content)
+        },
+        onError(msg) {
+          error.value = msg
         }
-      }
+      })
     } catch (e: any) {
-      if (e.name !== 'AbortError') {
+      if (e.name !== 'AbortError' && e.name !== 'StreamAbortedError') {
         error.value = e.message
       }
     } finally {

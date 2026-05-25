@@ -304,6 +304,11 @@ const previousGeneratedContent = ref('')
 const showFeedbackInput = ref(false)
 const feedbackText = ref('')
 const regenerating = ref(false)
+let activeAbortController: AbortController | null = null
+
+function stopGeneration() {
+  activeAbortController?.abort()
+}
 
 /* ─────────────── Prompt 模板 ─────────────── */
 interface PromptTemplate {
@@ -922,6 +927,7 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
   aiActionType.value = type
 
   const controller = new AbortController()
+  activeAbortController = controller
   const timeout = setTimeout(() => controller.abort(), 60000)
 
   try {
@@ -953,20 +959,25 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
+    let buffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      const text = decoder.decode(value, { stream: true })
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
       let streamDone = false
-      for (const line of text.split('\n')) {
-        if (!line.startsWith('data: ')) continue
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || !trimmed.startsWith('data: ')) continue
         try {
-          const data = JSON.parse(line.slice(6)) as AiStreamPayload
+          const data = JSON.parse(trimmed.slice(6)) as AiStreamPayload
           if (data.error) throw new Error(data.error)
           if (data.content) aiActionResult.value += data.content
           if (data.done) { streamDone = true; break }
         } catch (error: unknown) {
+          if (error instanceof SyntaxError) continue
           throw new Error(getErrorMessage(error))
         }
       }
@@ -986,6 +997,7 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
   } finally {
     clearTimeout(timeout)
     expandingOrRewriting.value = false
+    activeAbortController = null
   }
 }
 
@@ -1007,6 +1019,7 @@ async function doFragment(
   aiActionType.value = 'continue'
 
   const controller = new AbortController()
+  activeAbortController = controller
   const timeout = setTimeout(() => controller.abort(), 60000)
 
   try {
@@ -1032,20 +1045,25 @@ async function doFragment(
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
+    let buffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      const text = decoder.decode(value, { stream: true })
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
       let streamDone = false
-      for (const line of text.split('\n')) {
-        if (!line.startsWith('data: ')) continue
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || !trimmed.startsWith('data: ')) continue
         try {
-          const data = JSON.parse(line.slice(6)) as AiStreamPayload
+          const data = JSON.parse(trimmed.slice(6)) as AiStreamPayload
           if (data.error) throw new Error(data.error)
           if (data.content) aiActionResult.value += data.content
           if (data.done) { streamDone = true; break }
         } catch (error: unknown) {
+          if (error instanceof SyntaxError) continue
           throw new Error(getErrorMessage(error))
         }
       }
@@ -1065,6 +1083,7 @@ async function doFragment(
   } finally {
     clearTimeout(timeout)
     expandingOrRewriting.value = false
+    activeAbortController = null
   }
 }
 
@@ -1117,11 +1136,12 @@ async function generateChapter() {
   showGenerateDialog.value = false
 
   const controller = new AbortController()
+  activeAbortController = controller
   const timeout = setTimeout(() => {
     controller.abort()
   }, 180000)
 
-  let buffer = ''
+  let contentBuffer = ''
   let rafId: number | null = null
 
   try {
@@ -1139,32 +1159,41 @@ async function generateChapter() {
       signal: controller.signal
     })
 
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '')
+      throw new Error(`AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`)
+    }
+
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
+    let lineBuffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      const text = decoder.decode(value, { stream: true })
-      for (const line of text.split('\n')) {
-        if (!line.startsWith('data: ')) continue
+      lineBuffer += decoder.decode(value, { stream: true })
+      const lines = lineBuffer.split('\n')
+      lineBuffer = lines.pop() || ''
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || !trimmed.startsWith('data: ')) continue
         try {
-          const data = JSON.parse(line.slice(6))
+          const data = JSON.parse(trimmed.slice(6))
           if (data.content) {
-            buffer += data.content
+            contentBuffer += data.content
             if (!rafId) {
               rafId = requestAnimationFrame(() => {
-                generatedContent.value = buffer
+                generatedContent.value = contentBuffer
                 rafId = null
               })
             }
           }
           if (data.done) {
             if (rafId) { cancelAnimationFrame(rafId); rafId = null }
-            generatedContent.value = buffer
-            previousGeneratedContent.value = buffer
-            await setEditorMarkdown(buffer)
-            content.value = buffer
+            generatedContent.value = contentBuffer
+            previousGeneratedContent.value = contentBuffer
+            await setEditorMarkdown(contentBuffer)
+            content.value = contentBuffer
             await saveContent('ai_generated')
             await refreshChapter()
             clearDraftRecovery()
@@ -1177,7 +1206,7 @@ async function generateChapter() {
     }
   } catch (e: unknown) {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null }
-    if (buffer) generatedContent.value = buffer
+    if (contentBuffer) generatedContent.value = contentBuffer
     if (e instanceof DOMException && e.name === 'AbortError') {
       if (generatedContent.value) {
         previousGeneratedContent.value = generatedContent.value
@@ -1190,6 +1219,7 @@ async function generateChapter() {
   } finally {
     clearTimeout(timeout)
     generating.value = false
+    activeAbortController = null
   }
 }
 
@@ -1200,11 +1230,12 @@ async function regenerateWithFeedback() {
   generatedContent.value = ''
 
   const controller = new AbortController()
+  activeAbortController = controller
   const timeout = setTimeout(() => {
     controller.abort()
   }, 180000)
 
-  let buffer = ''
+  let contentBuffer = ''
   let rafId: number | null = null
 
   try {
@@ -1223,32 +1254,41 @@ async function regenerateWithFeedback() {
       signal: controller.signal
     })
 
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '')
+      throw new Error(`AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`)
+    }
+
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
+    let lineBuffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      const text = decoder.decode(value, { stream: true })
-      for (const line of text.split('\n')) {
-        if (!line.startsWith('data: ')) continue
+      lineBuffer += decoder.decode(value, { stream: true })
+      const lines = lineBuffer.split('\n')
+      lineBuffer = lines.pop() || ''
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (!trimmed || !trimmed.startsWith('data: ')) continue
         try {
-          const data = JSON.parse(line.slice(6))
+          const data = JSON.parse(trimmed.slice(6))
           if (data.content) {
-            buffer += data.content
+            contentBuffer += data.content
             if (!rafId) {
               rafId = requestAnimationFrame(() => {
-                generatedContent.value = buffer
+                generatedContent.value = contentBuffer
                 rafId = null
               })
             }
           }
           if (data.done) {
             if (rafId) { cancelAnimationFrame(rafId); rafId = null }
-            generatedContent.value = buffer
-            previousGeneratedContent.value = buffer
-            await setEditorMarkdown(buffer)
-            content.value = buffer
+            generatedContent.value = contentBuffer
+            previousGeneratedContent.value = contentBuffer
+            await setEditorMarkdown(contentBuffer)
+            content.value = contentBuffer
             await saveContent('ai_generated')
             await refreshChapter()
             showFeedbackInput.value = false
@@ -1261,7 +1301,7 @@ async function regenerateWithFeedback() {
     }
   } catch (e: unknown) {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null }
-    if (buffer) generatedContent.value = buffer
+    if (contentBuffer) generatedContent.value = contentBuffer
     if (e instanceof DOMException && e.name === 'AbortError') {
       if (generatedContent.value) {
         previousGeneratedContent.value = generatedContent.value
@@ -1274,6 +1314,7 @@ async function regenerateWithFeedback() {
   } finally {
     clearTimeout(timeout)
     regenerating.value = false
+    activeAbortController = null
   }
 }
 
@@ -2449,6 +2490,12 @@ onBeforeUnmount(() => {
                   regenerating ? '基于反馈重新生成中...' : t('ai.generating')
                 }}
               </p>
+              <button
+                class="ml-auto text-xs px-2 py-0.5 rounded bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                @click="stopGeneration"
+              >
+                停止生成
+              </button>
             </div>
             <div
               ref="generatedContentScrollRef"

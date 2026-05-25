@@ -1,5 +1,5 @@
-import { AiConfigSchema } from '../../database/entities'
 import { callAi } from '../../utils/ai-client'
+import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { getEmbeddingStatus } from '../../services/embedding'
 
 export default defineEventHandler(async (event) => {
@@ -8,16 +8,12 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const shouldCheckConnectivity = query.check === 'true' || query.check === '1'
 
-  const configs = await em.find(AiConfigSchema, {
-    user: auth.userId,
-    purpose: 'generation',
-    enabled: true
-  }, { populate: ['aiModel'] })
-
-  const config = configs.find(item => item.isDefault) || configs[0]
   const checkedAt = new Date().toISOString()
 
-  if (!config || !config.aiModel) {
+  let resolved
+  try {
+    resolved = await resolveUserAiConfig(em, auth.userId, 'generation')
+  } catch {
     return {
       available: false,
       checkedAt,
@@ -26,14 +22,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const aiModel = config.aiModel as any
-
   if (shouldCheckConnectivity) {
     try {
       await callAi({
-        apiUrl: aiModel.apiUrl,
-        apiKey: aiModel.apiKey,
-        model: aiModel.model,
+        apiUrl: resolved.apiUrl,
+        apiKey: resolved.apiKey,
+        model: resolved.model,
         messages: [{ role: 'user', content: 'ping' }],
         temperature: 0,
         maxTokens: 8

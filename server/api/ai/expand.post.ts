@@ -1,6 +1,5 @@
 import { z } from 'zod'
-import { streamAi } from '../../utils/ai-client'
-import { createRequestSignal } from '../../utils/ai-stream'
+import { createInlineStreamResponse } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
 
@@ -20,7 +19,6 @@ export default defineEventHandler(async (event) => {
   const em = useEm(event)
 
   const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
-  console.log('[expand] resolved config:', { model: aiConfig.model, apiUrl: aiConfig.apiUrl.replace(/\/[^/]*$/, '/...') })
 
   const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
   if (!novel) throw createError({ statusCode: 404, message: '小说不存在' })
@@ -49,61 +47,12 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive'
-  })
-
-  const stream = new ReadableStream({
-    async start(controller) {
-      const encoder = new TextEncoder()
-      controller.enqueue(encoder.encode(': connected\n\n'))
-      try {
-        for await (const chunk of streamAi({
-          apiUrl: aiConfig.apiUrl,
-          apiKey: aiConfig.apiKey,
-          model: aiConfig.model,
-          messages,
-          temperature: parseFloat(aiConfig.temperature || '0.7'),
-          maxTokens: 2000,
-          stream: true,
-          signal: createRequestSignal(event)
-        })) {
-          if (chunk.content) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ content: chunk.content, done: false })}\n\n`
-              )
-            )
-          }
-          if (chunk.done) {
-            controller.enqueue(
-              encoder.encode(
-                `data: ${JSON.stringify({ content: '', done: true })}\n\n`
-              )
-            )
-            controller.close()
-            return
-          }
-        }
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ content: '', done: true })}\n\n`
-          )
-        )
-        controller.close()
-      } catch (err: any) {
-        console.error('[expand] AI stream error:', err.message)
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ error: err.message, done: true })}\n\n`
-          )
-        )
-        controller.close()
-      }
-    }
-  })
-
-  return new Response(stream)
+  return createInlineStreamResponse(event, {
+    apiUrl: aiConfig.apiUrl,
+    apiKey: aiConfig.apiKey,
+    model: aiConfig.model,
+    messages,
+    temperature: parseFloat(aiConfig.temperature || '0.7'),
+    maxTokens: 2000,
+  }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

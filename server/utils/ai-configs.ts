@@ -1,3 +1,19 @@
+/**
+ * AI 配置解析策略：
+ *
+ * resolveUserAiConfig(em, userId, purpose, aiConfigId?)
+ *   按用户级别解析配置，不考虑小说级别覆盖。
+ *   用于：analyze-style (style_analysis), consistency-check (consistency_check)
+ *
+ * resolveNovelAiConfig(em, userId, novelId, purpose, aiConfigId?)
+ *   优先使用小说级别配置覆盖，回退到用户级别。
+ *   用于：generate, regenerate, batch-generate, continue, rewrite, expand,
+ *         fragment, suggest, generate-outline (均为 generation 用途)
+ *
+ * 选择原则：
+ * - 与特定小说内容相关的操作 → resolveNovelAiConfig（允许每本小说用不同模型）
+ * - 全局分析类操作 → resolveUserAiConfig（不依赖小说级别配置）
+ */
 import type { EntityManager } from '@mikro-orm/core'
 import { AiConfigSchema, AiModelSchema, NovelSchema, type AiConfig, type AiModel } from '../database/entities'
 

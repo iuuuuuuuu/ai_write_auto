@@ -1,5 +1,6 @@
 import { isEmbeddingReady } from '../../services/embedding'
 import { reindexNovel } from '../../services/character-rag'
+import { NovelSchema } from '../../database/entities'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -8,6 +9,12 @@ export default defineEventHandler(async (event) => {
 
   if (!novelId) {
     throw createError({ statusCode: 400, message: 'novelId is required' })
+  }
+
+  const em = useEm(event)
+  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  if (!novel) {
+    throw createError({ statusCode: 404, message: '小说不存在或无权访问' })
   }
 
   if (!isEmbeddingReady()) {

@@ -14,6 +14,7 @@ let pipeline: Pipeline | null = null
 let status: 'idle' | 'downloading' | 'ready' | 'error' = 'idle'
 let progress = 0
 let errorMessage = ''
+let loadingPromise: Promise<void> | null = null
 
 export function getEmbeddingDim(): number {
   return EMBEDDING_DIM
@@ -29,8 +30,17 @@ export function isEmbeddingReady(): boolean {
 
 export async function ensureModel(): Promise<void> {
   if (status === 'ready') return
-  if (status === 'downloading') return
+  if (loadingPromise) return loadingPromise
 
+  loadingPromise = doLoadModel()
+  try {
+    await loadingPromise
+  } finally {
+    loadingPromise = null
+  }
+}
+
+async function doLoadModel(): Promise<void> {
   status = 'downloading'
   progress = 0
   errorMessage = ''
