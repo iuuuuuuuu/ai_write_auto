@@ -5,6 +5,7 @@ import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, NovelOutlineSchema, GenerationTaskSchema } from '../../database/entities'
 import { recordAiGeneration } from '../../utils/writing-stats'
+import { enqueuePostProcessing } from '../../services/task-queue'
 
 const batchSchema = z.object({
   novelId: z.number().int().positive(),
@@ -43,8 +44,14 @@ export default defineEventHandler(async (event) => {
   }
 
   async function waitWhilePaused(controller: ReadableStreamDefaultController<Uint8Array>, encoder: TextEncoder) {
+    const MAX_PAUSE_MS = 30 * 60 * 1000
+    const pauseStart = Date.now()
     while ((await readTaskStatus()) === 'paused') {
       if (signal.aborted) return
+      if (Date.now() - pauseStart > MAX_PAUSE_MS) {
+        await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, { status: 'cancelled' })
+        return
+      }
       controller.enqueue(
         encoder.encode(
           `data: ${JSON.stringify({ type: 'paused', taskId })}\n\n`
@@ -162,6 +169,7 @@ export default defineEventHandler(async (event) => {
           const existingChapter = chapters.find(
             (c) => c.chapterNumber === chapterNum
           )
+          let savedChapterId: number
           if (existingChapter) {
             await em.nativeUpdate(ChapterSchema, { id: existingChapter.id }, {
               content: generatedContent,
@@ -169,8 +177,9 @@ export default defineEventHandler(async (event) => {
               status: 'generated',
               updatedAt: new Date()
             })
+            savedChapterId = existingChapter.id
           } else {
-            em.create(ChapterSchema, {
+            const newChapter = em.create(ChapterSchema, {
               novel: data.novelId,
               chapterNumber: chapterNum,
               title: `第${chapterNum}章`,
@@ -179,7 +188,13 @@ export default defineEventHandler(async (event) => {
               status: 'generated',
             })
             await em.flush()
+            savedChapterId = newChapter.id
           }
+
+          await recordAiGeneration(em, auth.userId)
+          enqueuePostProcessing(data.novelId, savedChapterId).catch(() => {})
+
+          em.clear()
 
           controller.enqueue(
             encoder.encode(
@@ -193,8 +208,6 @@ export default defineEventHandler(async (event) => {
           completedAt: new Date()
         })
 
-        await recordAiGeneration(em, auth.userId)
-
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: 'done', taskId, completed: totalChapters, total: totalChapters })}\n\n`)
         )
@@ -202,15 +215,17 @@ export default defineEventHandler(async (event) => {
         await em.nativeUpdate(GenerationTaskSchema, { id: taskId }, {
           status: 'failed',
           error: e.message
-        })
+        }).catch(() => {})
 
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ type: 'error', taskId, message: e.message })}\n\n`
+        try {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: 'error', taskId, message: e.message })}\n\n`
+            )
           )
-        )
+        } catch {}
       } finally {
-        controller.close()
+        try { controller.close() } catch {}
       }
     }
   })

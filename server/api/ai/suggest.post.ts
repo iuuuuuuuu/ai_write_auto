@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createStreamResponse } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
+import { MAX_TOKENS_SUGGEST } from '../../utils/ai-constants'
 import { buildSuggestionPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema } from '../../database/entities'
 
@@ -42,6 +43,6 @@ export default defineEventHandler(async (event) => {
     model: aiConfig.model,
     messages,
     temperature: 0.4,
-    maxTokens: 4000
+    maxTokens: MAX_TOKENS_SUGGEST
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, { parseJsonResult: true })
 })

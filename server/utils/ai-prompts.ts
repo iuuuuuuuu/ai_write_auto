@@ -1,3 +1,10 @@
+import {
+  CONTEXT_TRUNCATE_FULL,
+  CONTEXT_TRUNCATE_REGEN,
+  CONTEXT_TRUNCATE_CHAPTER,
+  CONTEXT_TRUNCATE_WORLD
+} from './ai-constants'
+
 export interface PromptNovel {
   title: string
   genre?: string | null
@@ -234,7 +241,7 @@ export function buildChapterStoryPrompt(
     },
     {
       role: 'user',
-      content: `## 章节内容\n${chapterContent.slice(0, 6000)}\n\n## 该角色出现的片段\n${snippets}`
+      content: `## 章节内容\n${chapterContent.slice(0, CONTEXT_TRUNCATE_FULL)}\n\n## 该角色出现的片段\n${snippets}`
     }
   ]
 }
@@ -465,7 +472,7 @@ export function buildRegenerationPrompt(context: {
     }
     const lastChapter = precedingChapters[precedingChapters.length - 1]
     if (lastChapter?.content) {
-      userPrompt += `\n## 上一章全文（第${lastChapter.chapterNumber}章）\n${lastChapter.content.slice(-3000)}\n`
+      userPrompt += `\n## 上一章全文（第${lastChapter.chapterNumber}章）\n${lastChapter.content.slice(-CONTEXT_TRUNCATE_CHAPTER)}\n`
     }
   }
 
@@ -483,7 +490,7 @@ export function buildRegenerationPrompt(context: {
     userPrompt += `\n## 本章大纲\n${currentChapterOutline}\n`
   }
 
-  userPrompt += `\n## 上次生成的内容（用户不满意）\n${previousResult.slice(0, 4000)}\n`
+  userPrompt += `\n## 上次生成的内容（用户不满意）\n${previousResult.slice(0, CONTEXT_TRUNCATE_REGEN)}\n`
   userPrompt += `\n## 用户反馈\n${feedback}\n`
   if (currentChapter) {
     userPrompt += `\n请根据以上反馈重新生成第${currentChapter.chapterNumber}章「${currentChapter.title}」的内容。不要包含章节标题，直接从正文开始。`
@@ -602,7 +609,7 @@ export function buildOutlineGenerationPrompt(context: {
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const { novel, characters, idea, chapterCount, startChapter, existingOutlines } = context
 
-  const worldContext = novel.worldSetting ? `\n世界观设定：${novel.worldSetting.slice(0, 500)}` : ''
+  const worldContext = novel.worldSetting ? `\n世界观设定：${novel.worldSetting.slice(0, CONTEXT_TRUNCATE_WORLD)}` : ''
   const characterContext = characters.length > 0
     ? `\n角色：${characters.slice(0, 15).map(c => `${c.name}${c.description ? `(${c.description})` : ''}`).join('、')}`
     : ''

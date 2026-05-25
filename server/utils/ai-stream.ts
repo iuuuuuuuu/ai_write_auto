@@ -50,48 +50,72 @@ export interface StreamResponseOptions {
   parseJsonResult?: boolean
 }
 
-export function createStreamResponse(event: H3Event, options: AiRequestOptions, ctx?: StreamContext, responseOpts?: StreamResponseOptions) {
+interface StreamCollector {
+  fullContent: string
+  inputTokens: number
+  outputTokens: number
+}
+
+function setSSEHeaders(event: H3Event) {
   setResponseHeaders(event, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     'Connection': 'keep-alive'
   })
+}
 
-  const signal = createRequestSignal(event)
+async function collectStream(
+  options: AiRequestOptions,
+  signal: AbortSignal,
+  onChunk: (content: string) => void
+): Promise<StreamCollector> {
   let fullContent = ''
+  let inputTokens = 0
+  let outputTokens = 0
+
+  for await (const chunk of streamAi({ ...options, stream: true, signal })) {
+    if (chunk.content) {
+      fullContent += chunk.content
+      onChunk(chunk.content)
+    }
+    if (chunk.usage) {
+      inputTokens = chunk.usage.prompt_tokens || inputTokens
+      outputTokens = chunk.usage.completion_tokens || outputTokens
+    }
+    if (chunk.done) break
+  }
+
+  if (!inputTokens && !outputTokens && fullContent) {
+    outputTokens = estimateTokens(fullContent)
+  }
+
+  return { fullContent, inputTokens, outputTokens }
+}
+
+export function createStreamResponse(event: H3Event, options: AiRequestOptions, ctx?: StreamContext, responseOpts?: StreamResponseOptions) {
+  setSSEHeaders(event)
+  const signal = createRequestSignal(event)
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      const send = (data: Record<string, any>) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+
       controller.enqueue(encoder.encode(': connected\n\n'))
       try {
-        let inputTokens = 0
-        let outputTokens = 0
-
-        for await (const chunk of streamAi({ ...options, stream: true, signal })) {
-          if (chunk.content) {
-            fullContent += chunk.content
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk.content, done: false })}\n\n`))
-          }
-          if (chunk.usage) {
-            inputTokens = chunk.usage.prompt_tokens || inputTokens
-            outputTokens = chunk.usage.completion_tokens || outputTokens
-          }
-          if (chunk.done) break
-        }
+        const { fullContent, inputTokens, outputTokens } = await collectStream(
+          options, signal,
+          (content) => send({ content, done: false })
+        )
 
         if (!fullContent) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'AI 返回了空内容', done: true })}\n\n`))
+          send({ error: 'AI 返回了空内容', done: true })
           controller.close()
           return
         }
 
-        if (ctx) {
-          if (!inputTokens && !outputTokens) {
-            outputTokens = estimateTokens(fullContent)
-          }
-          await recordUsage(ctx, inputTokens, outputTokens)
-        }
+        if (ctx) await recordUsage(ctx, inputTokens, outputTokens)
 
         const donePayload: Record<string, any> = { content: '', done: true, fullContent }
         if (responseOpts?.parseJsonResult) {
@@ -101,10 +125,10 @@ export function createStreamResponse(event: H3Event, options: AiRequestOptions, 
           } catch {}
         }
 
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(donePayload)}\n\n`))
+        send(donePayload)
         controller.close()
       } catch (error: any) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: error.message || '生成失败', done: true })}\n\n`))
+        send({ error: error.message || '生成失败', done: true })
         controller.close()
       }
     }
@@ -114,53 +138,27 @@ export function createStreamResponse(event: H3Event, options: AiRequestOptions, 
 }
 
 export function createInlineStreamResponse(event: H3Event, options: AiRequestOptions, ctx?: StreamContext) {
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  })
-
+  setSSEHeaders(event)
   const signal = createRequestSignal(event)
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      const send = (data: Record<string, any>) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+
       controller.enqueue(encoder.encode(': connected\n\n'))
-      let inputTokens = 0
-      let outputTokens = 0
-      let fullContent = ''
       try {
-        for await (const chunk of streamAi({ ...options, stream: true, signal })) {
-          if (chunk.content) {
-            fullContent += chunk.content
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk.content, done: false })}\n\n`))
-          }
-          if (chunk.usage) {
-            inputTokens = chunk.usage.prompt_tokens || inputTokens
-            outputTokens = chunk.usage.completion_tokens || outputTokens
-          }
-          if (chunk.done) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '', done: true })}\n\n`))
-            if (ctx) {
-              if (!inputTokens && !outputTokens && fullContent) {
-                outputTokens = estimateTokens(fullContent)
-              }
-              await recordUsage(ctx, inputTokens, outputTokens)
-            }
-            controller.close()
-            return
-          }
-        }
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '', done: true })}\n\n`))
-        if (ctx) {
-          if (!inputTokens && !outputTokens && fullContent) {
-            outputTokens = estimateTokens(fullContent)
-          }
-          await recordUsage(ctx, inputTokens, outputTokens)
-        }
+        const { inputTokens, outputTokens } = await collectStream(
+          options, signal,
+          (content) => send({ content, done: false })
+        )
+
+        if (ctx) await recordUsage(ctx, inputTokens, outputTokens)
+        send({ content: '', done: true })
         controller.close()
       } catch (err: any) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: err.message || '生成失败', done: true })}\n\n`))
+        send({ error: err.message || '生成失败', done: true })
         controller.close()
       }
     }
@@ -181,59 +179,32 @@ export function createTrackedStreamResponse(
   ctx: StreamContext,
   tracked: TrackedStreamOptions
 ) {
-  setResponseHeaders(event, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  })
-
+  setSSEHeaders(event)
   const signal = createRequestSignal(event)
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      const send = (data: Record<string, any>) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+
       controller.enqueue(encoder.encode(': connected\n\n'))
-      let fullContent = ''
-      let inputTokens = 0
-      let outputTokens = 0
-
       try {
-        for await (const chunk of streamAi({ ...options, stream: true, signal })) {
-          if (chunk.content) {
-            fullContent += chunk.content
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk.content, done: false })}\n\n`))
-          }
-          if (chunk.usage) {
-            inputTokens = chunk.usage.prompt_tokens || inputTokens
-            outputTokens = chunk.usage.completion_tokens || outputTokens
-          }
-          if (chunk.done) {
-            if (!inputTokens && !outputTokens && fullContent) {
-              outputTokens = estimateTokens(fullContent)
-            }
-            const totalTokens = inputTokens + outputTokens
+        const { fullContent, inputTokens, outputTokens } = await collectStream(
+          options, signal,
+          (content) => send({ content, done: false })
+        )
 
-            await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
-              status: 'completed',
-              result: fullContent,
-              tokensUsed: totalTokens,
-              completedAt: new Date()
-            })
-
-            await recordUsage(ctx, inputTokens, outputTokens)
-            if (tracked.trackStats) await recordAiGeneration(ctx.em, ctx.userId)
-
-            if (tracked.onComplete) await tracked.onComplete(fullContent)
-
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '', done: true, taskId: tracked.taskId })}\n\n`))
-            controller.close()
-            return
-          }
+        if (!fullContent) {
+          await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
+            status: 'failed',
+            error: 'AI 返回了空内容'
+          })
+          send({ error: 'AI 返回了空内容', done: true })
+          controller.close()
+          return
         }
 
-        if (!inputTokens && !outputTokens && fullContent) {
-          outputTokens = estimateTokens(fullContent)
-        }
         const totalTokens = inputTokens + outputTokens
 
         await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
@@ -242,19 +213,19 @@ export function createTrackedStreamResponse(
           tokensUsed: totalTokens,
           completedAt: new Date()
         })
-        if (fullContent) {
-          await recordUsage(ctx, inputTokens, outputTokens)
-          if (tracked.trackStats) await recordAiGeneration(ctx.em, ctx.userId)
-          if (tracked.onComplete) await tracked.onComplete(fullContent)
-        }
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: '', done: true, taskId: tracked.taskId })}\n\n`))
+
+        await recordUsage(ctx, inputTokens, outputTokens)
+        if (tracked.trackStats) await recordAiGeneration(ctx.em, ctx.userId)
+        if (tracked.onComplete && fullContent) await tracked.onComplete(fullContent)
+
+        send({ content: '', done: true, taskId: tracked.taskId })
         controller.close()
       } catch (err: any) {
         await ctx.em.nativeUpdate(GenerationTaskSchema, { id: tracked.taskId }, {
           status: 'failed',
           error: err.message
         })
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: err.message, done: true })}\n\n`))
+        send({ error: err.message, done: true })
         controller.close()
       }
     }

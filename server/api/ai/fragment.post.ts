@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
+import { MAX_TOKENS_FRAGMENT, CONTEXT_TRUNCATE_FRAGMENT } from '../../utils/ai-constants'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
 
 const fragmentSchema = z.object({
@@ -50,7 +51,7 @@ export default defineEventHandler(async (event) => {
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
 
   const chapterContent = chapter.content || ''
-  const context = data.contextBefore || chapterContent.slice(-1000)
+  const context = data.contextBefore || chapterContent.slice(-CONTEXT_TRUNCATE_FRAGMENT)
   const characterContext = characters.length > 0
     ? `\n角色：${characters.slice(0, 8).map(c => `${c.name}${c.traits ? `(${c.traits})` : ''}`).join('、')}`
     : ''
@@ -81,6 +82,6 @@ ${context}
     model: aiConfig.model,
     messages,
     temperature: parseFloat(aiConfig.temperature || '0.75'),
-    maxTokens: 1500,
+    maxTokens: MAX_TOKENS_FRAGMENT,
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

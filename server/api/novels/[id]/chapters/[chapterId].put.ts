@@ -59,6 +59,12 @@ export default defineEventHandler(async (event) => {
     updates.wordCount = data.content.replace(/\s/g, '').length
   }
 
+  const normalizeText = (text: string | null | undefined) =>
+    (text ?? '').replace(/\s/g, '')
+
+  const contentChanged = data.content !== undefined &&
+    normalizeText(data.content) !== normalizeText(chapter.content)
+
   wrap(chapter).assign(updates)
   await em.flush()
 
@@ -67,12 +73,7 @@ export default defineEventHandler(async (event) => {
     await recordWordsWritten(em, auth.userId, delta)
   }
 
-  const normalizeText = (text: string | null | undefined) =>
-    (text ?? '').replace(/\s/g, '')
-  if (
-    data.content !== undefined &&
-    normalizeText(data.content) !== normalizeText(chapter.content)
-  ) {
+  if (contentChanged) {
     const versions = await em.find(
       ChapterVersionSchema,
       { chapter: chapterId },
@@ -82,7 +83,7 @@ export default defineEventHandler(async (event) => {
     em.create(ChapterVersionSchema, {
       chapter: chapterId,
       versionNumber: versions.length + 1,
-      content: data.content,
+      content: data.content!,
       source: data.source || 'user_edited'
     })
     await em.flush()

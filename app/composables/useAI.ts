@@ -54,7 +54,9 @@ export function useAI() {
     options: {
       chapterId?: number
       direction?: string
+      chapterOutline?: string
       temperature?: number
+      maxTokens?: number
       aiConfigId?: number
     } = {}
   ) {
@@ -64,12 +66,14 @@ export function useAI() {
   async function expandText(
     novelId: number,
     chapterId: number,
-    selectedText: string
+    selectedText: string,
+    direction?: string
   ) {
     return streamGenerate('/api/ai/expand', {
       novelId,
       chapterId,
-      selectedText
+      selectedText,
+      direction
     })
   }
 

@@ -32,7 +32,8 @@ function stripThinking(text: string): string {
 
 async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Response> {
   const controller = new AbortController()
-  const connectTimeout = setTimeout(() => controller.abort(), AI_CONNECT_TIMEOUT_MS)
+  let timedOut = false
+  const connectTimeout = setTimeout(() => { timedOut = true; controller.abort() }, AI_CONNECT_TIMEOUT_MS)
 
   if (options.signal) {
     if (options.signal.aborted) {
@@ -62,7 +63,10 @@ async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Resp
   } catch (e: any) {
     clearTimeout(connectTimeout)
     if (e.name === 'AbortError') {
-      throw new Error(`AI API 连接超时（30秒），请检查 API 地址是否可达: ${options.apiUrl}`)
+      if (timedOut) {
+        throw new Error(`AI API 连接超时（30秒），请检查 API 地址是否可达: ${options.apiUrl}`)
+      }
+      throw new Error('请求已被取消')
     }
     throw new Error(`AI API 连接失败: ${e.message}`)
   }
@@ -101,6 +105,7 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
   const decoder = new TextDecoder()
   let buffer = ''
   let insideThink = false
+  let thinkBuffer = ''
 
   try {
     while (true) {
@@ -132,12 +137,24 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
           const usage = parsed.usage
 
           if (delta) {
-            if (delta.includes('<think>') || delta.includes('<|think|>')) insideThink = true
             if (insideThink) {
-              if (delta.includes('</think>') || delta.includes('<|/think|>')) {
+              thinkBuffer += delta
+              if (thinkBuffer.includes('</think>') || thinkBuffer.includes('<|/think|>')) {
                 insideThink = false
-                delta = delta.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
-                const afterClose = delta.split(/<\/think>|<\|\/think\|>/).pop() || ''
+                const afterClose = thinkBuffer.split(/<\/think>|<\|\/think\|>/).pop() || ''
+                thinkBuffer = ''
+                if (afterClose.trim()) yield { content: afterClose, done: false, usage }
+              }
+            } else if (delta.includes('<think>') || delta.includes('<|think|>')) {
+              const beforeOpen = delta.split(/<think>|<\|think\|>/)[0] || ''
+              if (beforeOpen.trim()) yield { content: beforeOpen, done: false, usage }
+              insideThink = true
+              const afterOpen = delta.split(/<think>|<\|think\|>/).slice(1).join('')
+              thinkBuffer = afterOpen
+              if (thinkBuffer.includes('</think>') || thinkBuffer.includes('<|/think|>')) {
+                insideThink = false
+                const afterClose = thinkBuffer.split(/<\/think>|<\|\/think\|>/).pop() || ''
+                thinkBuffer = ''
                 if (afterClose.trim()) yield { content: afterClose, done: false, usage }
               }
             } else {

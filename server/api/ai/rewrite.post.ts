@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
+import { MAX_TOKENS_ACTION, CONTEXT_TRUNCATE_INLINE } from '../../utils/ai-constants'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
 
 const rewriteSchema = z.object({
@@ -43,7 +44,7 @@ export default defineEventHandler(async (event) => {
     },
     {
       role: 'user' as const,
-      content: `小说：${novel?.title || '未命名'}${novel?.genre ? `（${novel.genre}）` : ''}\n章节：第${chapter?.chapterNumber || '?'}章「${chapter?.title || ''}」${characterContext}\n\n章节上下文（供参考）：\n${chapterContent.slice(0, 2000)}\n\n需要重写的段落：\n${data.selectedText}${data.direction ? `\n\n重写方向：${data.direction}` : ''}`
+      content: `小说：${novel?.title || '未命名'}${novel?.genre ? `（${novel.genre}）` : ''}\n章节：第${chapter?.chapterNumber || '?'}章「${chapter?.title || ''}」${characterContext}\n\n章节上下文（供参考）：\n${chapterContent.slice(0, CONTEXT_TRUNCATE_INLINE)}\n\n需要重写的段落：\n${data.selectedText}${data.direction ? `\n\n重写方向：${data.direction}` : ''}`
     }
   ]
 
@@ -53,6 +54,6 @@ export default defineEventHandler(async (event) => {
     model: aiConfig.model,
     messages,
     temperature: parseFloat(aiConfig.temperature || '0.7'),
-    maxTokens: 2000,
+    maxTokens: MAX_TOKENS_ACTION,
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

@@ -14,7 +14,6 @@ import {
   GenerationTaskSchema,
   ChapterSchema,
   AiConfigSchema,
-  AiModelSchema,
   CharacterSchema,
   ChapterCharacterSchema,
   CharacterAppearanceSchema,
@@ -25,7 +24,9 @@ import type { GenerationTask } from '../database/entities'
 import type { ResolvedAiConfig } from '../utils/ai-configs'
 
 const MAX_RETRIES = 3
+const STALE_TASK_TIMEOUT_MS = 10 * 60 * 1000
 const POST_PROCESSING_TYPES = ['extract_summary', 'extract_characters', 'consistency_check']
+let isProcessing = false
 
 async function resolveConfigForPurpose(em: any, purpose: string, userId?: number): Promise<ResolvedAiConfig | null> {
   const filter: Record<string, unknown> = { purpose, enabled: true }
@@ -309,7 +310,9 @@ async function processTask(task: GenerationTask): Promise<void> {
                 maxTokens: 800
               })
               charEntity.overallArc = updatedArc
-            } catch {}
+            } catch (storyErr) {
+              console.warn(`[task-queue] Failed to generate story/arc for character ${charEntity.name}:`, storyErr instanceof Error ? storyErr.message : storyErr)
+            }
           }
           await em.flush()
 
@@ -519,15 +522,29 @@ export async function enqueuePostProcessing(
 }
 
 export async function processPendingTasks(): Promise<void> {
-  const em = getOrm().em.fork()
+  if (isProcessing) return
+  isProcessing = true
+  try {
+    const em = getOrm().em.fork()
 
-  const pending = await em.find(
-    GenerationTaskSchema,
-    { status: 'pending' },
-    { limit: 5 }
-  )
+    // Recover stale tasks stuck in 'running' for too long (e.g., server crash)
+    const staleThreshold = new Date(Date.now() - STALE_TASK_TIMEOUT_MS)
+    await em.nativeUpdate(
+      GenerationTaskSchema,
+      { status: 'running', createdAt: { $lt: staleThreshold } },
+      { status: 'pending' }
+    )
 
-  for (const task of pending) {
-    await processTask(task)
+    const pending = await em.find(
+      GenerationTaskSchema,
+      { status: 'pending' },
+      { limit: 5 }
+    )
+
+    for (const task of pending) {
+      await processTask(task)
+    }
+  } finally {
+    isProcessing = false
   }
 }
