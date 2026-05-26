@@ -3,10 +3,15 @@ export interface SSEStreamOptions {
   body: Record<string, any>
   signal?: AbortSignal
   onChunk?: (content: string) => void
-  onDone?: (fullContent: string, parsedJson?: any) => void
+  onDone?: (fullContent: string, parsedJson?: any, usage?: StreamUsage) => void
   onError?: (error: string, partialContent: string) => void
   useRAF?: boolean
   timeout?: number
+}
+
+export interface StreamUsage {
+  inputTokens: number
+  outputTokens: number
 }
 
 export class StreamAbortedError extends Error {
@@ -27,13 +32,17 @@ export class StreamTimeoutError extends Error {
   }
 }
 
-export async function consumeSSEStream(options: SSEStreamOptions): Promise<string> {
+export async function consumeSSEStream(
+  options: SSEStreamOptions
+): Promise<string> {
   const timeout = options.timeout
   let timeoutId: ReturnType<typeof setTimeout> | null = null
 
   const controller = new AbortController()
   if (options.signal) {
-    options.signal.addEventListener('abort', () => controller.abort(), { once: true })
+    options.signal.addEventListener('abort', () => controller.abort(), {
+      once: true
+    })
   }
   if (timeout) {
     timeoutId = setTimeout(() => controller.abort(), timeout)
@@ -98,16 +107,22 @@ export async function consumeSSEStream(options: SSEStreamOptions): Promise<strin
               }
             }
             if (data.done) {
-              if (rafId) { cancelAnimationFrame(rafId); flushRAF() }
+              if (rafId) {
+                cancelAnimationFrame(rafId)
+                flushRAF()
+              }
               const final = data.fullContent || fullContent
-              options.onDone?.(final, data.parsedJson)
+              options.onDone?.(final, data.parsedJson, data.usage)
               return final
             }
           } catch {}
         }
       }
     } finally {
-      if (rafId) { cancelAnimationFrame(rafId); flushRAF() }
+      if (rafId) {
+        cancelAnimationFrame(rafId)
+        flushRAF()
+      }
       reader.cancel().catch(() => {})
     }
 

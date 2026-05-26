@@ -8,6 +8,11 @@ definePageMeta({
 import { h } from 'vue'
 import { Icon } from '@iconify/vue'
 import { computeLineDiff, type DiffLine } from '../../../../utils/diff'
+import {
+  cleanAiChapterTitle,
+  formatAiTitleUsage,
+  type AiTitleUsage
+} from '../../../../utils/chapter-title'
 import type { DraftRecoveryType } from '../../../../composables/useDraftRecovery'
 
 const { t } = useI18n()
@@ -103,9 +108,9 @@ type ChapterListItem = {
   wordCount: number | null
 }
 
-const { data: allChapters, refresh: refreshAllChapters } = await useFetch<Array<ChapterListItem>>(
-  `/api/novels/${novelId.value}/chapters`
-)
+const { data: allChapters, refresh: refreshAllChapters } = await useFetch<
+  Array<ChapterListItem>
+>(`/api/novels/${novelId.value}/chapters`)
 
 const chapterSearchQuery = ref('')
 const chapterListRef = ref<HTMLElement | null>(null)
@@ -181,34 +186,56 @@ const creatingChapter = ref(false)
 const showNewChapterDialog = ref(false)
 const newChapterTitle = ref('')
 const generatingTitle = ref(false)
+const suggestedNewChapterTitle = ref('')
+const newTitleSuggestionUsage = ref<AiTitleUsage | null>(null)
 
 function openNewChapterDialog() {
   const nextNum = (allChapters.value?.length || 0) + 1
   newChapterTitle.value = `第${nextNum}章`
+  suggestedNewChapterTitle.value = ''
+  newTitleSuggestionUsage.value = null
   showNewChapterDialog.value = true
 }
 
 async function aiGenerateNewTitle() {
   if (generatingTitle.value) return
   generatingTitle.value = true
+  suggestedNewChapterTitle.value = ''
+  newTitleSuggestionUsage.value = null
   try {
     const nextNum = (allChapters.value?.length || 0) + 1
     const lastChapter = allChapters.value?.[allChapters.value.length - 1]
-    const hint = lastChapter ? `上一章标题：${lastChapter.title}` : ''
-    const resp = await $fetch<Response>('/api/ai/suggest-description', {
-      method: 'POST',
-      body: {
-        title: novelInfo.value?.title || '',
-        genre: novelInfo.value?.title || '',
-        template: `请为小说的第${nextNum}章生成一个章节标题（4-10个字）。${hint}\n只返回标题文字，不要序号、引号或任何解释。`
+    const result = await $fetch<{ title: string; usage?: AiTitleUsage }>(
+      '/api/ai/suggest-title',
+      {
+        method: 'POST',
+        body: {
+          novelId: novelId.value,
+          chapterNumber: nextNum,
+          previousChapterTitle: lastChapter?.title || undefined,
+          aiConfigId: selectedAiConfigId.value
+        }
       }
-    })
-    const text = typeof resp === 'string' ? resp : ''
-    const cleaned = text.replace(/["""''《》【】\n第\d+章\s]*/g, '').trim().slice(0, 20)
-    if (cleaned) newChapterTitle.value = `第${nextNum}章 ${cleaned}`
-  } catch {} finally {
+    )
+    const cleaned = cleanAiChapterTitle(result.title)
+    if (cleaned) {
+      suggestedNewChapterTitle.value = `第${nextNum}章 ${cleaned}`
+      newTitleSuggestionUsage.value = result.usage || null
+    } else {
+      message.warning('AI 未能生成有效标题')
+    }
+  } catch {
+    message.error('生成章节名失败')
+  } finally {
     generatingTitle.value = false
   }
+}
+
+function applySuggestedNewChapterTitle() {
+  if (!suggestedNewChapterTitle.value) return
+  newChapterTitle.value = suggestedNewChapterTitle.value
+  suggestedNewChapterTitle.value = ''
+  newTitleSuggestionUsage.value = null
 }
 
 const deletingChapter = ref(false)
@@ -221,7 +248,10 @@ function deleteCurrentChapter() {
     onPositiveClick: async () => {
       deletingChapter.value = true
       try {
-        await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, { method: 'DELETE' })
+        await $fetch(
+          `/api/novels/${novelId.value}/chapters/${chapterId.value}`,
+          { method: 'DELETE' }
+        )
         const adjacent = nextChapter.value || prevChapter.value
         if (adjacent) {
           navigateTo(`/novels/${novelId.value}/chapters/${adjacent.id}`)
@@ -244,7 +274,9 @@ function confirmDeleteChapter(ch: { id: number; title: string }) {
     negativeText: '取消',
     onPositiveClick: async () => {
       try {
-        await $fetch(`/api/novels/${novelId.value}/chapters/${ch.id}`, { method: 'DELETE' })
+        await $fetch(`/api/novels/${novelId.value}/chapters/${ch.id}`, {
+          method: 'DELETE'
+        })
         await refreshAllChapters()
       } catch {}
     }
@@ -252,26 +284,40 @@ function confirmDeleteChapter(ch: { id: number; title: string }) {
 }
 
 const showDeletedChapters = ref(false)
-const deletedChapters = ref<Array<{ id: number; title: string; chapterNumber: number; wordCount: number | null; deletedAt: string }>>([])
+const deletedChapters = ref<
+  Array<{
+    id: number
+    title: string
+    chapterNumber: number
+    wordCount: number | null
+    deletedAt: string
+  }>
+>([])
 const loadingDeleted = ref(false)
 
 watch(showDeletedChapters, async (show) => {
   if (!show) return
   loadingDeleted.value = true
   try {
-    const data = await $fetch<any>('/api/novels/trash', { params: { page: 1, pageSize: 50 } })
+    const data = await $fetch<any>('/api/novels/trash', {
+      params: { page: 1, pageSize: 50 }
+    })
     deletedChapters.value = (data.chapters?.items || []).filter(
       (ch: any) => ch.novel?.id === novelId.value
     )
-  } catch {} finally {
+  } catch {
+  } finally {
     loadingDeleted.value = false
   }
 })
 
 async function restoreChapter(id: number) {
   try {
-    await $fetch('/api/novels/trash', { method: 'POST', body: { type: 'chapter', id } })
-    deletedChapters.value = deletedChapters.value.filter(ch => ch.id !== id)
+    await $fetch('/api/novels/trash', {
+      method: 'POST',
+      body: { type: 'chapter', id }
+    })
+    deletedChapters.value = deletedChapters.value.filter((ch) => ch.id !== id)
     await refreshAllChapters()
     message.success('章节已恢复')
   } catch {}
@@ -285,21 +331,33 @@ function permanentDeleteChapter(ch: { id: number; title: string }) {
     negativeText: '取消',
     onPositiveClick: async () => {
       try {
-        await $fetch('/api/novels/trash', { method: 'DELETE', body: { type: 'chapter', id: ch.id } })
-        deletedChapters.value = deletedChapters.value.filter(c => c.id !== ch.id)
+        await $fetch('/api/novels/trash', {
+          method: 'DELETE',
+          body: { type: 'chapter', id: ch.id }
+        })
+        deletedChapters.value = deletedChapters.value.filter(
+          (c) => c.id !== ch.id
+        )
         message.success('已永久删除')
       } catch {}
     }
   })
 }
 
-const previewingDeletedChapter = ref<{ title: string; content: string } | null>(null)
+const previewingDeletedChapter = ref<{ title: string; content: string } | null>(
+  null
+)
 const showDeletedPreview = ref(false)
 
 async function previewDeletedChapter(id: number) {
   try {
-    const data = await $fetch<any>('/api/novels/trash-preview', { params: { type: 'chapter', id } })
-    previewingDeletedChapter.value = { title: data.title, content: data.content || '（无内容）' }
+    const data = await $fetch<any>('/api/novels/trash-preview', {
+      params: { type: 'chapter', id }
+    })
+    previewingDeletedChapter.value = {
+      title: data.title,
+      content: data.content || '（无内容）'
+    }
     showDeletedPreview.value = true
   } catch {}
 }
@@ -310,7 +368,11 @@ const deletedChapterColumns = computed(() => [
     key: 'title',
     ellipsis: { tooltip: true },
     render(row: any) {
-      return h('span', { class: 'text-xs' }, `第${row.chapterNumber}章 ${row.title}`)
+      return h(
+        'span',
+        { class: 'text-xs' },
+        `第${row.chapterNumber}章 ${row.title}`
+      )
     }
   },
   {
@@ -318,7 +380,11 @@ const deletedChapterColumns = computed(() => [
     key: 'wordCount',
     width: 60,
     render(row: any) {
-      return h('span', { class: 'text-xs text-(--ui-text-dimmed)' }, `${row.wordCount || 0}`)
+      return h(
+        'span',
+        { class: 'text-xs text-(--ui-text-dimmed)' },
+        `${row.wordCount || 0}`
+      )
     }
   },
   {
@@ -327,15 +393,51 @@ const deletedChapterColumns = computed(() => [
     width: 130,
     render(row: any) {
       return h('div', { class: 'flex items-center gap-1' }, [
-        h(resolveComponent('NButton'), { size: 'tiny', quaternary: true, onClick: () => previewDeletedChapter(row.id) }, {
-          icon: () => h(resolveComponent('Icon'), { icon: 'lucide:eye', class: 'w-3.5 h-3.5' })
-        }),
-        h(resolveComponent('NButton'), { size: 'tiny', quaternary: true, onClick: () => restoreChapter(row.id) }, {
-          icon: () => h(resolveComponent('Icon'), { icon: 'lucide:rotate-ccw', class: 'w-3.5 h-3.5' })
-        }),
-        h(resolveComponent('NButton'), { size: 'tiny', quaternary: true, onClick: () => permanentDeleteChapter(row) }, {
-          icon: () => h(resolveComponent('Icon'), { icon: 'lucide:trash-2', class: 'w-3.5 h-3.5 text-red-500' })
-        }),
+        h(
+          resolveComponent('NButton'),
+          {
+            size: 'tiny',
+            quaternary: true,
+            onClick: () => previewDeletedChapter(row.id)
+          },
+          {
+            icon: () =>
+              h(resolveComponent('Icon'), {
+                icon: 'lucide:eye',
+                class: 'w-3.5 h-3.5'
+              })
+          }
+        ),
+        h(
+          resolveComponent('NButton'),
+          {
+            size: 'tiny',
+            quaternary: true,
+            onClick: () => restoreChapter(row.id)
+          },
+          {
+            icon: () =>
+              h(resolveComponent('Icon'), {
+                icon: 'lucide:rotate-ccw',
+                class: 'w-3.5 h-3.5'
+              })
+          }
+        ),
+        h(
+          resolveComponent('NButton'),
+          {
+            size: 'tiny',
+            quaternary: true,
+            onClick: () => permanentDeleteChapter(row)
+          },
+          {
+            icon: () =>
+              h(resolveComponent('Icon'), {
+                icon: 'lucide:trash-2',
+                class: 'w-3.5 h-3.5 text-red-500'
+              })
+          }
+        )
       ])
     }
   }
@@ -347,10 +449,13 @@ async function createNewChapter() {
   creatingChapter.value = true
   try {
     const nextNum = (allChapters.value?.length || 0) + 1
-    const result = await $fetch<{ id: number }>(`/api/novels/${novelId.value}/chapters`, {
-      method: 'POST',
-      body: { title: newChapterTitle.value.trim(), chapterNumber: nextNum }
-    })
+    const result = await $fetch<{ id: number }>(
+      `/api/novels/${novelId.value}/chapters`,
+      {
+        method: 'POST',
+        body: { title: newChapterTitle.value.trim(), chapterNumber: nextNum }
+      }
+    )
     showNewChapterDialog.value = false
     await refreshAllChapters()
     navigateTo(`/novels/${novelId.value}/chapters/${result.id}`)
@@ -885,9 +990,17 @@ function insertCharacterName(name: string) {
 }
 const generationModelOptions = computed(() =>
   aiConfigs.value
-    .filter((config) => config.purpose === 'generation' && config.enabled && config.aiModel?.enabled)
+    .filter(
+      (config) =>
+        config.purpose === 'generation' &&
+        config.enabled &&
+        config.aiModel?.enabled
+    )
     .map((config) => ({
-      label: config.isDefault ? `${config.aiModel.name} · 默认` : config.aiModel.name,
+      label:
+        config.isDefault ?
+          `${config.aiModel.name} · 默认`
+        : config.aiModel.name,
       value: config.id,
       description: config.aiModel.model
     }))
@@ -974,7 +1087,9 @@ const userPresets = ref<UserPreset[]>([])
 
 async function loadUserPresets() {
   try {
-    const prefs = await $fetch<Record<string, string>>('/api/settings/preferences')
+    const prefs = await $fetch<Record<string, string>>(
+      '/api/settings/preferences'
+    )
     if (prefs.ai_custom_presets) {
       userPresets.value = JSON.parse(prefs.ai_custom_presets)
     }
@@ -982,13 +1097,23 @@ async function loadUserPresets() {
 }
 
 const allPresets = computed(() => [
-  ...presetCycle.map(p => ({ name: p.name, temperature: p.temperature, configId: undefined as number | undefined })),
-  ...userPresets.value.map(p => ({ name: p.name, temperature: parseFloat(p.temperature), configId: p.configId }))
+  ...presetCycle.map((p) => ({
+    name: p.name,
+    temperature: p.temperature,
+    configId: undefined as number | undefined
+  })),
+  ...userPresets.value.map((p) => ({
+    name: p.name,
+    temperature: parseFloat(p.temperature),
+    configId: p.configId
+  }))
 ])
 
 const currentPresetLabel = computed(() => {
   const temp = generateTemperature.value
-  const userMatch = userPresets.value.find(p => parseFloat(p.temperature) === temp)
+  const userMatch = userPresets.value.find(
+    (p) => parseFloat(p.temperature) === temp
+  )
   if (userMatch) return userMatch.name
   if (temp >= 0.85) return '创意'
   if (temp >= 0.5) return '平衡'
@@ -1001,7 +1126,7 @@ function cyclePreset() {
   )
   const next = allPresets.value[(currentIdx + 1) % allPresets.value.length]!
   generateTemperature.value = next.temperature
-  if (next.configId && aiConfigs.value.find(c => c.id === next.configId)) {
+  if (next.configId && aiConfigs.value.find((c) => c.id === next.configId)) {
     selectedAiConfigId.value = next.configId
   }
 }
@@ -1089,32 +1214,63 @@ async function finishEditTitle() {
 }
 
 const regeneratingTitle = ref(false)
+const suggestedTitle = ref('')
+const showTitleSuggestion = ref(false)
+const titleSuggestionUsage = ref<AiTitleUsage | null>(null)
+
 async function aiRegenerateCurrentTitle() {
   if (regeneratingTitle.value) return
   regeneratingTitle.value = true
+  suggestedTitle.value = ''
+  titleSuggestionUsage.value = null
+  showTitleSuggestion.value = true
   try {
-    const chNum = chapter.value?.chapterNumber || 1
-    const contentHint = content.value ? content.value.slice(0, 500) : ''
-    const prompt = contentHint
-      ? `根据以下章节内容，生成一个合适的章节标题（4-10个字）。只返回标题文字，不要序号、引号或解释。\n\n章节内容片段：\n${contentHint}`
-      : `请为小说「${novelInfo.value?.title || ''}」的第${chNum}章生成一个章节标题（4-10个字）。只返回标题文字，不要序号、引号或解释。`
-    const resp = await $fetch<Response>('/api/ai/suggest-description', {
-      method: 'POST',
-      body: { title: novelInfo.value?.title || '', genre: novelInfo.value?.title || '', template: prompt }
-    })
-    const text = typeof resp === 'string' ? resp : ''
-    const cleaned = text.replace(/["""''《》【】\n]/g, '').trim().slice(0, 20)
+    const result = await $fetch<{ title: string; usage?: AiTitleUsage }>(
+      '/api/ai/suggest-title',
+      {
+        method: 'POST',
+        body: {
+          novelId: novelId.value,
+          chapterId: chapterId.value,
+          aiConfigId: selectedAiConfigId.value
+        }
+      }
+    )
+    const cleaned = cleanAiChapterTitle(result.title)
     if (cleaned) {
-      await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, {
-        method: 'PUT',
-        body: { title: cleaned }
-      })
-      await refreshChapter()
-      message.success(`标题已更新为「${cleaned}」`)
+      suggestedTitle.value = cleaned
+      titleSuggestionUsage.value = result.usage || null
+    } else {
+      showTitleSuggestion.value = false
+      message.warning('AI 未能生成有效标题')
     }
-  } catch {} finally {
+  } catch {
+    showTitleSuggestion.value = false
+    message.error('生成章节名失败')
+  } finally {
     regeneratingTitle.value = false
   }
+}
+
+async function applyTitleSuggestion() {
+  if (!suggestedTitle.value) return
+  try {
+    await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId.value}`, {
+      method: 'PUT',
+      body: { title: suggestedTitle.value }
+    })
+    await refreshChapter()
+    message.success(`标题已更新为「${suggestedTitle.value}」`)
+  } catch {}
+  showTitleSuggestion.value = false
+  suggestedTitle.value = ''
+  titleSuggestionUsage.value = null
+}
+
+function discardTitleSuggestion() {
+  showTitleSuggestion.value = false
+  suggestedTitle.value = ''
+  titleSuggestionUsage.value = null
 }
 
 function handleTextSelect() {
@@ -1171,7 +1327,9 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '')
-      throw new Error(`AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`)
+      throw new Error(
+        `AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`
+      )
     }
     if (!response.body) {
       throw new Error('AI 响应为空')
@@ -1195,7 +1353,10 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
           const data = JSON.parse(trimmed.slice(6)) as AiStreamPayload
           if (data.error) throw new Error(data.error)
           if (data.content) aiActionResult.value += data.content
-          if (data.done) { streamDone = true; break }
+          if (data.done) {
+            streamDone = true
+            break
+          }
         } catch (error: unknown) {
           if (error instanceof SyntaxError) continue
           throw new Error(getErrorMessage(error))
@@ -1281,7 +1442,10 @@ async function doFragment(
           const data = JSON.parse(trimmed.slice(6)) as AiStreamPayload
           if (data.error) throw new Error(data.error)
           if (data.content) aiActionResult.value += data.content
-          if (data.done) { streamDone = true; break }
+          if (data.done) {
+            streamDone = true
+            break
+          }
         } catch (error: unknown) {
           if (error instanceof SyntaxError) continue
           throw new Error(getErrorMessage(error))
@@ -1321,6 +1485,8 @@ function applyAiResult() {
   if (!aiActionResult.value) return
   if (aiActionType.value === 'continue') {
     insertEditorTextAtCursor(aiActionResult.value)
+  } else if (aiActionType.value === 'expand' && selectedText.value) {
+    replaceEditorSelection(selectedText.value + '\n\n' + aiActionResult.value)
   } else if (selectedText.value) {
     replaceEditorSelection(aiActionResult.value)
   }
@@ -1381,7 +1547,9 @@ async function generateChapter() {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '')
-      throw new Error(`AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`)
+      throw new Error(
+        `AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`
+      )
     }
 
     const reader = response.body!.getReader()
@@ -1409,7 +1577,10 @@ async function generateChapter() {
             }
           }
           if (data.done) {
-            if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+            if (rafId) {
+              cancelAnimationFrame(rafId)
+              rafId = null
+            }
             generatedContent.value = contentBuffer
             previousGeneratedContent.value = contentBuffer
             await setEditorMarkdown(contentBuffer)
@@ -1425,7 +1596,10 @@ async function generateChapter() {
       }
     }
   } catch (e: unknown) {
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = null
+    }
     if (contentBuffer) generatedContent.value = contentBuffer
     if (e instanceof DOMException && e.name === 'AbortError') {
       if (generatedContent.value) {
@@ -1476,7 +1650,9 @@ async function regenerateWithFeedback() {
 
     if (!response.ok) {
       const errorBody = await response.text().catch(() => '')
-      throw new Error(`AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`)
+      throw new Error(
+        `AI 请求失败：${response.status}${errorBody ? ` - ${errorBody}` : ''}`
+      )
     }
 
     const reader = response.body!.getReader()
@@ -1504,7 +1680,10 @@ async function regenerateWithFeedback() {
             }
           }
           if (data.done) {
-            if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+            if (rafId) {
+              cancelAnimationFrame(rafId)
+              rafId = null
+            }
             generatedContent.value = contentBuffer
             previousGeneratedContent.value = contentBuffer
             await setEditorMarkdown(contentBuffer)
@@ -1520,7 +1699,10 @@ async function regenerateWithFeedback() {
       }
     }
   } catch (e: unknown) {
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null }
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = null
+    }
     if (contentBuffer) generatedContent.value = contentBuffer
     if (e instanceof DOMException && e.name === 'AbortError') {
       if (generatedContent.value) {
@@ -1785,7 +1967,10 @@ onBeforeUnmount(() => {
               :disabled="regeneratingTitle"
               @click.stop="aiRegenerateCurrentTitle"
             >
-              <Icon icon="lucide:sparkles" class="w-3.5 h-3.5" />
+              <Icon
+                icon="lucide:sparkles"
+                class="w-3.5 h-3.5"
+              />
             </button>
           </div>
           <input
@@ -1820,7 +2005,10 @@ onBeforeUnmount(() => {
           class="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-600"
           title="AI 当前不可用，仍可手动写作"
         >
-          <Icon icon="lucide:wifi-off" class="w-3 h-3" />
+          <Icon
+            icon="lucide:wifi-off"
+            class="w-3 h-3"
+          />
           AI 离线
           <button
             class="text-[11px] underline underline-offset-2"
@@ -1838,8 +2026,13 @@ onBeforeUnmount(() => {
           <button
             class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
           >
-            <Icon icon="lucide:cpu" class="w-3 h-3" />
-            <span class="max-w-20 truncate">{{ selectedGenerationConfig?.aiModel?.name || '模型' }}</span>
+            <Icon
+              icon="lucide:cpu"
+              class="w-3 h-3"
+            />
+            <span class="max-w-20 truncate">{{
+              selectedGenerationConfig?.aiModel?.name || '模型'
+            }}</span>
           </button>
         </NPopselect>
         <button
@@ -1847,7 +2040,10 @@ onBeforeUnmount(() => {
           :title="t('chapter.generateDialog.temperatureHint')"
           @click="cyclePreset"
         >
-          <Icon icon="lucide:thermometer" class="w-3 h-3" />
+          <Icon
+            icon="lucide:thermometer"
+            class="w-3 h-3"
+          />
           <span>{{ currentPresetLabel }}</span>
         </button>
         <div class="w-px h-4 bg-(--ui-border)/40 mx-0.5" />
@@ -1919,26 +2115,46 @@ onBeforeUnmount(() => {
       v-if="zenMode"
       class="absolute top-4 right-4 z-10 flex items-center gap-2 opacity-30 hover:opacity-100 transition-opacity duration-300"
     >
-      <div class="flex items-center gap-1.5 card-glass rounded-xl px-2.5 py-1.5">
+      <div
+        class="flex items-center gap-1.5 card-glass rounded-xl px-2.5 py-1.5"
+      >
         <button
           class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
           @click="zenFontSize = Math.max(12, zenFontSize - 2)"
         >
-          <Icon icon="lucide:minus" class="w-3.5 h-3.5" />
+          <Icon
+            icon="lucide:minus"
+            class="w-3.5 h-3.5"
+          />
         </button>
-        <span class="text-xs font-mono text-(--ui-text-muted) w-6 text-center">{{ zenFontSize }}</span>
+        <span
+          class="text-xs font-mono text-(--ui-text-muted) w-6 text-center"
+          >{{ zenFontSize }}</span
+        >
         <button
           class="flex items-center justify-center w-7 h-7 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
           @click="zenFontSize = Math.min(32, zenFontSize + 2)"
         >
-          <Icon icon="lucide:plus" class="w-3.5 h-3.5" />
+          <Icon
+            icon="lucide:plus"
+            class="w-3.5 h-3.5"
+          />
         </button>
         <div class="w-px h-4 bg-(--ui-border)/50 mx-1" />
         <button
           class="flex items-center justify-center h-7 px-2 rounded-lg text-xs text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
-          @click="zenFontFamily = zenFontFamily === 'serif' ? 'sans-serif' : zenFontFamily === 'sans-serif' ? 'monospace' : 'serif'"
+          @click="
+            zenFontFamily =
+              zenFontFamily === 'serif' ? 'sans-serif'
+              : zenFontFamily === 'sans-serif' ? 'monospace'
+              : 'serif'
+          "
         >
-          {{ zenFontFamily === 'serif' ? '衬线' : zenFontFamily === 'sans-serif' ? '无衬线' : '等宽' }}
+          {{
+            zenFontFamily === 'serif' ? '衬线'
+            : zenFontFamily === 'sans-serif' ? '无衬线'
+            : '等宽'
+          }}
         </button>
       </div>
       <button
@@ -1960,15 +2176,24 @@ onBeforeUnmount(() => {
     >
       <!-- Left: Status -->
       <div class="flex items-center gap-3">
-        <span class="flex items-center gap-1" :class="saveStatusClass">
+        <span
+          class="flex items-center gap-1"
+          :class="saveStatusClass"
+        >
           <Icon
-            :icon="conflictDetected ? 'lucide:triangle-alert' : saving ? 'lucide:loader-circle' : 'lucide:check-circle'"
+            :icon="
+              conflictDetected ? 'lucide:triangle-alert'
+              : saving ? 'lucide:loader-circle'
+              : 'lucide:check-circle'
+            "
             class="size-3"
             :class="saving ? 'animate-spin' : ''"
           />
           {{ saveStatusText }}
         </span>
-        <span class="tabular-nums">{{ currentWordCount.toLocaleString() }} 字</span>
+        <span class="tabular-nums"
+          >{{ currentWordCount.toLocaleString() }} 字</span
+        >
       </div>
       <!-- Center: AI actions -->
       <div class="flex items-center gap-1">
@@ -1981,8 +2206,13 @@ onBeforeUnmount(() => {
           <button
             class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
           >
-            <Icon icon="lucide:cpu" class="w-3 h-3" />
-            <span class="max-w-20 truncate">{{ selectedGenerationConfig?.aiModel?.name || '模型' }}</span>
+            <Icon
+              icon="lucide:cpu"
+              class="w-3 h-3"
+            />
+            <span class="max-w-20 truncate">{{
+              selectedGenerationConfig?.aiModel?.name || '模型'
+            }}</span>
           </button>
         </NPopselect>
         <button
@@ -1990,7 +2220,10 @@ onBeforeUnmount(() => {
           :title="t('chapter.generateDialog.temperatureHint')"
           @click="cyclePreset"
         >
-          <Icon icon="lucide:thermometer" class="w-3 h-3" />
+          <Icon
+            icon="lucide:thermometer"
+            class="w-3 h-3"
+          />
           <span>{{ currentPresetLabel }}</span>
         </button>
         <div class="w-px h-4 bg-(--ui-border)/30 mx-0.5" />
@@ -2027,11 +2260,17 @@ onBeforeUnmount(() => {
       </div>
       <!-- Right: Progress -->
       <div class="flex items-center gap-2">
-        <span class="tabular-nums">{{ currentWordCount }} / {{ chapterGoal }}</span>
-        <div class="relative w-16 h-1 rounded-full bg-(--ui-border)/30 overflow-hidden">
+        <span class="tabular-nums"
+          >{{ currentWordCount }} / {{ chapterGoal }}</span
+        >
+        <div
+          class="relative w-16 h-1 rounded-full bg-(--ui-border)/30 overflow-hidden"
+        >
           <div
             class="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
-            :class="chapterProgress >= 100 ? 'bg-emerald-400' : 'bg-(--ui-primary)/50'"
+            :class="
+              chapterProgress >= 100 ? 'bg-emerald-400' : 'bg-(--ui-primary)/50'
+            "
             :style="{ width: `${chapterProgress}%` }"
           />
         </div>
@@ -2290,14 +2529,20 @@ onBeforeUnmount(() => {
                   title="在新标签页打开"
                   @click.stop="openChapterInNewTab(ch.id)"
                 >
-                  <Icon icon="lucide:external-link" class="w-3 h-3" />
+                  <Icon
+                    icon="lucide:external-link"
+                    class="w-3 h-3"
+                  />
                 </button>
                 <button
                   class="shrink-0 p-1 rounded opacity-0 group-hover:opacity-100 text-(--ui-text-dimmed) hover:text-red-500 transition-all"
                   title="删除章节"
                   @click.stop="confirmDeleteChapter(ch)"
                 >
-                  <Icon icon="lucide:trash-2" class="w-3 h-3" />
+                  <Icon
+                    icon="lucide:trash-2"
+                    class="w-3 h-3"
+                  />
                 </button>
               </div>
               <div
@@ -2658,25 +2903,29 @@ onBeforeUnmount(() => {
             <div
               ref="editorContainerRef"
               class="chapter-writing-surface w-full min-h-full milkdown-editor px-4 py-4 text-(--ui-text) text-[15px] leading-[1.9] sm:px-6 sm:py-5"
-              :class="
+              :class="zenMode ? 'min-h-screen leading-[2.05] lg:px-[6vw]' : ''"
+              :style="
                 zenMode ?
-                  'min-h-screen leading-[2.05] lg:px-[6vw]'
-                : ''
+                  { fontSize: `${zenFontSize}px`, fontFamily: zenFontFamily }
+                : {}
               "
-              :style="zenMode ? { fontSize: `${zenFontSize}px`, fontFamily: zenFontFamily } : {}"
               @mouseup="handleTextSelect"
             />
           </div>
 
           <!-- AI Action Result -->
           <div
-            v-if="aiActionResult"
-            class="mt-3 w-full p-4 rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 border-l-2 border-l-primary-400 shadow-sm max-h-[50vh] overflow-y-auto"
+            v-if="aiActionResult || (expandingOrRewriting && aiActionType)"
+            class="mt-3 w-full rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 border-l-2 border-l-primary-400 shadow-sm max-h-[50vh] overflow-y-auto"
+            @mousedown.prevent
           >
-            <div class="flex items-center justify-between mb-2">
+            <div
+              class="sticky top-0 z-10 flex items-center justify-between p-4 pb-2 bg-(--ui-bg-elevated) rounded-t-xl"
+            >
               <div class="flex items-center gap-2">
                 <span
-                  class="size-1.5 rounded-full bg-primary-400 animate-pulse"
+                  class="size-1.5 rounded-full bg-primary-400"
+                  :class="expandingOrRewriting ? 'animate-pulse' : ''"
                 />
                 <p
                   class="text-xs font-medium text-primary-600 dark:text-primary-400"
@@ -2687,11 +2936,17 @@ onBeforeUnmount(() => {
                     : t('chapter.rewrite')
                   }}
                 </p>
+                <span
+                  v-if="expandingOrRewriting && !aiActionResult"
+                  class="text-xs text-(--ui-text-dimmed)"
+                  >生成中...</span
+                >
               </div>
               <div class="flex gap-1">
                 <NButton
                   size="tiny"
                   type="primary"
+                  :disabled="!aiActionResult || expandingOrRewriting"
                   @click="applyAiResult"
                   >应用</NButton
                 >
@@ -2703,52 +2958,54 @@ onBeforeUnmount(() => {
                 >
               </div>
             </div>
-            <!-- Track Changes Diff View for rewrite -->
-            <div
-              v-if="aiActionType === 'rewrite' && trackChangesDiff.length"
-              class="space-y-0.5"
-            >
+            <div class="px-4 pb-4">
+              <!-- Track Changes Diff View for rewrite -->
               <div
-                v-for="(line, idx) in trackChangesDiff"
-                :key="idx"
-                class="flex items-start gap-2 text-sm leading-relaxed rounded px-1.5 py-0.5"
-                :class="{
-                  'bg-red-500/8': line.type === 'remove',
-                  'bg-emerald-500/8': line.type === 'add'
-                }"
+                v-if="aiActionType === 'rewrite' && trackChangesDiff.length"
+                class="space-y-0.5"
               >
-                <span
-                  class="shrink-0 text-[10px] font-mono mt-0.5 w-4 text-right"
+                <div
+                  v-for="(line, idx) in trackChangesDiff"
+                  :key="idx"
+                  class="flex items-start gap-2 text-sm leading-relaxed rounded px-1.5 py-0.5"
                   :class="{
-                    'text-red-500': line.type === 'remove',
-                    'text-emerald-500': line.type === 'add',
-                    'text-(--ui-text-dimmed)': line.type === 'same'
+                    'bg-red-500/8': line.type === 'remove',
+                    'bg-emerald-500/8': line.type === 'add'
                   }"
                 >
-                  {{
-                    line.type === 'remove' ? '-'
-                    : line.type === 'add' ? '+'
-                    : ' '
-                  }}
-                </span>
-                <span
-                  :class="{
-                    'text-red-600 dark:text-red-400 line-through opacity-70':
-                      line.type === 'remove',
-                    'text-emerald-600 dark:text-emerald-400':
-                      line.type === 'add',
-                    'text-(--ui-text-muted)': line.type === 'same'
-                  }"
-                >
-                  {{ line.value || ' ' }}
-                </span>
+                  <span
+                    class="shrink-0 text-[10px] font-mono mt-0.5 w-4 text-right"
+                    :class="{
+                      'text-red-500': line.type === 'remove',
+                      'text-emerald-500': line.type === 'add',
+                      'text-(--ui-text-dimmed)': line.type === 'same'
+                    }"
+                  >
+                    {{
+                      line.type === 'remove' ? '-'
+                      : line.type === 'add' ? '+'
+                      : ' '
+                    }}
+                  </span>
+                  <span
+                    :class="{
+                      'text-red-600 dark:text-red-400 line-through opacity-70':
+                        line.type === 'remove',
+                      'text-emerald-600 dark:text-emerald-400':
+                        line.type === 'add',
+                      'text-(--ui-text-muted)': line.type === 'same'
+                    }"
+                  >
+                    {{ line.value || ' ' }}
+                  </span>
+                </div>
               </div>
-            </div>
-            <div
-              v-else
-              class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
-            >
-              {{ aiActionResult }}
+              <div
+                v-else
+                class="text-(--ui-text) whitespace-pre-wrap text-sm leading-relaxed"
+              >
+                {{ aiActionResult }}
+              </div>
             </div>
           </div>
 
@@ -2939,15 +3196,23 @@ onBeforeUnmount(() => {
           class="shrink-0 flex flex-col"
         >
           <!-- Progress indicator -->
-          <div class="relative h-[2px] mx-4 rounded-full bg-(--ui-border)/30 overflow-hidden">
+          <div
+            class="relative h-[2px] mx-4 rounded-full bg-(--ui-border)/30 overflow-hidden"
+          >
             <div
               class="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
-              :class="chapterProgress >= 100 ? 'bg-emerald-400' : 'bg-(--ui-primary)/60'"
+              :class="
+                chapterProgress >= 100 ? 'bg-emerald-400' : (
+                  'bg-(--ui-primary)/60'
+                )
+              "
               :style="{ width: `${chapterProgress}%` }"
             />
           </div>
           <!-- Status bar content -->
-          <div class="flex items-center justify-between px-4 py-2 text-[11px] text-(--ui-text-dimmed)/70">
+          <div
+            class="flex items-center justify-between px-4 py-2 text-[11px] text-(--ui-text-dimmed)/70"
+          >
             <!-- Left: Writing status -->
             <div class="flex items-center gap-2.5">
               <span
@@ -2966,17 +3231,32 @@ onBeforeUnmount(() => {
                 {{ saveStatusText }}
               </span>
               <span class="w-px h-3 bg-(--ui-border)/40" />
-              <span class="tabular-nums">{{ currentWordCount.toLocaleString() }} 字</span>
-              <span class="hidden sm:inline tabular-nums">{{ currentLineCount }} 行</span>
+              <span class="tabular-nums"
+                >{{ currentWordCount.toLocaleString() }} 字</span
+              >
+              <span class="hidden sm:inline tabular-nums"
+                >{{ currentLineCount }} 行</span
+              >
             </div>
             <!-- Center: Chapter progress label -->
             <div class="hidden md:flex items-center gap-1.5 text-[10px]">
-              <span v-if="chapterProgress >= 100" class="text-emerald-500">目标已达成</span>
-              <span v-else class="text-(--ui-text-dimmed)/50">{{ currentWordCount }} / {{ chapterGoal }} 字</span>
+              <span
+                v-if="chapterProgress >= 100"
+                class="text-emerald-500"
+                >目标已达成</span
+              >
+              <span
+                v-else
+                class="text-(--ui-text-dimmed)/50"
+                >{{ currentWordCount }} / {{ chapterGoal }} 字</span
+              >
             </div>
             <!-- Right: Token estimate -->
             <div class="flex items-center gap-2.5">
-              <span class="tabular-nums" :title="t('chapter.generateDialog.maxTokensHint')">
+              <span
+                class="tabular-nums"
+                :title="t('chapter.generateDialog.maxTokensHint')"
+              >
                 ~{{ estimatedContextTokens }} tokens
               </span>
             </div>
@@ -2986,92 +3266,92 @@ onBeforeUnmount(() => {
     </div>
     <Teleport to="body">
       <Transition name="fade-scale">
-      <div
-        v-if="showFloatingToolbar && !generating"
-        class="fixed z-50 flex items-center gap-0.5 px-2 py-1.5 rounded-xl card-glass shadow-xl"
-        :style="{
-          left: `${floatingToolbarPos.x}px`,
-          top: `${floatingToolbarPos.y}px`,
-          transform: 'translate(-50%, -100%)'
-        }"
-      >
-        <NButton
-          v-if="selectedText"
-          size="tiny"
-          quaternary
-          :loading="expandingOrRewriting"
-          @click="doAiAction('expand')"
-        >
-          <template #icon>
-            <Icon icon="lucide:expand" />
-          </template>
-          {{ t('chapter.expand') }}
-        </NButton>
-        <NButton
-          v-if="selectedText"
-          size="tiny"
-          quaternary
-          :loading="expandingOrRewriting"
-          @click="doAiAction('rewrite')"
-        >
-          <template #icon>
-            <Icon icon="lucide:refresh-cw" />
-          </template>
-          {{ t('chapter.rewrite') }}
-        </NButton>
-        <NButton
-          v-if="!selectedText"
-          size="tiny"
-          quaternary
-          :loading="expandingOrRewriting"
-          :disabled="!aiStatus.available"
-          @click="doAiAction('continue')"
-        >
-          <template #icon>
-            <Icon icon="lucide:pen-line" />
-          </template>
-          {{ t('chapter.continue') }}
-        </NButton>
-        <NDropdown
-          v-if="!selectedText"
-          trigger="hover"
-          :options="[
-            {
-              label: '对话',
-              key: 'dialogue',
-              icon: () => h(Icon, { icon: 'lucide:message-circle' })
-            },
-            {
-              label: '环境描写',
-              key: 'description',
-              icon: () => h(Icon, { icon: 'lucide:mountain' })
-            },
-            {
-              label: '动作场景',
-              key: 'action',
-              icon: () => h(Icon, { icon: 'lucide:swords' })
-            },
-            {
-              label: '内心独白',
-              key: 'monologue',
-              icon: () => h(Icon, { icon: 'lucide:brain' })
-            }
-          ]"
-          @select="(key) => doFragment(key as any)"
+        <div
+          v-if="showFloatingToolbar && !generating"
+          class="fixed z-50 flex items-center gap-0.5 px-2 py-1.5 rounded-xl card-glass shadow-xl"
+          :style="{
+            left: `${floatingToolbarPos.x}px`,
+            top: `${floatingToolbarPos.y}px`,
+            transform: 'translate(-50%, -100%)'
+          }"
         >
           <NButton
+            v-if="selectedText"
+            size="tiny"
+            quaternary
+            :loading="expandingOrRewriting"
+            @click="doAiAction('expand')"
+          >
+            <template #icon>
+              <Icon icon="lucide:expand" />
+            </template>
+            {{ t('chapter.expand') }}
+          </NButton>
+          <NButton
+            v-if="selectedText"
+            size="tiny"
+            quaternary
+            :loading="expandingOrRewriting"
+            @click="doAiAction('rewrite')"
+          >
+            <template #icon>
+              <Icon icon="lucide:refresh-cw" />
+            </template>
+            {{ t('chapter.rewrite') }}
+          </NButton>
+          <NButton
+            v-if="!selectedText"
             size="tiny"
             quaternary
             :loading="expandingOrRewriting"
             :disabled="!aiStatus.available"
+            @click="doAiAction('continue')"
           >
             <template #icon>
-              <Icon icon="lucide:scissors" />
+              <Icon icon="lucide:pen-line" />
             </template>
-            片段
+            {{ t('chapter.continue') }}
           </NButton>
-        </NDropdown>
-      </div>
+          <NDropdown
+            v-if="!selectedText"
+            trigger="hover"
+            :options="[
+              {
+                label: '对话',
+                key: 'dialogue',
+                icon: () => h(Icon, { icon: 'lucide:message-circle' })
+              },
+              {
+                label: '环境描写',
+                key: 'description',
+                icon: () => h(Icon, { icon: 'lucide:mountain' })
+              },
+              {
+                label: '动作场景',
+                key: 'action',
+                icon: () => h(Icon, { icon: 'lucide:swords' })
+              },
+              {
+                label: '内心独白',
+                key: 'monologue',
+                icon: () => h(Icon, { icon: 'lucide:brain' })
+              }
+            ]"
+            @select="(key) => doFragment(key as any)"
+          >
+            <NButton
+              size="tiny"
+              quaternary
+              :loading="expandingOrRewriting"
+              :disabled="!aiStatus.available"
+            >
+              <template #icon>
+                <Icon icon="lucide:scissors" />
+              </template>
+              片段
+            </NButton>
+          </NDropdown>
+        </div>
       </Transition>
     </Teleport>
 
@@ -3102,7 +3382,12 @@ onBeforeUnmount(() => {
             <div class="flex gap-2">
               <NSelect
                 v-model:value="selectedTemplateId"
-                :options="promptTemplates.map(t => ({ label: t.name + (t.isSystem ? ' (系统)' : ''), value: t.id }))"
+                :options="
+                  promptTemplates.map((t) => ({
+                    label: t.name + (t.isSystem ? ' (系统)' : ''),
+                    value: t.id
+                  }))
+                "
                 placeholder="选择已保存的模板"
                 clearable
                 class="flex-1"
@@ -3111,8 +3396,14 @@ onBeforeUnmount(() => {
               <NButton
                 size="small"
                 quaternary
-                @click="selectedTemplateId ? deleteTemplate(selectedTemplateId) : null"
-                :disabled="!selectedTemplateId || promptTemplates.find(t => t.id === selectedTemplateId)?.isSystem"
+                @click="
+                  selectedTemplateId ? deleteTemplate(selectedTemplateId) : null
+                "
+                :disabled="
+                  !selectedTemplateId ||
+                  promptTemplates.find((t) => t.id === selectedTemplateId)
+                    ?.isSystem
+                "
               >
                 <template #icon><Icon icon="lucide:trash-2" /></template>
               </NButton>
@@ -3135,7 +3426,9 @@ onBeforeUnmount(() => {
                   :disabled="!generateDirection.trim()"
                   @click="showSaveTemplateInput = true"
                 >
-                  <template #icon><Icon icon="lucide:bookmark-plus" /></template>
+                  <template #icon
+                    ><Icon icon="lucide:bookmark-plus"
+                  /></template>
                   保存为模板
                 </NButton>
               </template>
@@ -3148,8 +3441,18 @@ onBeforeUnmount(() => {
                     style="width: 140px"
                     @keyup.enter="saveAsTemplate"
                   />
-                  <NButton size="tiny" type="primary" @click="saveAsTemplate">保存</NButton>
-                  <NButton size="tiny" quaternary @click="showSaveTemplateInput = false">取消</NButton>
+                  <NButton
+                    size="tiny"
+                    type="primary"
+                    @click="saveAsTemplate"
+                    >保存</NButton
+                  >
+                  <NButton
+                    size="tiny"
+                    quaternary
+                    @click="showSaveTemplateInput = false"
+                    >取消</NButton
+                  >
                 </div>
               </template>
             </div>
@@ -3301,7 +3604,12 @@ onBeforeUnmount(() => {
     </NModal>
 
     <!-- New Chapter Dialog -->
-    <NModal v-model:show="showNewChapterDialog" preset="card" title="新建章节" style="max-width: 400px">
+    <NModal
+      v-model:show="showNewChapterDialog"
+      preset="card"
+      title="新建章节"
+      style="max-width: 400px"
+    >
       <div class="space-y-3">
         <NInput
           v-model:value="newChapterTitle"
@@ -3309,25 +3617,161 @@ onBeforeUnmount(() => {
           autofocus
           @keydown.enter="createNewChapter"
         />
-        <NButton size="tiny" quaternary :loading="generatingTitle" @click="aiGenerateNewTitle">
-          <template #icon><Icon icon="lucide:sparkles" class="w-3.5 h-3.5" /></template>
+        <div
+          v-if="generatingTitle || suggestedNewChapterTitle"
+          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-3 text-sm"
+        >
+          <div
+            class="mb-2 flex items-center gap-2 text-xs text-(--ui-text-dimmed)"
+          >
+            <Icon
+              icon="lucide:sparkles"
+              class="h-3.5 w-3.5"
+              :class="{ 'animate-spin': generatingTitle }"
+            />
+            <span>{{
+              generatingTitle ? '正在生成章节名...' : 'AI 候选章节名'
+            }}</span>
+          </div>
+          <div
+            v-if="suggestedNewChapterTitle"
+            class="rounded-md bg-(--ui-bg) px-3 py-2 font-medium text-(--ui-text-highlighted)"
+          >
+            {{ suggestedNewChapterTitle }}
+          </div>
+          <div
+            v-if="newTitleSuggestionUsage"
+            class="mt-2 text-[11px] text-(--ui-text-dimmed)"
+          >
+            {{ formatAiTitleUsage(newTitleSuggestionUsage) }}
+          </div>
+          <div
+            v-if="suggestedNewChapterTitle"
+            class="mt-3 flex justify-end gap-2"
+          >
+            <NButton
+              size="tiny"
+              quaternary
+              :loading="generatingTitle"
+              @click="aiGenerateNewTitle"
+            >
+              重新生成
+            </NButton>
+            <NButton
+              size="tiny"
+              type="primary"
+              @click="applySuggestedNewChapterTitle"
+            >
+              采用
+            </NButton>
+          </div>
+        </div>
+        <NButton
+          size="tiny"
+          quaternary
+          :loading="generatingTitle"
+          @click="aiGenerateNewTitle"
+        >
+          <template #icon
+            ><Icon
+              icon="lucide:sparkles"
+              class="w-3.5 h-3.5"
+          /></template>
           AI 生成标题
         </NButton>
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton size="small" @click="showNewChapterDialog = false">取消</NButton>
-          <NButton size="small" type="primary" :loading="creatingChapter" @click="createNewChapter">创建</NButton>
+          <NButton
+            size="small"
+            @click="showNewChapterDialog = false"
+            >取消</NButton
+          >
+          <NButton
+            size="small"
+            type="primary"
+            :loading="creatingChapter"
+            @click="createNewChapter"
+            >创建</NButton
+          >
+        </div>
+      </template>
+    </NModal>
+
+    <NModal
+      v-model:show="showTitleSuggestion"
+      preset="card"
+      title="AI 生成章节名"
+      style="max-width: 420px"
+    >
+      <div class="space-y-3">
+        <div class="flex items-center gap-2 text-sm text-(--ui-text-dimmed)">
+          <Icon
+            icon="lucide:sparkles"
+            class="h-4 w-4"
+            :class="{ 'animate-spin': regeneratingTitle }"
+          />
+          <span>{{
+            regeneratingTitle ? '正在生成章节名...' : '请选择是否采用这个章节名'
+          }}</span>
+        </div>
+        <div
+          v-if="suggestedTitle"
+          class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) px-4 py-3 text-base font-medium text-(--ui-text-highlighted)"
+        >
+          {{ suggestedTitle }}
+        </div>
+        <div
+          v-if="titleSuggestionUsage"
+          class="text-[11px] text-(--ui-text-dimmed)"
+        >
+          {{ formatAiTitleUsage(titleSuggestionUsage) }}
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <NButton
+            size="small"
+            @click="discardTitleSuggestion"
+          >
+            取消
+          </NButton>
+          <NButton
+            size="small"
+            :loading="regeneratingTitle"
+            @click="aiRegenerateCurrentTitle"
+          >
+            重新生成
+          </NButton>
+          <NButton
+            size="small"
+            type="primary"
+            :disabled="!suggestedTitle || regeneratingTitle"
+            @click="applyTitleSuggestion"
+          >
+            采用
+          </NButton>
         </div>
       </template>
     </NModal>
 
     <!-- Deleted Chapters Dialog -->
-    <NModal v-model:show="showDeletedChapters" preset="card" title="已删除的章节" style="max-width: 650px">
-      <div v-if="loadingDeleted" class="py-8 flex justify-center">
+    <NModal
+      v-model:show="showDeletedChapters"
+      preset="card"
+      title="已删除的章节"
+      style="max-width: 650px"
+    >
+      <div
+        v-if="loadingDeleted"
+        class="py-8 flex justify-center"
+      >
         <NSpin size="medium" />
       </div>
-      <div v-else-if="!deletedChapters.length" class="py-8 text-center text-sm text-(--ui-text-dimmed)">
+      <div
+        v-else-if="!deletedChapters.length"
+        class="py-8 text-center text-sm text-(--ui-text-dimmed)"
+      >
         没有已删除的章节
       </div>
       <NDataTable
@@ -3342,8 +3786,16 @@ onBeforeUnmount(() => {
     </NModal>
 
     <!-- Deleted Chapter Preview -->
-    <NModal v-model:show="showDeletedPreview" preset="card" :title="previewingDeletedChapter?.title || '预览'" style="max-width: 600px; max-height: 80vh">
-      <div v-if="previewingDeletedChapter" class="max-h-[60vh] overflow-y-auto rounded-lg bg-(--ui-bg-muted) p-4 text-sm leading-relaxed whitespace-pre-wrap text-(--ui-text)">
+    <NModal
+      v-model:show="showDeletedPreview"
+      preset="card"
+      :title="previewingDeletedChapter?.title || '预览'"
+      style="max-width: 600px; max-height: 80vh"
+    >
+      <div
+        v-if="previewingDeletedChapter"
+        class="max-h-[60vh] overflow-y-auto rounded-lg bg-(--ui-bg-muted) p-4 text-sm leading-relaxed whitespace-pre-wrap text-(--ui-text)"
+      >
         {{ previewingDeletedChapter.content }}
       </div>
     </NModal>
@@ -3404,7 +3856,8 @@ onBeforeUnmount(() => {
   padding: 0;
   color: var(--ui-text);
   background: transparent;
-  font-family: 'Noto Serif SC', 'Source Han Serif SC', Georgia, 'Times New Roman', serif;
+  font-family:
+    'Noto Serif SC', 'Source Han Serif SC', Georgia, 'Times New Roman', serif;
   font-size: 1rem;
   line-height: 2;
   letter-spacing: 0.015em;
@@ -3463,6 +3916,16 @@ onBeforeUnmount(() => {
 
 .chapter-writing-surface :deep(.ProseMirror:focus-visible) {
   box-shadow: none;
+}
+
+/* AI 操作中：隐藏光标，保持选区高亮 */
+.chapter-writing-surface :deep(.ProseMirror[contenteditable='false']) {
+  caret-color: transparent;
+}
+
+.chapter-writing-surface
+  :deep(.ProseMirror[contenteditable='false'] ::selection) {
+  background: color-mix(in oklch, var(--ui-primary) 20%, transparent);
 }
 
 @media (max-width: 768px) {

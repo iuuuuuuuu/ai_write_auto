@@ -12,7 +12,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "start": "node --env-file=.env .output/server/index.mjs",
-    "deploy": "node scripts/deploy-pack.cjs"
+    "gen": "node scripts/deploy-pack.cjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.4.0",
