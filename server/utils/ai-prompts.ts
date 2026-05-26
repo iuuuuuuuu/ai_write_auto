@@ -637,3 +637,68 @@ export function buildOutlineGenerationPrompt(context: {
     }
   ]
 }
+
+export function buildCharacterEnrichPrompt(context: {
+  novel: { title: string; description?: string; genre?: string; worldSetting?: string; styleGuide?: string }
+  character: { name: string; description?: string; traits?: string; relationships?: string }
+  existingCharacters: Array<{ name: string; description?: string; traits?: string; relationships?: string }>
+  outlines: Array<{ chapterNumber: number; description: string }>
+  fieldsToEnrich: string[]
+}): Array<{ role: 'system' | 'user'; content: string }> {
+  const { novel, character, existingCharacters, outlines, fieldsToEnrich } = context
+
+  const fieldDescriptions: Record<string, string> = {
+    description: '简介（角色的身份、背景、定位，50-150字）',
+    traits: '性格特征（用顿号分隔的性格关键词或短语，3-8个）',
+    relationships: '人物关系（与其他角色的关系描述，每段关系用分号分隔）'
+  }
+
+  const fieldsInstruction = fieldsToEnrich
+    .map(f => `- ${f}: ${fieldDescriptions[f]}`)
+    .join('\n')
+
+  const systemPrompt = `你是一位专业的小说角色设计师。用户已经创建了一个角色但部分字段为空，请根据角色名、已有信息和小说背景，为空白字段生成合理的内容。
+
+## 规则
+- 只生成用户指定的空白字段
+- 生成内容要与小说的世界观、风格和已有角色保持一致
+- 如果有其他角色信息，关系描述应与他们产生关联
+- 返回严格 JSON 对象，只包含需要填充的字段
+- 不要包含 Markdown 代码块标记，直接返回 JSON`
+
+  let userPrompt = `## 小说信息\n标题：${novel.title}\n`
+  if (novel.genre) userPrompt += `类型：${novel.genre}\n`
+  if (novel.description) userPrompt += `简介：${novel.description}\n`
+  if (novel.worldSetting) userPrompt += `\n## 世界观设定\n${novel.worldSetting.slice(0, 2000)}\n`
+  if (novel.styleGuide) userPrompt += `\n## 风格指南\n${novel.styleGuide.slice(0, 1000)}\n`
+
+  userPrompt += `\n## 当前角色\n名字：${character.name}\n`
+  if (character.description) userPrompt += `已有简介：${character.description}\n`
+  if (character.traits) userPrompt += `已有性格：${character.traits}\n`
+  if (character.relationships) userPrompt += `已有关系：${character.relationships}\n`
+
+  if (existingCharacters.length > 0) {
+    userPrompt += `\n## 其他角色\n`
+    for (const c of existingCharacters.slice(0, 15)) {
+      userPrompt += `- ${c.name}`
+      if (c.description) userPrompt += `：${c.description}`
+      if (c.traits) userPrompt += `（${c.traits}）`
+      userPrompt += '\n'
+    }
+  }
+
+  if (outlines.length > 0) {
+    userPrompt += `\n## 章节大纲\n`
+    for (const o of outlines.slice(0, 10)) {
+      userPrompt += `- 第${o.chapterNumber}章：${o.description}\n`
+    }
+  }
+
+  userPrompt += `\n## 需要生成的字段\n${fieldsInstruction}\n`
+  userPrompt += `\n请返回 JSON 对象，只包含 key：${fieldsToEnrich.join('、')}。`
+
+  return [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ]
+}

@@ -217,6 +217,7 @@ async function aiGenerateChapterTitle() {
 }
 const editingCharacterId = ref<number | null>(null)
 const savingCharacter = ref(false)
+const enrichingCharacter = ref(false)
 const characterFormRef = ref<{ validate: () => Promise<void> } | null>(null)
 const chapterSearchQuery = shallowRef('')
 const chapterStatusFilter = shallowRef<ChapterStatusFilter>('all')
@@ -881,6 +882,51 @@ async function saveCharacter() {
     // useApi handles error display
   } finally {
     savingCharacter.value = false
+  }
+}
+
+async function enrichCharacter() {
+  if (!editingCharacterId.value) return
+  if (!characterForm.name?.trim()) {
+    message.warning('请先输入角色名')
+    return
+  }
+
+  const hasEmptyFields = !characterForm.description?.trim()
+    || !characterForm.traits?.trim()
+    || !characterForm.relationships?.trim()
+
+  if (!hasEmptyFields) {
+    message.info('所有字段已填写，无需 AI 丰富')
+    return
+  }
+
+  enrichingCharacter.value = true
+  try {
+    const result = await post<{ enriched: Record<string, string> }>(
+      `/api/novels/${novelId.value}/characters/${editingCharacterId.value}/enrich`,
+      {
+        name: characterForm.name,
+        description: characterForm.description,
+        traits: characterForm.traits,
+        relationships: characterForm.relationships
+      }
+    )
+
+    if (result.enriched.description && !characterForm.description?.trim()) {
+      characterForm.description = result.enriched.description
+    }
+    if (result.enriched.traits && !characterForm.traits?.trim()) {
+      characterForm.traits = result.enriched.traits
+    }
+    if (result.enriched.relationships && !characterForm.relationships?.trim()) {
+      characterForm.relationships = result.enriched.relationships
+    }
+
+    message.success('AI 已填充空白字段，请检查后保存')
+  } catch {
+  } finally {
+    enrichingCharacter.value = false
   }
 }
 
@@ -2323,6 +2369,15 @@ async function savePlotPoint() {
       </NForm>
       <template #footer>
         <div class="flex justify-end gap-2">
+          <NButton
+            v-if="editingCharacterId"
+            :loading="enrichingCharacter"
+            :disabled="savingCharacter"
+            @click="enrichCharacter"
+          >
+            <template #icon><Icon icon="lucide:sparkles" class="size-3.5" /></template>
+            AI 丰富
+          </NButton>
           <NButton @click="showCharacterDialog = false">取消</NButton>
           <NButton
             type="primary"
