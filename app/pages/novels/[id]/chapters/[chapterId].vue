@@ -478,6 +478,10 @@ const { data: chapter, refresh: refreshChapter } = await useFetch<{
 }>(() => `/api/novels/${novelId.value}/chapters/${chapterId.value}`)
 
 type ChapterUpdateResult = {
+  chapterNumber?: number
+  title?: string
+  status?: string
+  wordCount?: number | null
   updatedAt?: string
 }
 
@@ -489,6 +493,20 @@ type AiStreamPayload = Partial<{
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败，请稍后重试'
+}
+
+function syncCurrentChapterListItem(
+  updated: Partial<Omit<ChapterListItem, 'id'>>
+) {
+  const chapters = allChapters.value
+  if (!chapters) return
+  const index = chapters.findIndex(
+    (chapterItem) => chapterItem.id === chapterId.value
+  )
+  if (index === -1) return
+  const current = chapters[index]
+  if (!current) return
+  chapters[index] = { ...current, ...updated }
 }
 
 const { data: novelInfo } = await useFetch<{ title: string }>(
@@ -1168,7 +1186,15 @@ async function saveContent(source?: 'ai_generated' | 'user_edited') {
     )
     lastSaved.value = new Date()
     serverUpdatedAt.value = result.updatedAt || lastSaved.value.toISOString()
-    if (chapter.value) chapter.value.content = content.value
+    if (chapter.value) {
+      chapter.value = {
+        ...chapter.value,
+        ...result,
+        content: content.value,
+        updatedAt: serverUpdatedAt.value
+      }
+    }
+    syncCurrentChapterListItem(result)
     conflictDetected.value = false
   } catch (error: unknown) {
     if (
@@ -1208,7 +1234,7 @@ async function finishEditTitle() {
       method: 'PUT',
       body: { title: newTitle }
     })
-    await refreshChapter()
+    await Promise.all([refreshChapter(), refreshAllChapters()])
   } catch {}
   editingChapterTitle.value = false
 }
@@ -1259,7 +1285,7 @@ async function applyTitleSuggestion() {
       method: 'PUT',
       body: { title: suggestedTitle.value }
     })
-    await refreshChapter()
+    await Promise.all([refreshChapter(), refreshAllChapters()])
     message.success(`标题已更新为「${suggestedTitle.value}」`)
   } catch {}
   showTitleSuggestion.value = false
@@ -1744,7 +1770,11 @@ async function rollbackVersion(version: ChapterVersionItem) {
       `/api/novels/${novelId.value}/chapters/${chapterId.value}/versions/${version.id}/rollback`,
       { method: 'POST' }
     )
-    await Promise.all([refreshChapter(), refreshVersions()])
+    await Promise.all([
+      refreshChapter(),
+      refreshVersions(),
+      refreshAllChapters()
+    ])
     content.value = version.content
     await setEditorMarkdown(version.content)
   } finally {

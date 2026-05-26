@@ -8,7 +8,7 @@ const createNovelSchema = z.object({
   styleGuide: z.string().max(10000, '风格指南不能超过10000字').optional(),
   worldSetting: z.string().max(20000, '世界观设定不能超过20000字').optional(),
   aiTemperature: z.string().optional(),
-  aiExtraPrompt: z.string().max(5000, 'AI提示词不能超过5000字').optional(),
+  aiExtraPrompt: z.string().max(5000, 'AI提示词不能超过5000字').optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -17,8 +17,11 @@ export default defineEventHandler(async (event) => {
 
   const result = createNovelSchema.safeParse(body)
   if (!result.success) {
-    const firstError = result.error.errors[0]
-    throw createError({ statusCode: 400, message: firstError?.message || '参数校验失败' })
+    const firstError = result.error.issues[0]
+    throw createError({
+      statusCode: 400,
+      message: firstError?.message || '参数校验失败'
+    })
   }
 
   const data = result.data
@@ -33,7 +36,7 @@ export default defineEventHandler(async (event) => {
     worldSetting: data.worldSetting || null,
     aiTemperature: data.aiTemperature || null,
     aiExtraPrompt: data.aiExtraPrompt || null,
-    status: 'draft',
+    status: 'draft'
   })
 
   await em.flush()
