@@ -2,6 +2,7 @@
   "name": "ai-novel-writer",
   "type": "module",
   "private": true,
+  "version": "1.0.0",
   "scripts": {
     "build": "nuxt build",
     "dev": "cross-env NODE_OPTIONS=--max-old-space-size=8192 nuxt dev",
@@ -9,7 +10,9 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "start": "cross-env PORT=3000 HOST=0.0.0.0 node .output/server/index.mjs",
+    "pack": "node scripts/deploy-pack.cjs"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.4.0",
