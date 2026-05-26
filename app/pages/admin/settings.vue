@@ -9,6 +9,7 @@ const { put } = useApi()
 const saving = shallowRef(false)
 const siteName = shallowRef('')
 const siteDescription = shallowRef('')
+const allowRegistration = shallowRef(false)
 
 watch(
   siteConfig,
@@ -16,6 +17,7 @@ watch(
     if (config) {
       siteName.value = config.site_name || ''
       siteDescription.value = config.site_description || ''
+      allowRegistration.value = config.allow_registration === 'true'
     }
   },
   { immediate: true }
@@ -26,7 +28,8 @@ async function save() {
   try {
     await put('/api/settings/site', {
       site_name: siteName.value,
-      site_description: siteDescription.value
+      site_description: siteDescription.value,
+      allow_registration: allowRegistration.value ? 'true' : 'false'
     })
     await refresh()
   } finally {
@@ -44,6 +47,29 @@ async function save() {
           站点设置
         </h1>
         <p class="mt-3 text-sm text-(--ui-text-muted)">管理站点基本信息。</p>
+      </div>
+    </section>
+
+    <section class="card-glass max-w-xl space-y-5 p-6">
+      <div class="flex items-center gap-3">
+        <div class="liquid-panel flex size-10 items-center justify-center rounded-[1.2rem]">
+          <Icon
+            icon="lucide:user-plus"
+            class="size-4.5 text-primary-500"
+          />
+        </div>
+        <div>
+          <h2 class="text-base font-semibold text-(--ui-text-highlighted)">
+            用户注册
+          </h2>
+          <p class="text-xs text-(--ui-text-muted)">
+            控制是否允许新用户自行注册账号
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-(--ui-text)">开放注册</span>
+        <NSwitch v-model:value="allowRegistration" />
       </div>
     </section>
 

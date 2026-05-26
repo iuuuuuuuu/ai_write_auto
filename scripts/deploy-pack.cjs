@@ -1,7 +1,6 @@
 const { execSync } = require('child_process')
-const { cpSync, mkdirSync, rmSync, writeFileSync, existsSync, createWriteStream } = require('fs')
+const { cpSync, mkdirSync, rmSync, writeFileSync, existsSync } = require('fs')
 const { resolve, join } = require('path')
-const { createRequire } = require('module')
 const pkg = require('../package.json')
 
 const PROJECT_DIR = resolve(__dirname, '..')
@@ -25,6 +24,8 @@ console.log('==> 拷贝部署文件...')
 cpSync(join(PROJECT_DIR, '.output'), join(DIST_DIR, '.output'), { recursive: true })
 cpSync(join(PROJECT_DIR, '.env.example'), join(DIST_DIR, '.env.example'))
 cpSync(join(PROJECT_DIR, '.npmrc'), join(DIST_DIR, '.npmrc'))
+// Worker 文件（Nitro 不会自动 bundle）
+cpSync(join(PROJECT_DIR, 'server/services/embedding-worker.mjs'), join(DIST_DIR, '.output/server/embedding-worker.mjs'))
 if (existsSync(join(PROJECT_DIR, 'Dockerfile'))) {
   cpSync(join(PROJECT_DIR, 'Dockerfile'), join(DIST_DIR, 'Dockerfile'))
 }
@@ -44,7 +45,7 @@ writeFileSync(join(DIST_DIR, 'package.json'), JSON.stringify({
   private: true,
   scripts: {
     start: 'node --env-file=.env .output/server/index.mjs',
-    install: 'cd .output/server && npm install'
+    postinstall: 'cd .output/server && npm install --omit=dev'
   }
 }, null, 2))
 
@@ -58,7 +59,6 @@ set -a
 source .env
 set +a
 export NODE_ENV=production
-export HOST=0.0.0.0
 node .output/server/index.mjs
 `)
 
@@ -68,7 +68,7 @@ const { resolve } = require('path')
 
 function loadEnv() {
   const envPath = resolve(__dirname, '.env')
-  const env = { NODE_ENV: 'production', HOST: '0.0.0.0' }
+  const env = { NODE_ENV: 'production' }
   try {
     const content = readFileSync(envPath, 'utf-8')
     for (const line of content.split('\\n')) {

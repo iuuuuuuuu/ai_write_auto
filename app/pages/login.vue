@@ -9,6 +9,8 @@ const loading = shallowRef(false)
 const error = shallowRef('')
 const showError = shallowRef(false)
 
+const { data: publicSettings } = await useFetch<{ allowRegistration: boolean }>('/api/settings/public')
+
 function getErrorStatusCode(errorValue: unknown) {
   if (typeof errorValue !== 'object' || errorValue === null || !('data' in errorValue)) return null
 
@@ -76,7 +78,7 @@ async function handleLogin() {
       </NButton>
     </form>
 
-    <p class="mt-5 text-center text-xs text-(--ui-text-dimmed)">
+    <p v-if="publicSettings?.allowRegistration" class="mt-5 text-center text-xs text-(--ui-text-dimmed)">
       {{ t('auth.noAccount') }}
       <NuxtLink to="/register" class="text-primary-600 hover:underline dark:text-primary-400">{{ t('auth.registerButton') }}</NuxtLink>
     </p>

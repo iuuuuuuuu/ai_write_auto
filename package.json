@@ -44,15 +44,6 @@
     "vue-echarts": "^8.0.1",
     "zod": "^4.4.3"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "@parcel/watcher",
-      "esbuild",
-      "onnxruntime-node",
-      "protobufjs",
-      "sharp"
-    ]
-  },
   "devDependencies": {
     "@bg-dev/nuxt-naiveui": "^2.0.0",
     "@nuxt/test-utils": "^4.0.3",

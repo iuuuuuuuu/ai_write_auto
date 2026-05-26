@@ -4,6 +4,11 @@ definePageMeta({ layout: 'auth' })
 const { t } = useI18n()
 const { register } = useAuth()
 
+const { data: publicSettings } = await useFetch<{ allowRegistration: boolean }>('/api/settings/public')
+if (!publicSettings.value?.allowRegistration) {
+  await navigateTo('/login', { replace: true })
+}
+
 const form = reactive({ username: '', password: '', confirmPassword: '' })
 const loading = shallowRef(false)
 const error = shallowRef('')
