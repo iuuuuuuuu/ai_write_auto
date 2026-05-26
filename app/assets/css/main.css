@@ -550,3 +550,11 @@ a.btn:active {
   outline: none;
   box-shadow: 0 0 0 2px var(--ui-bg), 0 0 0 4px var(--ui-primary-400);
 }
+
+/* ============================================================
+   VIRTUAL RENDERING — skip offscreen items
+   ============================================================ */
+.cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}

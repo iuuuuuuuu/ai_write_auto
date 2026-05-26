@@ -1603,7 +1603,7 @@ async function savePlotPoint() {
         <article
           v-for="outline in filteredOutlines"
           :key="`${outline.chapterNumber}-${outline.sortOrder}`"
-          class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
+          class="cv-auto rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
         >
           <p class="text-xs font-mono text-primary-500">
             Ch.{{ outline.chapterNumber }}
@@ -1878,7 +1878,7 @@ async function savePlotPoint() {
             <NuxtLink
               v-else
               :to="`/novels/${novel.id}/chapters/${chapter.id}`"
-              class="group grid gap-3 rounded-lg p-3 transition-colors hover:bg-(--ui-bg-elevated)/60 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
+              class="cv-auto group grid gap-3 rounded-lg p-3 transition-colors hover:bg-(--ui-bg-elevated)/60 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center"
             >
               <div
                 class="flex size-9 items-center justify-center rounded-lg bg-primary-400/10 text-xs font-semibold font-mono text-primary-500 shrink-0"
@@ -2060,7 +2060,7 @@ async function savePlotPoint() {
             <article
               v-for="character in filteredCharacters"
               :key="character.id"
-              class="relative flex flex-col rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3 transition-all duration-200 hover:bg-(--ui-bg-muted) hover:-translate-y-0.5 hover:shadow-md hover:z-10"
+              class="cv-auto relative flex flex-col rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3 transition-all duration-200 hover:bg-(--ui-bg-muted) hover:-translate-y-0.5 hover:shadow-md hover:z-10"
             >
               <div class="flex items-start gap-2.5">
                 <div
