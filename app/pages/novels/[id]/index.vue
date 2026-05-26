@@ -2044,7 +2044,7 @@ async function savePlotPoint() {
                           最近 Ch.{{ character.lastAppearanceChapter }}
                         </span>
                         <span
-                          class="rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-(--ui-text-muted)"
+                          class="whitespace-nowrap rounded bg-(--ui-bg-elevated) px-1.5 py-0.5 text-(--ui-text-muted)"
                         >
                           {{ getCharacterAppearanceCount(character) }} 章出场
                         </span>

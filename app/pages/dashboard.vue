@@ -658,7 +658,7 @@ function resetImport() {
               </NTooltip>
             </div>
           </template>
-          <NInput v-model:value="newNovelDescription" type="textarea" placeholder="一句话概括故事核心，或点击 AI 生成" :rows="3" />
+          <NInput v-model:value="newNovelDescription" type="textarea" placeholder="一句话概括故事核心，或点击 AI 生成" :rows="3" :maxlength="5000" show-count />
         </NFormItem>
       </div>
 

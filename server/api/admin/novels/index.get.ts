@@ -1,4 +1,5 @@
 import { NovelSchema, UserSchema, ChapterSchema } from '../../../database/entities'
+import { wrap } from '@mikro-orm/core'
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
@@ -22,19 +23,16 @@ export default defineEventHandler(async (event) => {
       limit: pagination.limit,
       offset: pagination.offset,
       orderBy: { updatedAt: 'DESC' },
+      populate: ['user'],
     }),
     em.count(NovelSchema, filter),
   ])
 
-  const userIds = [...new Set(novels.map((n) => n.user as any))]
   const novelIds = novels.map((n) => n.id)
 
-  const [users, chapters] = await Promise.all([
-    userIds.length ? em.find(UserSchema, { id: { $in: userIds } }) : [],
-    novelIds.length ? em.find(ChapterSchema, { novel: { $in: novelIds }, deletedAt: null }) : [],
-  ])
-
-  const usersById = new Map(users.map((u) => [u.id, { id: u.id, username: u.username, role: u.role }]))
+  const chapters = novelIds.length
+    ? await em.find(ChapterSchema, { novel: { $in: novelIds }, deletedAt: null })
+    : []
 
   const items = novels.map((novel) => {
     const novelChapters = chapters.filter((c: any) => {
@@ -44,8 +42,14 @@ export default defineEventHandler(async (event) => {
     const wordCount = novelChapters.reduce((sum: number, c: any) => sum + (c.wordCount || 0), 0)
 
     return {
-      ...novel,
-      user: usersById.get(novel.user as any) || null,
+      id: novel.id,
+      title: novel.title,
+      description: novel.description,
+      genre: novel.genre,
+      status: novel.status,
+      deletedAt: novel.deletedAt,
+      updatedAt: novel.updatedAt,
+      user: novel.user ? { id: novel.user.id, username: novel.user.username, role: novel.user.role } : null,
       chapterCount: novelChapters.length,
       wordCount,
     }

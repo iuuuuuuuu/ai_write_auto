@@ -2,19 +2,26 @@ import { z } from 'zod'
 import { NovelSchema } from '../../database/entities'
 
 const createNovelSchema = z.object({
-  title: z.string().min(1).max(200),
-  description: z.string().max(2000).optional(),
+  title: z.string().min(1, '标题不能为空').max(200, '标题不能超过200字'),
+  description: z.string().max(5000, '简介不能超过5000字').optional(),
   genre: z.string().max(50).optional(),
-  styleGuide: z.string().optional(),
-  worldSetting: z.string().optional(),
+  styleGuide: z.string().max(10000, '风格指南不能超过10000字').optional(),
+  worldSetting: z.string().max(20000, '世界观设定不能超过20000字').optional(),
   aiTemperature: z.string().optional(),
-  aiExtraPrompt: z.string().optional(),
+  aiExtraPrompt: z.string().max(5000, 'AI提示词不能超过5000字').optional(),
 })
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const body = await readBody(event)
-  const data = createNovelSchema.parse(body)
+
+  const result = createNovelSchema.safeParse(body)
+  if (!result.success) {
+    const firstError = result.error.errors[0]
+    throw createError({ statusCode: 400, message: firstError?.message || '参数校验失败' })
+  }
+
+  const data = result.data
   const em = useEm(event)
 
   const novel = em.create(NovelSchema, {
