@@ -30,24 +30,34 @@ if (existsSync(join(PROJECT_DIR, 'Dockerfile'))) {
   cpSync(join(PROJECT_DIR, 'Dockerfile'), join(DIST_DIR, 'Dockerfile'))
 }
 
-// 2.1 生成服务端原生依赖 package.json（部署后在服务器上 cd .output/server && npm install）
-writeFileSync(join(DIST_DIR, '.output', 'server', 'package.json'), JSON.stringify({
-  name: 'ai-novel-server',
-  private: true,
-  dependencies: {
-    'libsql': '*'
-  }
-}, null, 2))
-
-// 2.2 生成部署根目录 package.json
+// 2.1 生成部署根目录 package.json
 writeFileSync(join(DIST_DIR, 'package.json'), JSON.stringify({
   name: 'ai-novel-writer-deploy',
   private: true,
   scripts: {
     start: 'node --env-file=.env .output/server/index.mjs',
-    postinstall: 'cd .output/server && npm install --omit=dev'
+    setup: 'cd .output/server && npm install libsql @huggingface/transformers --ignore-scripts'
   }
 }, null, 2))
+
+// 2.3 生成一键部署脚本
+writeFileSync(join(DIST_DIR, 'install.sh'), `#!/bin/bash
+cd "$(dirname "$0")"
+echo "==> 安装原生依赖..."
+cd .output/server && npm install libsql @huggingface/transformers --ignore-scripts
+cd ../..
+if [ ! -f .env ]; then
+  cp .env.example .env
+  echo "==> 已创建 .env 文件，请编辑配置后启动"
+else
+  echo "==> .env 已存在，跳过"
+fi
+echo "==> 预下载 Embedding 模型..."
+node .output/server/embedding-worker.mjs --download
+echo ""
+echo "==> 安装完成！"
+echo "    编辑 .env 修改配置，然后运行: pm2 start ecosystem.config.cjs"
+`)
 
 // 创建空 data 目录
 mkdirSync(join(DIST_DIR, 'data'), { recursive: true })
@@ -106,8 +116,7 @@ console.log('')
 console.log('部署步骤:')
 console.log(`  1. 上传 ${name}.tar.gz 到服务器`)
 console.log(`  2. mkdir -p /www/wwwroot/${name} && cd /www/wwwroot/${name}`)
-console.log(`  3. tar -xzf ${name}.tar.gz`)
-console.log('  4. npm install (安装原生依赖)')
-console.log('  5. cp .env.example .env && 编辑 .env 修改配置')
-console.log('  6. pm2 start ecosystem.config.cjs')
-console.log('  7. 访问 http://你的IP:<PORT> 完成初始化')
+console.log(`  3. tar -xzf ${name}.tar.gz && bash install.sh`)
+console.log('  4. 编辑 .env 修改配置')
+console.log('  5. pm2 start ecosystem.config.cjs')
+console.log('  6. 访问 http://你的IP:<PORT> 完成初始化')

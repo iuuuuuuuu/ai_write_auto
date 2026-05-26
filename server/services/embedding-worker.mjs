@@ -1,4 +1,4 @@
-import { parentPort } from 'node:worker_threads'
+import { parentPort, isMainThread } from 'node:worker_threads'
 
 const originalWarn = console.warn
 console.warn = (...args) => {
@@ -7,10 +7,34 @@ console.warn = (...args) => {
   originalWarn.apply(console, args)
 }
 
+// 独立运行模式：node embedding-worker.mjs --download
+if (isMainThread && process.argv.includes('--download')) {
+  const { pipeline, env } = await import('@huggingface/transformers')
+  env.cacheDir = './data/models'
+  env.logLevel = 'error'
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  if (tz === 'Asia/Shanghai' || tz === 'Asia/Chongqing') {
+    env.remoteHost = 'https://hf-mirror.com'
+  }
+  console.log('[embedding] 开始下载模型...')
+  await pipeline('feature-extraction', 'Xenova/bge-small-zh-v1.5', {
+    dtype: 'fp32',
+    progress_callback: (p) => {
+      if (p.status === 'progress' && p.progress != null) {
+        const pct = Math.round(p.progress)
+        if (pct % 25 === 0) process.stdout.write(`\r[embedding] 下载进度: ${pct}%`)
+      }
+    }
+  })
+  console.log('\n[embedding] 模型下载完成')
+  process.exit(0)
+}
+
 let pipe = null
 let config = {}
 
-parentPort.on('message', async (msg) => {
+if (parentPort) {
+  parentPort.on('message', async (msg) => {
   if (msg.type === 'init') {
     config = msg.config || {}
   } else if (msg.type === 'load') {
@@ -59,4 +83,5 @@ parentPort.on('message', async (msg) => {
       parentPort.postMessage({ type: 'embed-error', id: msg.id, error: err.message })
     }
   }
-})
+  })
+}

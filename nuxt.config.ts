@@ -93,7 +93,6 @@ export default defineNuxtConfig({
       asyncContext: true
     },
     externals: {
-      inline: [],
       external: ['libsql', '@libsql/linux-x64-gnu', '@libsql/linux-x64-musl', '@libsql/linux-arm64-gnu', '@libsql/linux-arm64-musl']
     }
   }
