@@ -24,6 +24,7 @@ execSync('npm run build', { cwd: PROJECT_DIR, stdio: 'inherit' })
 console.log('==> 拷贝部署文件...')
 cpSync(join(PROJECT_DIR, '.output'), join(DIST_DIR, '.output'), { recursive: true })
 cpSync(join(PROJECT_DIR, 'package.json'), join(DIST_DIR, 'package.json'))
+cpSync(join(PROJECT_DIR, '.env.example'), join(DIST_DIR, '.env.example'))
 if (existsSync(join(PROJECT_DIR, 'Dockerfile'))) {
   cpSync(join(PROJECT_DIR, 'Dockerfile'), join(DIST_DIR, 'Dockerfile'))
 }
@@ -31,26 +32,42 @@ if (existsSync(join(PROJECT_DIR, 'Dockerfile'))) {
 // 创建空 data 目录
 mkdirSync(join(DIST_DIR, 'data'), { recursive: true })
 
-// 3. 启动脚本
+// 3. 启动脚本（从 .env 读取配置）
 writeFileSync(join(DIST_DIR, 'start.sh'), `#!/bin/bash
+cd "$(dirname "$0")"
+set -a
+source .env
+set +a
 export NODE_ENV=production
 export HOST=0.0.0.0
-export PORT=4530
-cd "$(dirname "$0")"
 node .output/server/index.mjs
 `)
 
-// 4. PM2 配置
-writeFileSync(join(DIST_DIR, 'ecosystem.config.cjs'), `module.exports = {
+// 4. PM2 配置（从 .env 读取）
+writeFileSync(join(DIST_DIR, 'ecosystem.config.cjs'), `const { readFileSync } = require('fs')
+const { resolve } = require('path')
+
+function loadEnv() {
+  const envPath = resolve(__dirname, '.env')
+  const env = { NODE_ENV: 'production', HOST: '0.0.0.0' }
+  try {
+    const content = readFileSync(envPath, 'utf-8')
+    for (const line of content.split('\\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const [key, ...rest] = trimmed.split('=')
+      env[key.trim()] = rest.join('=').trim()
+    }
+  } catch {}
+  return env
+}
+
+module.exports = {
   apps: [{
     name: 'ai-novel',
     script: '.output/server/index.mjs',
     cwd: __dirname,
-    env: {
-      NODE_ENV: 'production',
-      HOST: '0.0.0.0',
-      PORT: 4530,
-    },
+    env: loadEnv(),
     instances: 1,
     autorestart: true,
     max_memory_restart: '512M',
@@ -70,6 +87,7 @@ console.log('')
 console.log('部署步骤:')
 console.log(`  1. 上传 ${name}.tar.gz 到服务器`)
 console.log(`  2. mkdir -p /www/wwwroot/${name} && cd /www/wwwroot/${name}`)
-console.log(`  3. tar -xzf ${name}.tar.gz --strip-components=1`)
-console.log('  4. pm2 start ecosystem.config.cjs')
-console.log('  5. 访问 http://你的IP:4530 完成初始化')
+console.log(`  3. tar -xzf ${name}.tar.gz`)
+console.log('  4. 编辑 .env 修改端口、数据库等配置')
+console.log('  5. pm2 start ecosystem.config.cjs')
+console.log('  6. 访问 http://你的IP:<PORT> 完成初始化')
