@@ -2,7 +2,7 @@ import { NovelSchema, ChapterSchema } from '../../../database/entities'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = parseInt(getRouterParam(event, 'id')!)
+  const novelId = parseIntParam(event, 'id')
   const query = getQuery(event)
   const format = (query.format as string) || 'txt'
   const em = useEm(event)

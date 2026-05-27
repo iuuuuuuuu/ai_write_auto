@@ -10,7 +10,7 @@ const plotPointSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = parseInt(getRouterParam(event, 'id')!)
+  const novelId = parseIntParam(event, 'id')
   const body = await readBody(event)
   const data = plotPointSchema.parse(body)
   const em = useEm(event)

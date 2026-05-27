@@ -5,7 +5,7 @@ import { UserSchema } from '../../../../database/entities'
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const em = useEm(event)
-  const id = parseInt(getRouterParam(event, 'id') as string)
+  const id = parseIntParam(event, 'id')
 
   const body = await readBody(event)
   const data = z.object({

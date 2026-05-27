@@ -11,3 +11,12 @@ export function useEm(event: H3Event): EntityManager {
 export function useFreshEm(): EntityManager {
   return getOrm().em.fork()
 }
+
+export function parseIntParam(event: H3Event, name: string): number {
+  const raw = getRouterParam(event, name)
+  const id = parseInt(raw as string)
+  if (!Number.isInteger(id) || id <= 0) {
+    throw createError({ statusCode: 400, message: `Invalid ${name} parameter` })
+  }
+  return id
+}

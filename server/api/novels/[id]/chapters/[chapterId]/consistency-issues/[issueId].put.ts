@@ -7,8 +7,8 @@ const dismissSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = Number(getRouterParam(event, 'id'))
-  const issueId = Number(getRouterParam(event, 'issueId'))
+  const novelId = parseIntParam(event, 'id')
+  const issueId = parseIntParam(event, 'issueId')
   const em = useEm(event)
 
   const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })

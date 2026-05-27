@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const em = useEm(event)
   const method = getMethod(event)
-  const id = parseInt(getRouterParam(event, 'id') as string)
+  const id = parseIntParam(event, 'id')
 
   const prompt = await em.findOne(PromptTemplateSchema, { id, isSystem: true })
   if (!prompt) {

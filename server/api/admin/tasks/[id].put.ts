@@ -1,11 +1,16 @@
+import { z } from 'zod'
 import { GenerationTaskSchema } from '../../../database/entities'
+
+const taskActionSchema = z.object({
+  action: z.enum(['retry', 'pause', 'resume', 'cancel']),
+})
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const em = useEm(event)
-  const id = parseInt(getRouterParam(event, 'id') as string)
+  const id = parseIntParam(event, 'id')
   const body = await readBody(event)
-  const { action } = body
+  const { action } = taskActionSchema.parse(body)
 
   const task = await em.findOne(GenerationTaskSchema, { id })
   if (!task) {

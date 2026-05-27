@@ -26,13 +26,11 @@ const navItems = computed(() => [
   { label: '回收站', icon: 'lucide:trash-2', to: '/trash' }
 ])
 
-const settingsItem = computed(() => null as any)
+const settingsDrawerOpen = useState('layout-settings-drawer', () => false)
 
 function isActive(to: string) {
   return route.path.startsWith(to)
 }
-
-const settingsDrawerOpen = useState('layout-settings-drawer', () => false)
 
 useBackupNotification()
 
@@ -55,7 +53,6 @@ onMounted(() => {
       <LayoutDock
         v-if="settings.navMode === 'dock'"
         :nav-items="navItems"
-        :settings-item="settingsItem"
         :is-active="isActive"
         :is-admin="isAdmin"
       >
@@ -65,7 +62,6 @@ onMounted(() => {
       <LayoutClassic
         v-else-if="settings.navMode === 'classic'"
         :nav-items="navItems"
-        :settings-item="settingsItem"
         :is-active="isActive"
         :is-admin="isAdmin"
       >
@@ -75,7 +71,6 @@ onMounted(() => {
       <LayoutBorderless
         v-else-if="settings.navMode === 'borderless'"
         :nav-items="navItems"
-        :settings-item="settingsItem"
         :is-active="isActive"
         :is-admin="isAdmin"
       >
@@ -85,7 +80,6 @@ onMounted(() => {
       <LayoutCard
         v-else-if="settings.navMode === 'card'"
         :nav-items="navItems"
-        :settings-item="settingsItem"
         :is-active="isActive"
         :is-admin="isAdmin"
       >
@@ -251,23 +245,6 @@ onMounted(() => {
                 </nav>
 
                 <div class="px-3 py-3">
-                  <NuxtLink
-                    v-if="settingsItem"
-                    :to="settingsItem.to"
-                    class="mb-2 flex h-11 items-center gap-3 rounded-[1.1rem] px-3 text-[14px] font-medium transition-all duration-200"
-                    :class="[
-                      isActive(settingsItem.to) ?
-                        'bg-primary-500/12 text-primary-600 dark:text-primary-400'
-                      : 'text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text)'
-                    ]"
-                    @click="sidebarOpen = false"
-                  >
-                    <Icon
-                      :icon="settingsItem.icon"
-                      class="h-[18px] w-[18px]"
-                    />
-                    {{ settingsItem.label }}
-                  </NuxtLink>
                   <div
                     class="liquid-panel flex items-center gap-2.5 rounded-[1.25rem] px-3 py-2.5"
                   >

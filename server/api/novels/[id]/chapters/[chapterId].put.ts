@@ -20,8 +20,8 @@ const updateChapterSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = Number(getRouterParam(event, 'id'))
-  const chapterId = Number(getRouterParam(event, 'chapterId'))
+  const novelId = parseIntParam(event, 'id')
+  const chapterId = parseIntParam(event, 'chapterId')
   const body = await readBody(event)
   const data = updateChapterSchema.parse(body)
   const em = useEm(event)

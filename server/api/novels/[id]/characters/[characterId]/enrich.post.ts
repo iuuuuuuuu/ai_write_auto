@@ -15,8 +15,8 @@ const bodySchema = z.object({
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const em = useEm(event)
-  const novelId = parseInt(getRouterParam(event, 'id')!)
-  const characterId = parseInt(getRouterParam(event, 'characterId')!)
+  const novelId = parseIntParam(event, 'id')
+  const characterId = parseIntParam(event, 'characterId')
 
   const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
   if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })

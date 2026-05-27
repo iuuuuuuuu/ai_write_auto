@@ -7,7 +7,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = parseInt(getRouterParam(event, 'id')!)
+  const novelId = parseIntParam(event, 'id')
   const em = useEm(event)
 
   const novel = await em.findOne(NovelSchema, {

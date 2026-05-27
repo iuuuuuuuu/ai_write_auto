@@ -26,10 +26,15 @@ export default defineEventHandler(async (event) => {
   ])
 
   const conn = em.getConnection()
-  const userCondition = userId ? ` AND user_id = ${userId}` : ''
+  const params: any[] = [sinceStr]
+  let userCondition = ''
+  if (userId) {
+    userCondition = ' AND user_id = ?'
+    params.push(userId)
+  }
   const [sumRow] = await conn.execute(
     `SELECT COALESCE(SUM(words_written),0) as tw, COALESCE(SUM(chapters_completed),0) as tc, COALESCE(SUM(ai_generations),0) as tg FROM writing_stats WHERE date >= ?${userCondition}`,
-    [sinceStr]
+    params
   ) as any[]
 
   const items = stats.map((s) => {

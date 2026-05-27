@@ -9,7 +9,7 @@ const createChapterSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = Number(getRouterParam(event, 'id'))
+  const novelId = parseIntParam(event, 'id')
   const body = await readBody(event)
   const data = createChapterSchema.parse(body)
   const em = useEm(event)

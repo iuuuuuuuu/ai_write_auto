@@ -20,7 +20,7 @@ const updateNovelSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const id = parseInt(getRouterParam(event, 'id')!)
+  const id = parseIntParam(event, 'id')
   const body = await readBody(event)
 
   const result = updateNovelSchema.safeParse(body)

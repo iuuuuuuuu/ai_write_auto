@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const em = useEm(event)
   const method = getMethod(event)
-  const id = parseInt(getRouterParam(event, 'id') as string)
+  const id = parseIntParam(event, 'id')
 
   const template = await em.findOne(NovelTemplateSchema, { id })
   if (!template) {

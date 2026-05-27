@@ -424,6 +424,9 @@ export const AiConfigSchema = new EntitySchema<AiConfig>({
 export const NovelSchema = new EntitySchema<Novel>({
   name: 'Novel',
   tableName: 'novels',
+  indexes: [
+    { properties: ['user', 'deletedAt'], name: 'idx_novels_user_deleted' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
@@ -513,6 +516,10 @@ export const NovelTemplateSchema = new EntitySchema<NovelTemplate>({
 export const ChapterSchema = new EntitySchema<Chapter>({
   name: 'Chapter',
   tableName: 'chapters',
+  indexes: [
+    { properties: ['novel', 'deletedAt'], name: 'idx_chapters_novel_deleted' },
+    { properties: ['novel', 'chapterNumber'], name: 'idx_chapters_novel_number' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
@@ -587,6 +594,9 @@ export const ChapterNoteSchema = new EntitySchema<ChapterNote>({
 export const CharacterSchema = new EntitySchema<Character>({
   name: 'Character',
   tableName: 'characters',
+  indexes: [
+    { properties: ['novel'], name: 'idx_characters_novel' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
@@ -645,6 +655,9 @@ export const ChapterCharacterSchema = new EntitySchema<ChapterCharacter>({
 export const CharacterAppearanceSchema = new EntitySchema<CharacterAppearance>({
   name: 'CharacterAppearance',
   tableName: 'character_appearances',
+  indexes: [
+    { properties: ['novel', 'character'], name: 'idx_char_appearances_novel_character' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
@@ -779,6 +792,9 @@ export const TokenUsageSchema = new EntitySchema<TokenUsage>({
 export const PromptTemplateSchema = new EntitySchema<PromptTemplate>({
   name: 'PromptTemplate',
   tableName: 'prompt_templates',
+  indexes: [
+    { properties: ['user', 'isSystem'], name: 'idx_prompt_templates_user_system' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: {
@@ -807,6 +823,12 @@ export const PromptTemplateSchema = new EntitySchema<PromptTemplate>({
 export const WritingStatSchema = new EntitySchema<WritingStat>({
   name: 'WritingStat',
   tableName: 'writing_stats',
+  indexes: [
+    { properties: ['user', 'date'], name: 'idx_writing_stats_user_date' }
+  ],
+  uniques: [
+    { properties: ['user', 'date'], name: 'uq_writing_stats_user_date' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
@@ -835,6 +857,12 @@ export const WritingStatSchema = new EntitySchema<WritingStat>({
 export const UserPreferenceSchema = new EntitySchema<UserPreference>({
   name: 'UserPreference',
   tableName: 'user_preferences',
+  indexes: [
+    { properties: ['user', 'key'], name: 'idx_user_preferences_user_key' }
+  ],
+  uniques: [
+    { properties: ['user', 'key'], name: 'uq_user_preferences_user_key' }
+  ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },

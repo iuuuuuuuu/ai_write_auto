@@ -2,7 +2,7 @@ import { NovelSchema } from '../../database/entities'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const id = parseInt(getRouterParam(event, 'id')!)
+  const id = parseIntParam(event, 'id')
   const em = useEm(event)
 
   const novel = await em.findOne(NovelSchema, {

@@ -2,7 +2,7 @@ import { StoryArcSchema } from '../../../database/entities'
 
 export default defineEventHandler(async (event) => {
   requireAuth(event)
-  const novelId = Number(getRouterParam(event, 'id'))
+  const novelId = parseIntParam(event, 'id')
   const em = useEm(event)
 
   const arcs = await em.find(StoryArcSchema, { novel: novelId }, {

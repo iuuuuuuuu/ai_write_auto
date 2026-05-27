@@ -1,7 +1,7 @@
 <script setup lang="ts">
 const props = defineProps<{
   navItems: Array<{ label: string; icon: string; to: string }>
-  settingsItem: { label: string; icon: string; to: string } | null
+  settingsItem?: { label: string; icon: string; to: string } | null
   isActive: (to: string) => boolean
   isAdmin: boolean
 }>()

@@ -1162,6 +1162,7 @@ watch(content, () => {
 
 async function autoSave() {
   if (content.value === chapter.value?.content) return
+  if (!content.value?.trim() && !chapter.value?.content?.trim()) return
   await saveContent()
 }
 
@@ -1204,6 +1205,8 @@ async function saveContent(source?: 'ai_generated' | 'user_edited') {
       error.statusCode === 409
     ) {
       conflictDetected.value = true
+      await refreshChapter()
+      serverUpdatedAt.value = chapter.value?.updatedAt || null
     }
   } finally {
     saving.value = false

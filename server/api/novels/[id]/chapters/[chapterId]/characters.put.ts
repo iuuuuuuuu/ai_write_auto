@@ -10,8 +10,8 @@ const schema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = parseInt(getRouterParam(event, 'id')!)
-  const chapterId = parseInt(getRouterParam(event, 'chapterId')!)
+  const novelId = parseIntParam(event, 'id')
+  const chapterId = parseIntParam(event, 'chapterId')
   const body = await readBody(event)
   const data = schema.parse(body)
   const em = useEm(event)

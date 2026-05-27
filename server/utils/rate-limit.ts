@@ -34,3 +34,23 @@ export function checkRateLimit(userId: number): { allowed: boolean; remaining: n
   entry.count++
   return { allowed: true, remaining: RATE_LIMIT_MAX - entry.count, resetIn: entry.resetAt - now }
 }
+
+export function checkIpRateLimit(ip: string, max: number, windowMs: number): { allowed: boolean; remaining: number; resetIn: number } {
+  cleanupExpired()
+
+  const key = `ip:${ip}`
+  const now = Date.now()
+  const entry = rateLimitStore.get(key)
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + windowMs })
+    return { allowed: true, remaining: max - 1, resetIn: windowMs }
+  }
+
+  if (entry.count >= max) {
+    return { allowed: false, remaining: 0, resetIn: entry.resetAt - now }
+  }
+
+  entry.count++
+  return { allowed: true, remaining: max - entry.count, resetIn: entry.resetAt - now }
+}

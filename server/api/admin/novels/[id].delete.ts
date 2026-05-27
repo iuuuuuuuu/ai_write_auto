@@ -3,7 +3,7 @@ import { NovelSchema, ChapterSchema } from '../../../database/entities'
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
   const em = useEm(event)
-  const id = parseInt(getRouterParam(event, 'id') as string)
+  const id = parseIntParam(event, 'id')
 
   const novel = await em.findOne(NovelSchema, { id })
   if (!novel) {

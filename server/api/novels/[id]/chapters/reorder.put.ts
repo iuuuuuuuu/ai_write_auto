@@ -7,7 +7,7 @@ const reorderSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
-  const novelId = Number(getRouterParam(event, 'id'))
+  const novelId = parseIntParam(event, 'id')
   const body = await readBody(event)
   const { orderedIds } = reorderSchema.parse(body)
   const em = useEm(event)

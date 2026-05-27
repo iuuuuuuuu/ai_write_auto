@@ -89,7 +89,7 @@ function spawnWorker() {
   worker.on('message', (msg) => {
     switch (msg.type) {
       case 'log':
-        console.log(msg.message)
+        console.log(`[embedding] ${msg.message}`)
         break
       case 'progress':
         if (msg.progress > progress) {
