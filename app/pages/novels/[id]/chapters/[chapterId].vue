@@ -2705,27 +2705,30 @@ onBeforeUnmount(() => {
                 v-else
                 class="mt-2 text-[10px] text-(--ui-text-dimmed)"
               >
-                还没有配置本章出现角色
+                在下方勾选角色后点击「应用」添加到本章
               </p>
             </div>
 
             <div class="space-y-1.5">
               <div class="flex items-center justify-between gap-2">
-                <span class="text-[10px] text-(--ui-text-dimmed)">
-                  正文检测 {{ detectedCharacters.length }} 位
+                <span class="text-[10px] text-(--ui-text-dimmed) truncate">
+                  小说角色 {{ allCharacters?.length || 0 }} 位
+                  <template v-if="detectedCharacters.length">
+                    · 正文 {{ detectedCharacters.length }}
+                  </template>
                 </span>
-                <div class="flex items-center gap-1">
+                <div class="flex items-center gap-0.5 shrink-0">
                   <button
-                    class="inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] text-(--ui-text-dimmed) hover:bg-(--ui-bg-elevated)/60 hover:text-(--ui-text) transition-colors disabled:opacity-60"
+                    class="inline-flex h-5 items-center gap-1 rounded px-1.5 text-[10px] text-(--ui-text-dimmed) hover:bg-(--ui-bg-elevated)/60 hover:text-(--ui-text) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                     :disabled="aiExtractingCharacters"
                     @click="extractCharactersWithAi"
                   >
                     <Icon
-                      icon="lucide:sparkles"
+                      :icon="aiExtractingCharacters ? 'lucide:loader-2' : 'lucide:sparkles'"
                       class="w-3 h-3"
-                      :class="{ 'animate-pulse': aiExtractingCharacters }"
+                      :class="{ 'animate-spin': aiExtractingCharacters }"
                     />
-                    AI识别
+                    {{ aiExtractingCharacters ? '识别中...' : 'AI识别' }}
                   </button>
                   <button
                     class="flex h-5 w-5 items-center justify-center rounded text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/60 transition-colors"
@@ -2748,10 +2751,10 @@ onBeforeUnmount(() => {
               </div>
 
               <button
-                v-for="char in detectedCharacters"
+                v-for="char in allCharacters"
                 :key="char.id"
                 type="button"
-                class="w-full text-left rounded-md px-2.5 py-2 text-xs transition-colors hover:bg-(--ui-bg-muted) group border border-transparent hover:border-(--ui-border)"
+                class="w-full text-left rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-(--ui-bg-muted) group border border-transparent hover:border-(--ui-border)"
                 @click="toggleChapterCharacter(char.id)"
               >
                 <div class="flex items-center gap-2">
@@ -2769,17 +2772,11 @@ onBeforeUnmount(() => {
                     "
                   />
                   <div class="min-w-0 flex-1">
-                    <p
-                      class="font-semibold text-(--ui-text-highlighted) truncate"
-                    >
-                      {{ char.name }}
-                    </p>
-                    <p
-                      v-if="char.description"
-                      class="text-[10px] text-(--ui-text-dimmed) truncate leading-tight"
-                    >
-                      {{ char.description }}
-                    </p>
+                    <span class="font-semibold text-(--ui-text-highlighted) truncate">{{ char.name }}</span>
+                    <span
+                      v-if="detectedCharacters.some(d => d.id === char.id)"
+                      class="ml-1 text-[9px] text-emerald-500"
+                    >正文中</span>
                   </div>
                   <button
                     type="button"
@@ -2795,7 +2792,7 @@ onBeforeUnmount(() => {
               </button>
 
               <div
-                v-if="!detectedCharacters.length"
+                v-if="!allCharacters?.length"
                 class="text-center py-5 text-xs text-(--ui-text-dimmed)"
               >
                 <div class="flex flex-col items-center gap-1">
@@ -2803,34 +2800,11 @@ onBeforeUnmount(() => {
                     icon="lucide:users"
                     class="w-5 h-5 opacity-40"
                   />
-                  <p>未检测到角色</p>
+                  <p>还没有角色</p>
                   <p class="text-[10px] opacity-60">
-                    正文中出现角色名后会自动显示
+                    点击「AI识别」从正文中提取角色
                   </p>
                 </div>
-              </div>
-            </div>
-
-            <div
-              v-if="allCharacters?.length"
-              class="pt-2 border-t border-(--ui-border)"
-            >
-              <p class="text-[10px] text-(--ui-text-dimmed) mb-1.5">全部角色</p>
-              <div class="flex flex-wrap gap-1">
-                <button
-                  v-for="char in allCharacters"
-                  :key="char.id"
-                  type="button"
-                  class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] transition-colors cursor-pointer"
-                  :class="
-                    selectedCharacterIds.has(char.id) ?
-                      'bg-(--ui-primary-500)/10 text-(--ui-primary-500)'
-                    : 'bg-(--ui-bg-muted) text-(--ui-text-muted) hover:bg-(--ui-bg-muted) hover:text-(--ui-text) ring-1 ring-(--ui-border)'
-                  "
-                  @click="toggleChapterCharacter(char.id)"
-                >
-                  {{ char.name }}
-                </button>
               </div>
             </div>
           </div>
