@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
+import { toAiOptions } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 
 const schema = z.object({
@@ -23,11 +24,10 @@ export default defineEventHandler(async (event) => {
   ]
 
   return createInlineStreamResponse(event, {
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    messages,
-    temperature: parseFloat(aiConfig.temperature || '0.7'),
-    maxTokens: aiConfig.maxTokens || 4096,
+    ...toAiOptions(aiConfig, {
+      messages,
+      temperature: parseFloat(aiConfig.temperature || '0.7'),
+      maxTokens: aiConfig.maxTokens || 4096,
+    }),
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { callAi } from '../../../../utils/ai-client'
+import { callAi, toAiOptions } from '../../../../utils/ai-client'
 import { buildCharacterGenerationPrompt } from '../../../../utils/ai-prompts'
 import {
   NovelSchema,
@@ -29,7 +29,7 @@ export default defineEventHandler(async (event) => {
   }
   const aiModel = configEntry.aiModel as any
   if (!aiModel.enabled) throw createError({ statusCode: 400, message: `模型「${aiModel.name}」已被禁用` })
-  const aiConfig = { apiUrl: aiModel.apiUrl, apiKey: aiModel.apiKey, model: aiModel.model }
+  const aiConfig = { apiUrl: aiModel.apiUrl, apiKey: aiModel.apiKey, model: aiModel.model, modelId: aiModel.id }
 
   const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
   const outlines = await em.find(NovelOutlineSchema, { novel: novelId }, {
@@ -57,14 +57,11 @@ export default defineEventHandler(async (event) => {
     count
   })
 
-  const result = await callAi({
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
+  const result = await callAi(toAiOptions(aiConfig, {
     messages,
     temperature: 0.8,
     maxTokens: 4096
-  })
+  }))
 
   const parsed: unknown = JSON.parse(result)
   if (!Array.isArray(parsed)) {

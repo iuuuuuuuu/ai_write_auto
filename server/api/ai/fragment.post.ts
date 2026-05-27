@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
+import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { MAX_TOKENS_FRAGMENT, CONTEXT_TRUNCATE_FRAGMENT } from '../../utils/ai-constants'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
@@ -77,11 +78,10 @@ ${context}
   ]
 
   return createInlineStreamResponse(event, {
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    messages,
-    temperature: parseFloat(aiConfig.temperature || '0.75'),
-    maxTokens: MAX_TOKENS_FRAGMENT,
+    ...toAiOptions(aiConfig, {
+      messages,
+      temperature: parseFloat(aiConfig.temperature || '0.75'),
+      maxTokens: MAX_TOKENS_FRAGMENT,
+    }),
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

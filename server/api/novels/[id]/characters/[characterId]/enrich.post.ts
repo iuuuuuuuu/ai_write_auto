@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { NovelSchema, CharacterSchema, NovelOutlineSchema } from '~~/server/database/entities'
-import { callAiWithUsage } from '~~/server/utils/ai-client'
+import { callAiWithUsage, toAiOptions } from '~~/server/utils/ai-client'
 import { recordUsage } from '~~/server/utils/ai-stream'
 import { resolveNovelAiConfig } from '~~/server/utils/ai-configs'
 import { buildCharacterEnrichPrompt } from '~~/server/utils/ai-prompts'
@@ -76,14 +76,11 @@ export default defineEventHandler(async (event) => {
     fieldsToEnrich: emptyFields
   })
 
-  const { content: aiResult, inputTokens, outputTokens } = await callAiWithUsage({
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
+  const { content: aiResult, inputTokens, outputTokens } = await callAiWithUsage(toAiOptions(aiConfig, {
     messages,
     temperature: 0.7,
     maxTokens: 2048
-  })
+  }))
 
   await recordUsage({ em, userId: auth.userId, configId: aiConfig.configId, model: aiConfig.model }, inputTokens, outputTokens)
 

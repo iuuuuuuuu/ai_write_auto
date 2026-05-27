@@ -40,6 +40,7 @@ export interface AiConfig {
     | 'temperature'
     | 'isDefault'
     | 'enabled'
+    | 'order'
     | 'createdAt'
     | 'updatedAt'
   id: number
@@ -49,6 +50,7 @@ export interface AiConfig {
   temperature: string | null
   isDefault: boolean
   enabled: boolean
+  order: number
   createdAt: Date
   updatedAt: Date
 }
@@ -407,6 +409,7 @@ export const AiConfigSchema = new EntitySchema<AiConfig>({
     temperature: { type: 'string', nullable: true, default: '0.7' },
     isDefault: { type: 'boolean', fieldName: 'is_default', default: false },
     enabled: { type: 'boolean', default: true },
+    order: { type: 'number', default: 0 },
     createdAt: {
       type: UnixTimestampType,
       fieldName: 'created_at',

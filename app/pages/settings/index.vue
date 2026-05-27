@@ -36,14 +36,6 @@ const { t } = useI18n()
           </div>
         </NTabPane>
         <NTabPane
-          name="ai"
-          tab="AI 配置"
-        >
-          <div class="mt-4">
-            <SettingsAi />
-          </div>
-        </NTabPane>
-        <NTabPane
           name="database"
           tab="数据库"
         >

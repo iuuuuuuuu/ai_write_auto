@@ -10,7 +10,10 @@ const modelSchema = z.object({
   apiKey: z.string().optional(),
   model: z.string().min(1),
   maxTokens: z.number().int().positive().optional(),
-  enabled: z.boolean().optional()
+  enabled: z.boolean().optional(),
+  lastCheckAt: z.string().optional(),
+  lastCheckAvailable: z.boolean().optional(),
+  lastCheckReason: z.string().nullable().optional()
 })
 
 function serializeModel(model: any) {
@@ -72,7 +75,12 @@ export default defineEventHandler(async (event) => {
         model: data.model,
         maxTokens: data.maxTokens ?? existing.maxTokens,
         enabled: data.enabled ?? existing.enabled,
-        ...(data.apiKey ? { apiKey: data.apiKey } : {})
+        ...(data.apiKey ? { apiKey: data.apiKey } : {}),
+        ...(data.lastCheckAt ? {
+          lastCheckAt: new Date(data.lastCheckAt),
+          lastCheckAvailable: data.lastCheckAvailable ?? null,
+          lastCheckReason: data.lastCheckReason ?? null
+        } : {})
       })
       await em.flush()
       return serializeModel(existing)
@@ -89,7 +97,12 @@ export default defineEventHandler(async (event) => {
       apiKey: data.apiKey,
       model: data.model,
       maxTokens: data.maxTokens ?? 4096,
-      enabled: data.enabled ?? true
+      enabled: data.enabled ?? true,
+      ...(data.lastCheckAt ? {
+        lastCheckAt: new Date(data.lastCheckAt),
+        lastCheckAvailable: data.lastCheckAvailable ?? null,
+        lastCheckReason: data.lastCheckReason ?? null
+      } : {})
     })
     await em.flush()
     return serializeModel(model)

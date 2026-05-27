@@ -1,4 +1,8 @@
 import { AI_CONNECT_TIMEOUT_MS, AI_STREAM_READ_TIMEOUT_MS } from './ai-constants'
+import { getOrm } from '../database'
+import { AiModelSchema } from '../database/entities'
+import { wrap } from '@mikro-orm/core'
+import type { ResolvedAiConfig } from './ai-configs'
 
 export interface AiRequestOptions {
   apiUrl: string
@@ -10,6 +14,20 @@ export interface AiRequestOptions {
   stream?: boolean
   signal?: AbortSignal
   extraBody?: Record<string, unknown>
+  modelId?: number
+}
+
+export function toAiOptions(
+  config: Pick<ResolvedAiConfig, 'apiUrl' | 'apiKey' | 'model' | 'modelId'>,
+  overrides: Omit<AiRequestOptions, 'apiUrl' | 'apiKey' | 'model' | 'modelId'> = {} as any
+): AiRequestOptions {
+  return {
+    apiUrl: config.apiUrl,
+    apiKey: config.apiKey,
+    model: config.model,
+    modelId: config.modelId,
+    ...overrides
+  } as AiRequestOptions
 }
 
 export interface AiStreamChunk {
@@ -84,6 +102,23 @@ async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Resp
   if (!response.ok) {
     const err = await response.text()
     throw new Error(`AI API error (${response.status}): ${err}`)
+  }
+
+  // Update model connectivity status on success
+  if (options.modelId) {
+    try {
+      const orm = getOrm()
+      const em = orm.em.fork()
+      const model = await em.findOne(AiModelSchema, { id: options.modelId })
+      if (model) {
+        wrap(model).assign({
+          lastCheckAt: new Date(),
+          lastCheckAvailable: true,
+          lastCheckReason: null
+        })
+        await em.flush()
+      }
+    } catch {}
   }
 
   return response

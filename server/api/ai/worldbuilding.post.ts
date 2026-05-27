@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { createStreamResponse } from '../../utils/ai-stream'
+import { toAiOptions } from '../../utils/ai-client'
 
 const worldbuildingSchema = z.object({
   title: z.string().min(1),
@@ -35,11 +36,10 @@ export default defineEventHandler(async (event) => {
   ]
 
   return createStreamResponse(event, {
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    messages,
-    temperature: 0.85,
-    maxTokens: 1500
+    ...toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.85,
+      maxTokens: 1500
+    }),
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

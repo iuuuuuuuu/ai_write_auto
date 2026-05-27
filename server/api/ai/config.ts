@@ -8,7 +8,8 @@ const configSchema = z.object({
   purpose: z.enum(['generation', 'extraction', 'consistency_check', 'style_analysis']),
   temperature: z.string().optional(),
   isDefault: z.boolean().optional(),
-  enabled: z.boolean().optional()
+  enabled: z.boolean().optional(),
+  order: z.number().int().optional()
 })
 
 const deleteSchema = z.object({
@@ -21,13 +22,14 @@ export default defineEventHandler(async (event) => {
   const em = useEm(event)
 
   if (method === 'GET') {
-    const configs = await em.find(AiConfigSchema, { user: auth.userId }, { populate: ['aiModel'] })
+    const configs = await em.find(AiConfigSchema, { user: auth.userId }, { populate: ['aiModel'], orderBy: { order: 'ASC', createdAt: 'ASC' } })
     return configs.map(c => ({
       id: c.id,
       purpose: c.purpose,
       temperature: c.temperature,
       isDefault: c.isDefault,
       enabled: c.enabled,
+      order: c.order,
       aiModel: {
         id: (c.aiModel as any).id,
         name: (c.aiModel as any).name,
@@ -64,7 +66,8 @@ export default defineEventHandler(async (event) => {
         purpose: data.purpose,
         temperature: data.temperature,
         isDefault: data.isDefault ?? existing.isDefault,
-        enabled: data.enabled ?? existing.enabled
+        enabled: data.enabled ?? existing.enabled,
+        ...(data.order != null ? { order: data.order } : {})
       })
       await em.flush()
       return { success: true, id: existing.id }
@@ -76,13 +79,15 @@ export default defineEventHandler(async (event) => {
       await em.nativeUpdate(AiConfigSchema, { user: auth.userId, purpose: data.purpose }, { isDefault: false, updatedAt: new Date() })
     }
 
+    const maxOrder = existingForPurpose.reduce((max, c) => Math.max(max, c.order ?? 0), 0)
     const config = em.create(AiConfigSchema, {
       user: auth.userId,
       aiModel: data.aiModelId,
       purpose: data.purpose,
       temperature: data.temperature,
       isDefault,
-      enabled: data.enabled ?? true
+      enabled: data.enabled ?? true,
+      order: data.order ?? maxOrder + 1
     })
     await em.flush()
     return { success: true, id: config.id }

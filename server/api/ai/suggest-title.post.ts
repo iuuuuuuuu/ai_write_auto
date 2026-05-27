@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { callAiWithUsage } from '../../utils/ai-client'
+import { callAiWithUsage, toAiOptions } from '../../utils/ai-client'
 import { recordUsage } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import {
@@ -86,10 +86,7 @@ export default defineEventHandler(async (event) => {
     content: title,
     inputTokens,
     outputTokens
-  } = await callAiWithUsage({
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
+  } = await callAiWithUsage(toAiOptions(aiConfig, {
     messages,
     temperature: 0.8,
     maxTokens: 1024,
@@ -97,7 +94,7 @@ export default defineEventHandler(async (event) => {
       enable_thinking: false,
       reasoning_effort: 'low',
     }
-  })
+  }))
 
   await recordUsage(
     {

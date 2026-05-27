@@ -15,9 +15,24 @@ interface AiModelItem {
   lastCheckReason: string | null
 }
 
+interface AiConfigItem {
+  id: number
+  purpose: string
+  temperature: string | null
+  isDefault: boolean
+  enabled: boolean
+  order: number
+  aiModel: AiModelItem
+}
+
+type AiPurpose = 'generation' | 'extraction' | 'consistency_check' | 'style_analysis'
+
 const { t } = useI18n()
 const message = useMessage()
+const dialog = useDialog()
 const { post, del: apiDel } = useApi()
+
+/* ─────────────── Models ─────────────── */
 
 const { data: models, refresh: refreshModels } = await useFetch<AiModelItem[]>('/api/ai/models', { default: () => [] })
 const showModelForm = ref(false)
@@ -104,6 +119,7 @@ function resetModelForm() {
   modelForm.model = ''
   modelForm.maxTokens = 4096
   modelForm.enabled = true
+  lastTestResult = {}
 }
 
 function startCreateModel() {
@@ -140,15 +156,19 @@ async function saveModel() {
       apiKey: modelForm.apiKey.trim() || undefined,
       model: modelForm.model.trim(),
       maxTokens: modelForm.maxTokens,
-      enabled: modelForm.enabled
+      enabled: modelForm.enabled,
+      ...lastTestResult
     }, { successMessage: modelForm.id ? '模型已更新' : '模型已添加' })
     showModelForm.value = false
+    lastTestResult = {}
     await refreshModels()
   } catch {
   } finally {
     savingModel.value = false
   }
 }
+
+let lastTestResult: Record<string, unknown> = {}
 
 const testingModel = ref(false)
 async function testModelForm() {
@@ -171,6 +191,11 @@ async function testModelForm() {
         existingModelId: modelForm.id
       }
     })
+    lastTestResult = {
+      lastCheckAt: new Date().toISOString(),
+      lastCheckAvailable: result.available,
+      lastCheckReason: result.reason
+    }
     if (result.available) {
       message.success('连通性测试通过')
     } else {
@@ -180,6 +205,11 @@ async function testModelForm() {
       await refreshModels()
     }
   } catch (e: any) {
+    lastTestResult = {
+      lastCheckAt: new Date().toISOString(),
+      lastCheckAvailable: false,
+      lastCheckReason: e?.data?.message || '测试请求失败'
+    }
     message.error(e?.data?.message || '测试请求失败')
   } finally {
     testingModel.value = false
@@ -288,38 +318,354 @@ const tableColumns = computed(() => {
     }
   ]
 })
+
+/* ─────────────── Purpose Configs ─────────────── */
+
+const purposeOptions = computed(() => [
+  { label: t('ai.purpose.generation'), value: 'generation' },
+  { label: t('ai.purpose.extraction'), value: 'extraction' },
+  { label: t('ai.purpose.consistencyCheck'), value: 'consistency_check' },
+  { label: t('ai.purpose.styleAnalysis'), value: 'style_analysis' }
+])
+
+const purposeIcons: Record<string, string> = {
+  generation: 'lucide:wand-sparkles',
+  extraction: 'lucide:scan-text',
+  consistency_check: 'lucide:shield-check',
+  style_analysis: 'lucide:palette'
+}
+
+const { data: configs, refresh: refreshConfigs } = await useFetch<AiConfigItem[]>('/api/ai/config', { default: () => [] })
+
+const enabledModelOptions = computed(() =>
+  (models.value || []).filter(m => m.enabled).map(m => ({ label: `${m.name} (${m.model})`, value: m.id }))
+)
+
+// Models not yet used in the current editing purpose
+const availableModelOptions = computed(() => {
+  const usedIds = new Set(
+    (configs.value || [])
+      .filter(c => c.purpose === editingPurpose.value)
+      .map(c => c.aiModel?.id)
+  )
+  return enabledModelOptions.value.filter(m => !usedIds.has(m.value))
+})
+
+const groupedConfigs = computed(() =>
+  purposeOptions.value.map(purpose => ({
+    ...purpose,
+    icon: purposeIcons[purpose.value],
+    configs: (configs.value || []).filter(c => c.purpose === purpose.value)
+  }))
+)
+
+// Drag-and-drop state
+const dragConfigId = ref<number | null>(null)
+const dragOverConfigId = ref<number | null>(null)
+
+function onDragStart(configId: number, e: DragEvent) {
+  dragConfigId.value = configId
+  e.dataTransfer!.effectAllowed = 'move'
+}
+
+function onDragOver(configId: number, e: DragEvent) {
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'move'
+  dragOverConfigId.value = configId
+}
+
+function onDragLeave() {
+  dragOverConfigId.value = null
+}
+
+async function onDrop(targetConfig: AiConfigItem, e: DragEvent) {
+  e.preventDefault()
+  dragOverConfigId.value = null
+  if (!dragConfigId.value || dragConfigId.value === targetConfig.id) return
+
+  const purposeConfigs = (configs.value || []).filter(c => c.purpose === targetConfig.purpose)
+  const fromIdx = purposeConfigs.findIndex(c => c.id === dragConfigId.value)
+  const toIdx = purposeConfigs.findIndex(c => c.id === targetConfig.id)
+  if (fromIdx === -1 || toIdx === -1) return
+
+  // Reorder locally
+  const reordered = [...purposeConfigs]
+  const [moved] = reordered.splice(fromIdx, 1)
+  if (!moved) return
+  reordered.splice(toIdx, 0, moved)
+
+  // Assign order and isDefault
+  const updates = reordered.map((c, i) => ({
+    id: c.id,
+    aiModelId: c.aiModel.id,
+    purpose: c.purpose,
+    temperature: c.temperature || '0.7',
+    isDefault: i === 0,
+    enabled: c.enabled,
+    order: i
+  }))
+
+  // Optimistic update
+  const allOther = (configs.value || []).filter(c => c.purpose !== targetConfig.purpose)
+  configs.value = [...allOther, ...reordered]
+
+  // Persist
+  for (const u of updates) {
+    try {
+      await post('/api/ai/config', u)
+    } catch {}
+  }
+  await refreshConfigs()
+  dragConfigId.value = null
+}
+
+// Inline editing state
+const editingConfigId = ref<number | 'new' | null>(null)
+const editingPurpose = ref<AiPurpose>('generation')
+const inlineForm = reactive({
+  aiModelId: null as number | null,
+  temperature: '0.7',
+  isDefault: false,
+  enabled: true
+})
+
+function startNewConfig(purpose: AiPurpose) {
+  editingConfigId.value = 'new'
+  editingPurpose.value = purpose
+  inlineForm.aiModelId = null
+  inlineForm.temperature = '0.7'
+  inlineForm.isDefault = false
+  inlineForm.enabled = true
+}
+
+function startEditExistingConfig(config: AiConfigItem) {
+  editingConfigId.value = config.id
+  editingPurpose.value = config.purpose as AiPurpose
+  inlineForm.aiModelId = config.aiModel?.id ?? null
+  inlineForm.temperature = config.temperature || '0.7'
+  inlineForm.isDefault = config.isDefault
+  inlineForm.enabled = config.enabled
+}
+
+async function saveInlineConfig(purpose: AiPurpose) {
+  if (!inlineForm.aiModelId) {
+    message.error('请选择一个模型')
+    return
+  }
+  const isNew = editingConfigId.value === 'new'
+  // For edits, preserve current isDefault from server data
+  const currentIsDefault = isNew
+    ? false
+    : (configs.value || []).find(c => c.id === editingConfigId.value)?.isDefault ?? false
+  try {
+    await post('/api/ai/config', {
+      id: isNew ? undefined : editingConfigId.value,
+      aiModelId: inlineForm.aiModelId,
+      purpose,
+      temperature: inlineForm.temperature?.trim() || '0.7',
+      isDefault: currentIsDefault,
+      enabled: inlineForm.enabled
+    }, { successMessage: isNew ? '配置已创建' : '配置已更新' })
+    editingConfigId.value = null
+    await refreshConfigs()
+  } catch {}
+}
+
+async function deleteConfig(config: AiConfigItem) {
+  dialog.warning({
+    title: '删除配置',
+    content: `确定删除「${config.aiModel?.name || '未知模型'}」的${purposeOptions.value.find(p => p.value === config.purpose)?.label || ''}配置？`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await apiDel('/api/ai/config', { query: { id: config.id }, successMessage: '配置已删除' })
+        await refreshConfigs()
+      } catch {}
+    }
+  })
+}
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <NSelect v-model:value="modelFilterEnabled" size="small" :options="[{ label: '全部状态', value: 'all' }, { label: '启用', value: 'true' }, { label: '禁用', value: 'false' }]" style="width: 100px" />
-        <NButton size="small" secondary :loading="checkingAll" @click="checkAllModels">
-          <template #icon><Icon icon="lucide:wifi" /></template>
-          检测全部
+  <div class="space-y-6">
+    <!-- Models Section -->
+    <div class="space-y-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <NSelect v-model:value="modelFilterEnabled" size="small" :options="[{ label: '全部状态', value: 'all' }, { label: '启用', value: 'true' }, { label: '禁用', value: 'false' }]" style="width: 100px" />
+          <NButton size="small" secondary :loading="checkingAll" @click="checkAllModels">
+            <template #icon><Icon icon="lucide:wifi" /></template>
+            检测全部
+          </NButton>
+        </div>
+        <NButton size="small" type="primary" @click="startCreateModel">
+          <template #icon><Icon icon="lucide:plus" /></template>
+          添加模型
         </NButton>
       </div>
-      <NButton size="small" type="primary" @click="startCreateModel">
-        <template #icon><Icon icon="lucide:plus" /></template>
-        添加模型
-      </NButton>
+
+      <NDataTable
+        :columns="tableColumns"
+        :data="sortedModels"
+        :bordered="false"
+        size="small"
+        :row-key="(row: AiModelItem) => row.id"
+      >
+        <template #empty>
+          <div class="py-8 text-center">
+            <Icon icon="lucide:brain" class="size-10 text-(--ui-text-dimmed)/30 mx-auto mb-3" />
+            <p class="text-sm text-(--ui-text-dimmed)">暂无模型，点击上方添加</p>
+          </div>
+        </template>
+      </NDataTable>
     </div>
 
-    <NDataTable
-      :columns="tableColumns"
-      :data="sortedModels"
-      :bordered="false"
-      size="small"
-      :row-key="(row: AiModelItem) => row.id"
-    >
-      <template #empty>
-        <div class="py-8 text-center">
-          <Icon icon="lucide:brain" class="size-10 text-(--ui-text-dimmed)/30 mx-auto mb-3" />
-          <p class="text-sm text-(--ui-text-dimmed)">暂无模型，点击上方添加</p>
+    <!-- Divider -->
+    <div class="border-t border-(--ui-border)" />
+
+    <!-- Purpose Configs Section -->
+    <div class="space-y-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="text-sm font-semibold text-(--ui-text-highlighted)">用途配置</h3>
+          <p class="mt-0.5 text-[11px] text-(--ui-text-dimmed)">为每个用途绑定模型，拖动排序，排在第一个的为默认</p>
         </div>
-      </template>
-    </NDataTable>
+      </div>
+
+      <NAlert v-if="enabledModelOptions.length === 0" type="warning" title="暂无可用模型">
+        请先在上方添加并启用至少一个模型
+      </NAlert>
+
+      <div class="space-y-3">
+        <div v-for="group in groupedConfigs" :key="group.value" class="card-surface overflow-hidden">
+          <!-- Purpose Header -->
+          <div class="flex items-center justify-between px-3 py-2 border-b border-(--ui-border)/40">
+            <div class="flex items-center gap-2">
+              <Icon :icon="group.icon" class="w-4 h-4 text-primary-500" />
+              <span class="text-sm font-semibold text-(--ui-text)">{{ group.label }}</span>
+              <span class="text-[10px] font-mono text-(--ui-text-dimmed)">{{ group.configs.length }}</span>
+            </div>
+            <button
+              v-if="availableModelOptions.length > 0"
+              class="text-[11px] text-primary-600 hover:underline font-medium"
+              @click="startNewConfig(group.value as AiPurpose)"
+            >添加</button>
+          </div>
+
+          <!-- Existing configs (read-only row, click to edit) -->
+          <div v-if="group.configs.length" class="p-1.5 space-y-1">
+            <div v-for="config in group.configs" :key="config.id">
+              <!-- View mode -->
+              <div
+                v-if="editingConfigId !== config.id"
+                draggable="true"
+                class="flex items-center gap-2 px-2.5 py-2 rounded-md transition-colors cursor-grab active:cursor-grabbing"
+                :class="[
+                  dragOverConfigId === config.id ? 'bg-primary-500/10 ring-1 ring-primary-500/30' : 'hover:bg-(--ui-bg-muted)/50',
+                  dragConfigId === config.id ? 'opacity-40' : ''
+                ]"
+                @dragstart="onDragStart(config.id, $event)"
+                @dragover="onDragOver(config.id, $event)"
+                @dragleave="onDragLeave()"
+                @drop="onDrop(config, $event)"
+                @click="startEditExistingConfig(config)"
+              >
+                <Icon icon="lucide:grip-vertical" class="w-3 h-3 shrink-0 text-(--ui-text-dimmed)/50" />
+                <div class="w-1.5 h-1.5 rounded-full shrink-0" :class="config.enabled && config.aiModel?.enabled ? 'bg-emerald-500' : 'bg-(--ui-text-dimmed)/30'" />
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-[12px] font-semibold text-(--ui-text) truncate">{{ config.aiModel?.name || '未知模型' }}</span>
+                    <span v-if="config.isDefault" class="text-[9px] px-1 py-0.5 rounded bg-primary-500/10 text-primary-600 font-bold">默认</span>
+                    <span v-if="config.aiModel && !config.aiModel.enabled" class="text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 font-bold">模型已禁用</span>
+                  </div>
+                  <p class="text-[10px] text-(--ui-text-dimmed) truncate">{{ config.aiModel?.model }} · 温度 {{ config.temperature || '0.7' }}</p>
+                </div>
+                <button class="flex items-center justify-center w-5 h-5 rounded text-(--ui-text-dimmed) hover:text-red-500 hover:bg-red-500/5 transition-colors shrink-0" @click.stop="deleteConfig(config)">
+                  <Icon icon="lucide:trash-2" class="w-3 h-3" />
+                </button>
+              </div>
+
+              <!-- Edit mode (inline) -->
+              <div
+                v-else
+                class="px-2.5 py-2 rounded-md bg-(--ui-bg-muted)/60 ring-1 ring-primary-500/30 space-y-2"
+              >
+                <div class="flex items-center gap-2">
+                  <NSelect
+                    v-model:value="inlineForm.aiModelId"
+                    :options="enabledModelOptions"
+                    placeholder="选择模型"
+                    size="small"
+                    filterable
+                    class="flex-1"
+                  />
+                  <NInput
+                    v-model:value="inlineForm.temperature"
+                    placeholder="0.7"
+                    size="small"
+                    style="width: 70px"
+                  />
+                  <NSwitch
+                    v-model:value="inlineForm.enabled"
+                    size="small"
+                  />
+                </div>
+                <div class="flex justify-end gap-1.5">
+                  <NButton size="tiny" quaternary @click="editingConfigId = null">取消</NButton>
+                  <NButton size="tiny" type="primary" @click="saveInlineConfig(group.value as AiPurpose)">保存</NButton>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- New config inline form -->
+          <div
+            v-if="editingConfigId === 'new' && editingPurpose === group.value && availableModelOptions.length > 0"
+            class="px-2.5 py-2 space-y-2"
+            :class="group.configs.length ? 'border-t border-(--ui-border)/30' : ''"
+          >
+            <div class="flex items-center gap-2">
+              <NSelect
+                v-model:value="inlineForm.aiModelId"
+                :options="availableModelOptions"
+                placeholder="选择模型"
+                size="small"
+                filterable
+                class="flex-1"
+              />
+              <NInput
+                v-model:value="inlineForm.temperature"
+                placeholder="0.7"
+                size="small"
+                style="width: 70px"
+              />
+              <button
+                class="text-[10px] px-1.5 py-0.5 rounded transition-colors shrink-0"
+                :class="inlineForm.isDefault ? 'bg-primary-500/10 text-primary-600 font-bold' : 'text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)'"
+                @click="inlineForm.isDefault = !inlineForm.isDefault"
+              >默认</button>
+              <NSwitch
+                v-model:value="inlineForm.enabled"
+                size="small"
+              />
+            </div>
+            <div class="flex justify-end gap-1.5">
+              <NButton size="tiny" quaternary @click="editingConfigId = null">取消</NButton>
+              <NButton size="tiny" type="primary" @click="saveInlineConfig(group.value as AiPurpose)">保存</NButton>
+            </div>
+          </div>
+
+          <!-- Empty state (only when no configs AND not adding new for this purpose) -->
+          <div
+            v-if="!group.configs.length && !(editingConfigId === 'new' && editingPurpose === group.value)"
+            class="px-3 py-4 text-center"
+          >
+            <p class="text-[11px] text-(--ui-text-dimmed)">暂无配置，点击「添加」</p>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Model Form Modal -->
     <NModal v-model:show="showModelForm" preset="card" :title="modelForm.id ? '编辑模型' : '添加模型'" style="max-width: 520px">

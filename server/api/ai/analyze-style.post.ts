@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { callAiWithUsage } from '../../utils/ai-client'
+import { callAiWithUsage, toAiOptions } from '../../utils/ai-client'
 import { recordUsage } from '../../utils/ai-stream'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildStyleAnalysisPrompt } from '../../utils/ai-prompts'
@@ -39,14 +39,11 @@ export default defineEventHandler(async (event) => {
 
   const messages = buildStyleAnalysisPrompt(sampleText)
 
-  const { content: styleGuide, inputTokens, outputTokens } = await callAiWithUsage({
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
+  const { content: styleGuide, inputTokens, outputTokens } = await callAiWithUsage(toAiOptions(aiConfig, {
     messages,
     temperature: 0.3,
     maxTokens: 1000,
-  })
+  }))
 
   await recordUsage({ em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, inputTokens, outputTokens)
 

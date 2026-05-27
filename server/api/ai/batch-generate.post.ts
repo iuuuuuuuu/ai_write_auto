@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { streamAi } from '../../utils/ai-client'
+import { streamAi, toAiOptions } from '../../utils/ai-client'
 import { createRequestSignal, recordUsage, estimateTokens } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
@@ -123,17 +123,14 @@ export default defineEventHandler(async (event) => {
           let inputTokens = 0
           let outputTokens = 0
           let chunkCount = 0
-          for await (const chunk of streamAi({
-            apiUrl: aiConfig.apiUrl,
-            apiKey: aiConfig.apiKey,
-            model: aiConfig.model,
+          for await (const chunk of streamAi(toAiOptions(aiConfig, {
             temperature:
               novel.aiTemperature ? parseFloat(novel.aiTemperature) : parseFloat(aiConfig.temperature ?? '0.7'),
             maxTokens: aiConfig.maxTokens || 4096,
             messages: prompt,
             stream: true,
             signal
-          })) {
+          }))) {
             chunkCount++
             if (chunkCount % 20 === 0) {
               const liveStatus = await readTaskStatus()

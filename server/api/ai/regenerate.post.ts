@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createTrackedStreamResponse } from '../../utils/ai-stream'
+import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildRegenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema } from '../../database/entities'
@@ -74,12 +75,7 @@ export default defineEventHandler(async (event) => {
     : parseFloat(aiConfig.temperature ?? '0.7')
 
   return createTrackedStreamResponse(event, {
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    messages,
-    temperature,
-    maxTokens: data.maxTokens || aiConfig.maxTokens || 4096,
+    ...toAiOptions(aiConfig, { messages, temperature, maxTokens: data.maxTokens || aiConfig.maxTokens || 4096 }),
   }, {
     em,
     userId: auth.userId,

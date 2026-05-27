@@ -14,7 +14,7 @@ const navItems = computed(() => [
     to: '/dashboard'
   },
   {
-    label: '模型库',
+    label: 'AI 配置',
     icon: 'lucide:brain',
     to: '/models'
   },

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createStreamResponse } from '../../utils/ai-stream'
+import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { MAX_TOKENS_SUGGEST } from '../../utils/ai-constants'
 import { buildSuggestionPrompt } from '../../utils/ai-prompts'
@@ -38,11 +39,10 @@ export default defineEventHandler(async (event) => {
   })
 
   return createStreamResponse(event, {
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    messages,
-    temperature: 0.4,
-    maxTokens: MAX_TOKENS_SUGGEST
+    ...toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.4,
+      maxTokens: MAX_TOKENS_SUGGEST
+    }),
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, { parseJsonResult: true })
 })

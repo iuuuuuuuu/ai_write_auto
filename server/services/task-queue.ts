@@ -1,5 +1,5 @@
 import { getOrm } from '../database'
-import { callAiWithUsage } from '../utils/ai-client'
+import { callAiWithUsage, toAiOptions } from '../utils/ai-client'
 import { runConsistencyCheck } from '../utils/consistency-check'
 import { recordUsage, type StreamContext } from '../utils/ai-stream'
 import {
@@ -158,14 +158,11 @@ async function processTask(task: GenerationTask): Promise<void> {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildSummaryPrompt(chapter.content)
-          const aiResult = await callAiWithUsage({
-            apiUrl: aiConfig.apiUrl,
-            apiKey: aiConfig.apiKey,
-            model: aiConfig.model,
+          const aiResult = await callAiWithUsage(toAiOptions(aiConfig, {
             messages,
             temperature: 0.3,
             maxTokens: 500
-          })
+          }))
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
           totalOutputTokens += aiResult.outputTokens
@@ -186,14 +183,11 @@ async function processTask(task: GenerationTask): Promise<void> {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildCharacterExtractionPrompt(chapter.content)
-          const aiResult = await callAiWithUsage({
-            apiUrl: aiConfig.apiUrl,
-            apiKey: aiConfig.apiKey,
-            model: aiConfig.model,
+          const aiResult = await callAiWithUsage(toAiOptions(aiConfig, {
             messages,
             temperature: 0.2,
             maxTokens: 2000
-          })
+          }))
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
           totalOutputTokens += aiResult.outputTokens
@@ -293,14 +287,11 @@ async function processTask(task: GenerationTask): Promise<void> {
                 chapter.content,
                 appearances.map(a => ({ snippet: a.snippet, background: a.background }))
               )
-              const storyResult = await callAiWithUsage({
-                apiUrl: aiConfig.apiUrl,
-                apiKey: aiConfig.apiKey,
-                model: aiConfig.model,
+              const storyResult = await callAiWithUsage(toAiOptions(aiConfig, {
                 messages: storyMessages,
                 temperature: 0.3,
                 maxTokens: 500
-              })
+              }))
               const chapterStory = storyResult.content
               totalInputTokens += storyResult.inputTokens
               totalOutputTokens += storyResult.outputTokens
@@ -313,14 +304,11 @@ async function processTask(task: GenerationTask): Promise<void> {
                 chapterStory,
                 chapter.chapterNumber
               )
-              const arcResult = await callAiWithUsage({
-                apiUrl: aiConfig.apiUrl,
-                apiKey: aiConfig.apiKey,
-                model: aiConfig.model,
+              const arcResult = await callAiWithUsage(toAiOptions(aiConfig, {
                 messages: arcMessages,
                 temperature: 0.3,
                 maxTokens: 800
-              })
+              }))
               totalInputTokens += arcResult.inputTokens
               totalOutputTokens += arcResult.outputTokens
               charEntity.overallArc = arcResult.content
@@ -393,14 +381,11 @@ async function processTask(task: GenerationTask): Promise<void> {
             if (summaries.length < 3) continue
 
             const messages = buildStoryArcPrompt(summaries, startChapter, endChapter)
-            const arcResult = await callAiWithUsage({
-              apiUrl: aiConfig.apiUrl,
-              apiKey: aiConfig.apiKey,
-              model: aiConfig.model,
+            const arcResult = await callAiWithUsage(toAiOptions(aiConfig, {
               messages,
               temperature: 0.3,
               maxTokens: 500
-            })
+            }))
             const arcSummary = arcResult.content
             totalInputTokens += arcResult.inputTokens
             totalOutputTokens += arcResult.outputTokens
@@ -439,14 +424,11 @@ async function processTask(task: GenerationTask): Promise<void> {
             { role: 'system' as const, content: '你是一位文学评论家和写作风格分析师。请分析以下文本的写作风格，包括：叙事视角、句式特点、用词习惯、节奏感、修辞手法、情感基调。输出简洁的风格指南（200字以内），可直接用于指导 AI 续写时保持一致风格。' },
             { role: 'user' as const, content: `请分析以下小说片段的写作风格：\n\n${sampleText}` }
           ]
-          const styleResult = await callAiWithUsage({
-            apiUrl: aiConfig.apiUrl,
-            apiKey: aiConfig.apiKey,
-            model: aiConfig.model,
+          const styleResult = await callAiWithUsage(toAiOptions(aiConfig, {
             messages,
             temperature: 0.3,
             maxTokens: 500
-          })
+          }))
           const styleGuide = styleResult.content
           totalInputTokens += styleResult.inputTokens
           totalOutputTokens += styleResult.outputTokens

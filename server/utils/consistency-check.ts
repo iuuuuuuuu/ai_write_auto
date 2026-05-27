@@ -1,5 +1,5 @@
 import type { EntityManager } from '@mikro-orm/core'
-import { callAi } from './ai-client'
+import { callAi, toAiOptions } from './ai-client'
 import { buildConsistencyCheckPrompt } from './ai-prompts'
 import { AiConfigSchema, ChapterSchema, CharacterSchema, ConsistencyIssueSchema } from '../database/entities'
 
@@ -15,7 +15,7 @@ export async function runConsistencyCheck(
   if (!config || !config.aiModel) return []
   const aiModel = config.aiModel as any
   if (!aiModel.enabled) return []
-  const aiConfig = { apiUrl: aiModel.apiUrl, apiKey: aiModel.apiKey, model: aiModel.model }
+  const aiConfig = { apiUrl: aiModel.apiUrl, apiKey: aiModel.apiKey, model: aiModel.model, modelId: aiModel.id }
 
   const targetChapter = await em.findOne(ChapterSchema, {
     id: chapterId,
@@ -43,14 +43,11 @@ export async function runConsistencyCheck(
     targetChapter: { chapterNumber: targetChapter.chapterNumber, content: targetChapter.content }
   })
 
-  const result = await callAi({
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
+  const result = await callAi(toAiOptions(aiConfig, {
     messages,
     temperature: 0.2,
     maxTokens: 2000,
-  })
+  }))
 
   try {
     const jsonMatch = result.match(/\[[\s\S]*\]/)

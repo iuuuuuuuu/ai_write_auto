@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createStreamResponse } from '../../../../utils/ai-stream'
+import { toAiOptions } from '../../../../utils/ai-client'
 import { buildCharacterGenerationPrompt } from '../../../../utils/ai-prompts'
 import {
   NovelSchema,
@@ -66,11 +67,10 @@ export default defineEventHandler(async (event) => {
   })
 
   return createStreamResponse(event, {
-    apiUrl: aiConfig.apiUrl,
-    apiKey: aiConfig.apiKey,
-    model: aiConfig.model,
-    messages,
-    temperature: 0.8,
-    maxTokens: 4096
+    ...toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.8,
+      maxTokens: 4096
+    }),
   }, { em, userId: auth.userId, configId: aiConfig.configId, model: aiConfig.model })
 })
