@@ -28,6 +28,7 @@ function stripThinking(text: string): string {
   const cleaned = text
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
+    .replace(/^The request was rejected.*|^This content violates.*|content.?policy|safety filter/gi, '')
     .trim()
   // Reasoning models may wrap the entire output in <think> tags.
   // Fall back to the raw text so we don't return empty content.
@@ -149,6 +150,10 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
           const usage = parsed.usage
 
           if (delta) {
+            // Skip content moderation messages from API providers
+            if (/^The request was rejected|^This content violates|content.?policy|safety filter/i.test(delta)) {
+              continue
+            }
             hasContent = true
             if (insideThink) {
               thinkBuffer += delta

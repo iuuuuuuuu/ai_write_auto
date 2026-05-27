@@ -650,6 +650,29 @@ async function fetchPromptTemplates() {
     promptTemplates.value = data.filter(
       (t) => t.category === 'generation' || t.category === 'custom'
     )
+    // Restore last selected template
+    if (!selectedTemplateId.value && promptTemplates.value.length) {
+      const hasNoChapters = !allChapters.value?.length
+      if (hasNoChapters) {
+        // First chapter: default to "开篇引入" system template
+        const opening = promptTemplates.value.find(
+          (t) => t.isSystem && t.name === '开篇引入'
+        )
+        if (opening) {
+          selectedTemplateId.value = opening.id
+          applyTemplate(opening.id)
+        }
+      } else {
+        const saved = localStorage.getItem('chapter_last_prompt_template_id')
+        if (saved) {
+          const id = Number(saved)
+          if (promptTemplates.value.some((t) => t.id === id)) {
+            selectedTemplateId.value = id
+            applyTemplate(id)
+          }
+        }
+      }
+    }
   } catch {}
 }
 
@@ -658,6 +681,10 @@ function applyTemplate(id: number | null) {
   const tpl = promptTemplates.value.find((t) => t.id === id)
   if (tpl) generateDirection.value = tpl.content
 }
+
+watch(selectedTemplateId, (id) => {
+  if (id) localStorage.setItem('chapter_last_prompt_template_id', String(id))
+})
 
 const showSaveTemplateInput = ref(false)
 const newTemplateName = ref('')
