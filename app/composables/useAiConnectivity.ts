@@ -46,7 +46,8 @@ export function useAiConnectivity(options?: {
   }
 
   if (import.meta.client && immediate && !aiStatus.value.checkedAt) {
-    refreshAiStatus(shouldCheck)
+    // Defer to avoid SSR hydration mismatch (server renders isRefreshing=false)
+    setTimeout(() => refreshAiStatus(shouldCheck), 0)
   }
 
   let intervalId: ReturnType<typeof setInterval> | null = null

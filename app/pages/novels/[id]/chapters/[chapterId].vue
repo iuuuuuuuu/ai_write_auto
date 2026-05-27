@@ -535,8 +535,17 @@ const { data: preferences } = await useFetch<Record<string, string>>(
     default: () => ({})
   }
 )
-const { aiStatus, refreshAiStatus } = useAiConnectivity()
+const { aiStatus, refreshAiStatus, isRefreshing } = useAiConnectivity()
 const { recordReading } = useReadingHistory()
+
+async function retryAiStatus() {
+  await refreshAiStatus(true)
+  if (aiStatus.value.available) {
+    message.success('AI 已恢复连接')
+  } else {
+    message.warning(aiStatus.value.reason || 'AI 仍然离线，请检查模型配置')
+  }
+}
 
 watch(
   [() => chapter.value, () => novelInfo.value],
@@ -2039,13 +2048,20 @@ onBeforeUnmount(() => {
           title="AI 当前不可用，仍可手动写作"
         >
           <Icon
+            v-if="!isRefreshing"
             icon="lucide:wifi-off"
             class="w-3 h-3"
           />
-          AI 离线
+          <Icon
+            v-else
+            icon="lucide:loader-2"
+            class="w-3 h-3 animate-spin"
+          />
+          {{ isRefreshing ? '检测中...' : 'AI 离线' }}
           <button
-            class="text-[11px] underline underline-offset-2"
-            @click="() => refreshAiStatus()"
+            class="text-[11px] underline underline-offset-2 disabled:opacity-50 disabled:no-underline"
+            :disabled="isRefreshing"
+            @click="() => retryAiStatus()"
           >
             重试
           </button>

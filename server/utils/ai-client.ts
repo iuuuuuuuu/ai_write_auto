@@ -9,6 +9,7 @@ export interface AiRequestOptions {
   maxTokens?: number
   stream?: boolean
   signal?: AbortSignal
+  extraBody?: Record<string, unknown>
 }
 
 export interface AiStreamChunk {
@@ -24,10 +25,16 @@ export interface AiResultWithUsage {
 }
 
 function stripThinking(text: string): string {
-  return text
+  const cleaned = text
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
     .trim()
+  // Reasoning models may wrap the entire output in <think> tags.
+  // Fall back to the raw text so we don't return empty content.
+  if (!cleaned && text.trim()) {
+    return text.trim()
+  }
+  return cleaned
 }
 
 async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Response> {
@@ -57,6 +64,7 @@ async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Resp
         temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 4096,
         stream,
+        ...options.extraBody,
       }),
       signal: controller.signal,
     })
@@ -90,9 +98,11 @@ export async function callAi(options: AiRequestOptions): Promise<string> {
 export async function callAiWithUsage(options: AiRequestOptions): Promise<AiResultWithUsage> {
   const response = await doFetch(options, false)
   const data = await response.json()
-  const content = data.choices[0]?.message?.content || ''
+  const msg = data.choices[0]?.message
+  // Prefer content; fall back to reasoning_content (some models put answer there)
+  const raw = msg?.content || msg?.reasoning_content || ''
   return {
-    content: stripThinking(content),
+    content: stripThinking(raw),
     inputTokens: data.usage?.prompt_tokens || 0,
     outputTokens: data.usage?.completion_tokens || 0
   }

@@ -92,7 +92,11 @@ export default defineEventHandler(async (event) => {
     model: aiConfig.model,
     messages,
     temperature: 0.8,
-    maxTokens: 50
+    maxTokens: 1024,
+    extraBody: {
+      enable_thinking: false,
+      reasoning_effort: 'low',
+    }
   })
 
   await recordUsage(
@@ -107,9 +111,18 @@ export default defineEventHandler(async (event) => {
   )
 
   const cleaned = title
+    .replace(/<think>[\s\S]*?<\/think>/g, '')
+    .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
     .replace(/["""''《》【】\n\r]/g, '')
     .trim()
     .slice(0, 20)
+
+  if (!cleaned) {
+    throw createError({
+      statusCode: 500,
+      message: `AI 返回标题为空，原始响应: ${title || '(空)'}`
+    })
+  }
 
   return {
     title: cleaned,
