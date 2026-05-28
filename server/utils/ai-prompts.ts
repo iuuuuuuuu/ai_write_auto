@@ -44,6 +44,64 @@ export interface PromptStoryArc {
   summary?: string | null
 }
 
+export interface PromptForeshadowing {
+  content: string
+  description: string | null
+  chapterNumber: number | null
+}
+
+export interface RagContextItem {
+  content: string
+  contentType: string
+  chapterId: number | null
+  characterName?: string
+  score?: number
+}
+
+function buildChapterSummaries(chapters: PromptChapter[], storyArcs?: PromptStoryArc[]): string {
+  let result = ''
+  const totalChapters = chapters.length
+  if (totalChapters <= 30) {
+    for (const ch of chapters) {
+      if (ch.summary) result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+    }
+  } else if (totalChapters <= 100) {
+    for (const ch of chapters) {
+      if (!ch.summary) continue
+      const isRecent = ch.chapterNumber > totalChapters - 15
+      const isFirst = ch.chapterNumber <= 5
+      if (isRecent || isFirst) {
+        result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+      } else {
+        const compressed = ch.summary.length > 80 ? ch.summary.slice(0, 80) + '…' : ch.summary
+        result += `第${ch.chapterNumber}章：${compressed}\n`
+      }
+    }
+  } else {
+    if (storyArcs?.length) {
+      result += '### 故事弧线概览\n'
+      for (const arc of storyArcs) {
+        result += `- ${arc.title}（第${arc.startChapter}-${arc.endChapter || '?'}章）：${arc.summary || '（进行中）'}\n`
+      }
+    }
+    result += '### 开篇章节\n'
+    for (const ch of chapters.slice(0, 5)) {
+      if (ch.summary) result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+    }
+    result += '\n### 关键节点\n'
+    for (const ch of chapters) {
+      if (ch.chapterNumber % 10 === 0 && ch.summary) result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+    }
+    result += '\n### 近期章节\n'
+    const recentStart = Math.max(0, totalChapters - 15)
+    for (let i = recentStart; i < totalChapters; i++) {
+      const ch = chapters[i]
+      if (ch?.summary) result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+    }
+  }
+  return result
+}
+
 export function buildGenerationPrompt(context: {
   novel: PromptNovel
   chapters: PromptChapter[]
@@ -53,7 +111,9 @@ export function buildGenerationPrompt(context: {
   currentChapterOutline?: string
   userDirection?: string
   storyArcs?: PromptStoryArc[]
-  ragContext?: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }>
+  ragContext?: RagContextItem[]
+  foreshadowing?: PromptForeshadowing[]
+  recentChapterContent?: Array<{ chapterNumber: number; title: string; content: string }>
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const {
     novel,
@@ -64,7 +124,9 @@ export function buildGenerationPrompt(context: {
     currentChapterOutline,
     userDirection,
     storyArcs,
-    ragContext
+    ragContext,
+    foreshadowing,
+    recentChapterContent
   } = context
 
   let systemPrompt = `你是一位专业的小说作家。请根据提供的上下文信息，生成高质量的小说章节内容。
@@ -127,41 +189,15 @@ export function buildGenerationPrompt(context: {
     }
   }
 
-  // Chapter summaries (adaptive compression)
+  // Chapter summaries (hierarchical - never drops middle chapters)
   if (chapters.length > 0) {
     userPrompt += `\n## 已有章节摘要\n`
-    const totalChapters = chapters.length
-
-    if (totalChapters <= 30) {
-      for (const ch of chapters) {
-        if (ch.summary) {
-          userPrompt += `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}\n`
-        }
-      }
-    } else {
-      // Arc compression for distant chapters
-      if (storyArcs?.length) {
-        userPrompt += `### 故事弧线\n`
-        for (const arc of storyArcs) {
-          userPrompt += `- ${arc.title}（第${arc.startChapter}-${arc.endChapter || '?'}章）：${arc.summary || ''}\n`
-        }
-      }
-      // Recent chapters keep individual summaries
-      const recentStart = Math.max(0, totalChapters - 10)
-      userPrompt += `\n### 近期章节\n`
-      for (let i = recentStart; i < totalChapters; i++) {
-        const ch = chapters[i]!
-        if (ch.summary) {
-          userPrompt += `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}\n`
-        }
-      }
-    }
-
+    userPrompt += buildChapterSummaries(chapters, storyArcs)
     // Sliding window: last 1-2 chapters full text
-    const windowSize = totalChapters > 20 ? 1 : 2
-    const windowStart = Math.max(0, totalChapters - windowSize)
+    const windowSize = chapters.length > 20 ? 1 : 2
+    const windowStart = Math.max(0, chapters.length - windowSize)
     userPrompt += `\n## 最近章节全文\n`
-    for (let i = windowStart; i < totalChapters; i++) {
+    for (let i = windowStart; i < chapters.length; i++) {
       const ch = chapters[i]!
       if (ch.content) {
         userPrompt += `\n### 第${ch.chapterNumber}章「${ch.title}」\n${ch.content}\n`
@@ -421,9 +457,10 @@ export function buildRegenerationPrompt(context: {
   currentChapterOutline?: string
   previousResult: string
   feedback: string
-  ragContext?: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }>
+  ragContext?: RagContextItem[]
+  foreshadowing?: PromptForeshadowing[]
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const { novel, chapters, characters, plotPoints, storyArcs, currentChapter, currentChapterOutline, previousResult, feedback, ragContext } = context
+  const { novel, chapters, characters, plotPoints, storyArcs, currentChapter, currentChapterOutline, previousResult, feedback, ragContext, foreshadowing } = context
 
   const systemPrompt = `你是一位专业的小说作家。用户对上一次生成的章节内容不满意，并提供了修改反馈。请根据反馈重新生成章节内容。
 

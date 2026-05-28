@@ -5,7 +5,7 @@ import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildRegenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema } from '../../database/entities'
 import { isEmbeddingReady } from '../../services/embedding'
-import { retrieveRelevant } from '../../services/character-rag'
+import { retrieveRelevant, getActiveForeshadowing } from '../../services/content-rag'
 
 const regenerateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -40,6 +40,9 @@ export default defineEventHandler(async (event) => {
     ? chapters.find(ch => ch.id === data.chapterId)
     : undefined
 
+  let foreshadowing: Array<{ content: string; description: string | null; chapterNumber: number | null }> | undefined
+  try { foreshadowing = await getActiveForeshadowing(data.novelId) } catch {}
+
   let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
   if (isEmbeddingReady()) {
     const query = [currentChapter?.title, data.feedback].filter(Boolean).join(' ')
@@ -58,7 +61,8 @@ export default defineEventHandler(async (event) => {
     currentChapterOutline: currentChapter?.summary || undefined,
     previousResult: data.previousResult,
     feedback: data.feedback,
-    ragContext
+    ragContext,
+    foreshadowing
   })
 
   const task = em.create(GenerationTaskSchema, {

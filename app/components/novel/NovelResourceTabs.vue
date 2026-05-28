@@ -1,5 +1,5 @@
-<script setup lang="ts">
-type NovelPanelTab = 'chapters' | 'characters' | 'outline'
+﻿<script setup lang="ts">
+type NovelPanelTab = 'chapters' | 'characters' | 'outline' | 'workspace' | 'foreshadowing'
 interface ChapterItem {
   id: number
   chapterNumber: number
@@ -31,18 +31,22 @@ const props = defineProps<{
   chapters: ChapterItem[]
   characters: CharacterItem[]
   outlines: OutlineItem[]
+  novelId: number
 }>()
 const emit = defineEmits<{
   createChapter: []
   createCharacter: []
   editCharacter: [character: CharacterItem]
   deleteCharacter: [characterId: number]
+  refresh: []
 }>()
 
 const tabs = [
   { key: 'chapters', label: '章节', icon: 'lucide:file-text' },
   { key: 'characters', label: '角色', icon: 'lucide:users' },
-  { key: 'outline', label: '大纲', icon: 'lucide:list' }
+  { key: 'outline', label: '大纲', icon: 'lucide:list' },
+  { key: 'workspace', label: '工作区', icon: 'lucide:sparkles' },
+  { key: 'foreshadowing', label: '伏笔', icon: 'lucide:link' }
 ] as const
 
 const searchQuery = shallowRef('')
@@ -373,6 +377,14 @@ function selectChapter(chapterId: number) {
         >
           暂无大纲
         </div>
+      </div>
+
+      <div v-show="activeTab === 'workspace'" class="space-y-3 p-1">
+        <NovelWorkspacePanel :novel-id="props.novelId" :chapters="props.chapters" @refresh="$emit('refresh')" />
+      </div>
+
+      <div v-show="activeTab === 'foreshadowing'" class="p-1">
+        <NovelForeshadowingPanel :novel-id="props.novelId" :chapters="props.chapters" />
       </div>
     </div>
   </aside>

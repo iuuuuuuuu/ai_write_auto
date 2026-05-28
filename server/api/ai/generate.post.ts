@@ -5,7 +5,7 @@ import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, NovelOutlineSchema } from '../../database/entities'
 import { isEmbeddingReady } from '../../services/embedding'
-import { retrieveRelevant } from '../../services/character-rag'
+import { retrieveRelevant, getActiveForeshadowing } from '../../services/content-rag'
 
 const generateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -46,6 +46,14 @@ export default defineEventHandler(async (event) => {
     if (outline) chapterOutline = outline.description
   }
 
+  let foreshadowing: Array<{ content: string; description: string | null; chapterNumber: number | null }> | undefined
+  try { foreshadowing = await getActiveForeshadowing(data.novelId) } catch {}
+
+  const recentChapterContent: Array<{ chapterNumber: number; title: string; content: string }> = []
+  for (const ch of precedingChapters.slice(-2)) {
+    if (ch.content) recentChapterContent.push({ chapterNumber: ch.chapterNumber, title: ch.title, content: ch.content.slice(-4000) })
+  }
+
   let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
   if (isEmbeddingReady()) {
     const query = [currentChapter?.title, chapterOutline, data.direction].filter(Boolean).join(' ')
@@ -63,7 +71,9 @@ export default defineEventHandler(async (event) => {
     currentChapter: currentChapter ? { title: currentChapter.title, chapterNumber: currentChapter.chapterNumber } : undefined,
     currentChapterOutline: chapterOutline,
     userDirection: data.direction,
-    ragContext
+    ragContext,
+    foreshadowing,
+    recentChapterContent
   })
 
   const task = em.create(GenerationTaskSchema, {

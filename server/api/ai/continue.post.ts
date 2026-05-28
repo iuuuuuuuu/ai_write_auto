@@ -4,6 +4,8 @@ import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { MAX_TOKENS_ACTION, CONTEXT_TRUNCATE_CHAPTER } from '../../utils/ai-constants'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
+import { isEmbeddingReady } from '../../services/embedding'
+import { retrieveRelevant, getActiveForeshadowing } from '../../services/content-rag'
 
 const continueSchema = z.object({
   novelId: z.number().int().positive(),
@@ -36,6 +38,33 @@ export default defineEventHandler(async (event) => {
   }
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
 
+  
+  // RAG: retrieve relevant context for continuity
+  let ragContextSection = ''
+  if (isEmbeddingReady()) {
+    const query = [chapter.title, data.contextBefore.slice(-200), data.direction].filter(Boolean).join(' ')
+    if (query) {
+      const ragResults = await retrieveRelevant(data.novelId, query, 8)
+      if (ragResults.length) {
+        ragContextSection = '\n## 相关上下文（基于续写位置检索）\n'
+        for (const item of ragResults) {
+          const label = item.characterName || `[${item.contentType}]`
+          ragContextSection += `- ${label}：${item.content}\n`
+        }
+      }
+    }
+  }
+
+  // Active foreshadowing
+  let foreshadowSection = ''
+  try {
+    const foreshadowing = await getActiveForeshadowing(data.novelId)
+    if (foreshadowing.length) {
+      foreshadowSection = '\n## 当前活跃伏笔\n'
+      for (const f of foreshadowing.slice(0, 5)) foreshadowSection += `- ${f.content}\n`
+    }
+  } catch {}
+
   const characterContext = characters.length > 0
     ? `\n角色：${characters.slice(0, 8).map(c => `${c.name}${c.traits ? `(${c.traits})` : ''}`).join('、')}`
     : ''
@@ -48,7 +77,7 @@ export default defineEventHandler(async (event) => {
     },
     {
       role: 'user' as const,
-      content: `小说：${novel.title}${novel.genre ? `（${novel.genre}）` : ''}\n章节：第${chapter.chapterNumber}章「${chapter.title}」${characterContext}\n\n光标前的内容（需从此处续写）：\n${data.contextBefore.slice(-CONTEXT_TRUNCATE_CHAPTER)}${data.direction ? `\n\n续写方向：${data.direction}` : ''}`
+      content: `小说：${novel.title}${characterContext}${ragContextSection}${foreshadowSection}\n\n光标前的内容${novel.genre ? `（${novel.genre}）` : ''}\n章节：第${chapter.chapterNumber}章「${chapter.title}」${characterContext}\n\n光标前的内容（需从此处续写）：\n${data.contextBefore.slice(-CONTEXT_TRUNCATE_CHAPTER)}${data.direction ? `\n\n续写方向：${data.direction}` : ''}`
     }
   ]
 

@@ -7,7 +7,7 @@ export interface VectorRecord {
   characterId: number
   chapterId: number | null
   novelId: number
-  contentType: 'chapter_story' | 'overall_arc' | 'profile'
+  contentType: 'chapter_story' | 'overall_arc' | 'profile' | 'plot_event' | 'world_detail' | 'foreshadowing' | 'chapter_summary'
   content: string
   embedding: Float32Array
 }

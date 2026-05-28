@@ -10,7 +10,7 @@ import {
   buildStoryArcPrompt
 } from '../utils/ai-prompts'
 import { isEmbeddingReady } from './embedding'
-import { indexCharacterEvent } from './character-rag'
+import { indexCharacterEvent, indexChapterSummary } from './content-rag'
 import {
   GenerationTaskSchema,
   ChapterSchema,
@@ -173,6 +173,10 @@ async function processTask(task: GenerationTask): Promise<void> {
             { id: chapter.id },
             { summary: result }
           )
+          // Index summary for RAG retrieval
+          if (isEmbeddingReady() && result) {
+            await indexChapterSummary(novelId, chapter.id, result).catch(() => {})
+          }
         }
       }
     }

@@ -1,4 +1,4 @@
-import { EntitySchema, type OptionalProps } from '@mikro-orm/core'
+﻿import { EntitySchema, type OptionalProps } from '@mikro-orm/core'
 import { UnixTimestampType } from '../types/UnixTimestampType'
 
 // ─── Interfaces ───
@@ -350,6 +350,18 @@ export interface ConsistencyIssue {
   severity: 'high' | 'medium' | 'low'
   description: string
   dismissed: boolean
+  createdAt: Date
+}
+
+export interface Foreshadowing {
+  [OptionalProps]?: 'id' | 'status' | 'resolvedAtChapter' | 'createdAt'
+  id: number
+  novel: Novel
+  chapter: Chapter | null
+  content: string
+  description: string | null
+  status: 'active' | 'resolved' | 'abandoned'
+  resolvedAtChapter: number | null
   createdAt: Date
 }
 
@@ -998,6 +1010,25 @@ export const ConsistencyIssueSchema = new EntitySchema<ConsistencyIssue>({
   }
 })
 
+export const ForeshadowingSchema = new EntitySchema<Foreshadowing>({
+  name: 'Foreshadowing',
+  tableName: 'foreshadowings',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+    chapter: { kind: 'm:1', entity: () => 'Chapter', fieldName: 'chapter_id', nullable: true },
+    content: { type: 'string' },
+    description: { type: 'string', nullable: true },
+    status: { type: 'string', default: 'active' },
+    resolvedAtChapter: { type: 'number', nullable: true, fieldName: 'resolved_at_chapter' },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    }
+  }
+})
+
 export const allEntities = [
   UserSchema,
   SiteConfigSchema,
@@ -1023,5 +1054,6 @@ export const allEntities = [
   SchemaMigrationSchema,
   ApiTokenSchema,
   ModelCostRateSchema,
-  ConsistencyIssueSchema
+  ConsistencyIssueSchema,
+  ForeshadowingSchema
 ]

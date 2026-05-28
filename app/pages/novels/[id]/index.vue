@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import {
   cleanAiChapterTitle,
   formatAiTitleUsage,
@@ -196,7 +196,7 @@ watch(
   { immediate: true }
 )
 
-const { data: chapters } = await useFetch<ChapterItem[]>(
+const { data: chapters, refresh: refreshChapters } = await useFetch<ChapterItem[]>(
   `/api/novels/${novelId.value}/chapters`,
   { immediate: !!novel.value, default: () => [] }
 )
@@ -2678,7 +2678,24 @@ async function savePlotPoint() {
         </template>
       </NModal>
 
-      <!-- AI Generate Outline Dialog -->
+      
+        <!-- Workspace & Foreshadowing -->
+        <section class="card-glass p-5">
+          <div class="flex flex-col gap-3">
+            <div class="flex items-center gap-2">
+              <Icon icon="lucide:workflow" class="size-4 text-primary-500" />
+              <h2 class="font-semibold text-(--ui-text-highlighted)">AI 工作区</h2>
+            </div>
+            <NovelWorkspacePanel :novel-id="novelId" :chapters="chapters || []" @refresh="refreshChapters" />
+          </div>
+        </section>
+
+        <section class="card-glass p-5">
+          <NovelForeshadowingPanel :novel-id="novelId" :chapters="chapters || []" />
+        </section>
+
+        
+        <!-- AI Generate Outline Dialog -->
       <NModal
         v-model:show="showGenerateOutlineDialog"
         preset="card"
