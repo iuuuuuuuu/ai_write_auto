@@ -1,13 +1,11 @@
 import { z } from 'zod'
 import { wrap } from '@mikro-orm/core'
-import { AiModelSchema, AiConfigSchema } from '../../database/entities'
-import { maskApiKey } from '../../utils/ai-configs'
+import { AiModelSchema, AiConfigSchema, AiProviderSchema } from '../../database/entities'
 
 const modelSchema = z.object({
   id: z.number().int().positive().optional(),
+  providerId: z.number().int().positive(),
   name: z.string().min(1).max(80),
-  apiUrl: z.string().url(),
-  apiKey: z.string().optional(),
   model: z.string().min(1),
   maxTokens: z.number().int().positive().optional(),
   enabled: z.boolean().optional(),
@@ -17,17 +15,19 @@ const modelSchema = z.object({
 })
 
 function serializeModel(model: any) {
+  const provider = model.provider
   return {
     id: model.id,
     name: model.name,
-    apiUrl: model.apiUrl,
-    maskedApiKey: maskApiKey(model.apiKey),
     model: model.model,
     maxTokens: model.maxTokens,
     enabled: model.enabled,
     lastCheckAt: model.lastCheckAt?.toISOString?.() || model.lastCheckAt || null,
     lastCheckAvailable: model.lastCheckAvailable,
     lastCheckReason: model.lastCheckReason,
+    providerId: provider?.id,
+    providerName: provider?.name,
+    apiUrl: provider?.apiUrl,
     createdAt: model.createdAt,
     updatedAt: model.updatedAt
   }
@@ -55,7 +55,7 @@ export default defineEventHandler(async (event) => {
     const models = await em.find(AiModelSchema, {
       user: auth.userId,
       ...enabledFilter
-    }, { orderBy })
+    }, { orderBy, populate: ['provider'] })
 
     return models.map(serializeModel)
   }
@@ -64,6 +64,11 @@ export default defineEventHandler(async (event) => {
     const body = await readBody(event)
     const data = modelSchema.parse(body)
 
+    const provider = await em.findOne(AiProviderSchema, { id: data.providerId, user: auth.userId })
+    if (!provider) {
+      throw createError({ statusCode: 400, message: '所选供应商不存在' })
+    }
+
     if (data.id) {
       const existing = await em.findOne(AiModelSchema, { id: data.id, user: auth.userId })
       if (!existing) {
@@ -71,11 +76,10 @@ export default defineEventHandler(async (event) => {
       }
       wrap(existing).assign({
         name: data.name,
-        apiUrl: data.apiUrl,
+        provider: data.providerId,
         model: data.model,
         maxTokens: data.maxTokens ?? existing.maxTokens,
         enabled: data.enabled ?? existing.enabled,
-        ...(data.apiKey ? { apiKey: data.apiKey } : {}),
         ...(data.lastCheckAt ? {
           lastCheckAt: new Date(data.lastCheckAt),
           lastCheckAvailable: data.lastCheckAvailable ?? null,
@@ -86,15 +90,10 @@ export default defineEventHandler(async (event) => {
       return serializeModel(existing)
     }
 
-    if (!data.apiKey) {
-      throw createError({ statusCode: 400, message: 'API 密钥为必填项' })
-    }
-
     const model = em.create(AiModelSchema, {
       user: auth.userId,
+      provider: data.providerId,
       name: data.name,
-      apiUrl: data.apiUrl,
-      apiKey: data.apiKey,
       model: data.model,
       maxTokens: data.maxTokens ?? 4096,
       enabled: data.enabled ?? true,

@@ -16,7 +16,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const [configs, novels, usage] = await Promise.all([
-    em.find(AiConfigSchema, { user: id }, { populate: ['aiModel'] }),
+    em.find(AiConfigSchema, { user: id }, { populate: ['aiModel', 'aiModel.provider'] }),
     em.find(NovelSchema, { user: id }),
     em.find(TokenUsageSchema, { user: id }),
   ])
@@ -36,6 +36,7 @@ export default defineEventHandler(async (event) => {
     },
     aiConfigs: configs.map((config) => {
       const aiModel = config.aiModel as any
+      const provider = aiModel?.provider
       return {
         id: config.id,
         purpose: config.purpose,
@@ -46,9 +47,9 @@ export default defineEventHandler(async (event) => {
           id: aiModel.id,
           name: aiModel.name,
           model: aiModel.model,
-          apiUrl: aiModel.apiUrl,
+          apiUrl: provider?.apiUrl,
           maxTokens: aiModel.maxTokens,
-          maskedApiKey: maskApiKey(aiModel.apiKey),
+          maskedApiKey: provider ? maskApiKey(provider.apiKey) : '',
           enabled: aiModel.enabled
         } : null,
         createdAt: config.createdAt,

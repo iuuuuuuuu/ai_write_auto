@@ -32,3 +32,4 @@ data/
 *plan*.md
 *.tar.gz
 *.tgz
+.codegraph/*.pid

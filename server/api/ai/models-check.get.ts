@@ -12,18 +12,19 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const { id } = schema.parse(query)
 
-  const model = await em.findOne(AiModelSchema, { id, user: auth.userId })
+  const model = await em.findOne(AiModelSchema, { id, user: auth.userId }, { populate: ['provider'] })
   if (!model) {
     throw createError({ statusCode: 404, message: '模型不存在' })
   }
 
+  const provider = model.provider as any
   let available = false
   let reason: string | null = null
 
   try {
     await callAi({
-      apiUrl: model.apiUrl,
-      apiKey: model.apiKey,
+      apiUrl: provider.apiUrl,
+      apiKey: provider.apiKey,
       model: model.model,
       messages: [{ role: 'user', content: '1+1' }],
       temperature: 0,

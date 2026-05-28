@@ -23,13 +23,14 @@ export default defineEventHandler(async (event) => {
     count: z.number().int().min(1).max(10).default(3)
   }).parse(body)
 
-  const configEntry = await em.findOne(AiConfigSchema, { purpose: 'extraction', enabled: true }, { populate: ['aiModel'] })
+  const configEntry = await em.findOne(AiConfigSchema, { purpose: 'extraction', enabled: true }, { populate: ['aiModel', 'aiModel.provider'] })
   if (!configEntry || !configEntry.aiModel) {
     throw createError({ statusCode: 400, message: '未找到信息提取的 AI 配置' })
   }
   const aiModel = configEntry.aiModel as any
   if (!aiModel.enabled) throw createError({ statusCode: 400, message: `模型「${aiModel.name}」已被禁用` })
-  const aiConfig = { apiUrl: aiModel.apiUrl, apiKey: aiModel.apiKey, model: aiModel.model, modelId: aiModel.id }
+  const provider = aiModel.provider
+  const aiConfig = { apiUrl: provider.apiUrl, apiKey: provider.apiKey, model: aiModel.model, modelId: aiModel.id }
 
   const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
   const outlines = await em.find(NovelOutlineSchema, { novel: novelId }, {

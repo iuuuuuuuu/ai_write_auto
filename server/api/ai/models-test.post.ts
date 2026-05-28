@@ -1,11 +1,12 @@
 import { z } from 'zod'
-import { AiModelSchema } from '../../database/entities'
+import { AiModelSchema, AiProviderSchema } from '../../database/entities'
 import { callAi } from '../../utils/ai-client'
 
 const schema = z.object({
-  apiUrl: z.string().url(),
-  apiKey: z.string().min(1),
+  apiUrl: z.string().url().optional(),
+  apiKey: z.string().optional(),
   model: z.string().min(1),
+  providerId: z.number().int().positive().optional(),
   existingModelId: z.number().int().positive().optional()
 })
 
@@ -15,11 +16,28 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const data = schema.parse(body)
 
+  let apiUrl = data.apiUrl
   let apiKey = data.apiKey
-  if (apiKey === '__use_existing__' && data.existingModelId) {
-    const existing = await em.findOne(AiModelSchema, { id: data.existingModelId, user: auth.userId })
+
+  // Resolve from provider if providerId given
+  if (data.providerId && (!apiUrl || !apiKey)) {
+    const provider = await em.findOne(AiProviderSchema, { id: data.providerId, user: auth.userId })
+    if (!provider) throw createError({ statusCode: 404, message: '供应商不存在' })
+    apiUrl = apiUrl || provider.apiUrl
+    apiKey = apiKey || provider.apiKey
+  }
+
+  // Resolve from existing model's provider
+  if (data.existingModelId && (!apiUrl || !apiKey)) {
+    const existing = await em.findOne(AiModelSchema, { id: data.existingModelId, user: auth.userId }, { populate: ['provider'] })
     if (!existing) throw createError({ statusCode: 404, message: '模型不存在' })
-    apiKey = existing.apiKey
+    const prov = existing.provider as any
+    apiUrl = apiUrl || prov.apiUrl
+    apiKey = apiKey || prov.apiKey
+  }
+
+  if (!apiUrl || !apiKey) {
+    throw createError({ statusCode: 400, message: '缺少 API 地址或密钥' })
   }
 
   let available = false
@@ -27,7 +45,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     await callAi({
-      apiUrl: data.apiUrl,
+      apiUrl,
       apiKey,
       model: data.model,
       messages: [{ role: 'user', content: '1+1' }],
@@ -39,7 +57,7 @@ export default defineEventHandler(async (event) => {
     reason = e.message || '连通性检测失败'
   }
 
-  // If testing an existing model, persist the check result
+  // Persist check result on existing model
   if (data.existingModelId) {
     const model = await em.findOne(AiModelSchema, { id: data.existingModelId, user: auth.userId })
     if (model) {

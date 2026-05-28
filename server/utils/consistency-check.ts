@@ -9,13 +9,15 @@ export async function runConsistencyCheck(
   novelId: number,
   chapterId: number
 ): Promise<Array<{ type: string; severity: string; description: string }>> {
-  const config = await em.findOne(AiConfigSchema, { user: userId, purpose: 'consistency_check', enabled: true, isDefault: true }, { populate: ['aiModel'] })
-    || await em.findOne(AiConfigSchema, { user: userId, purpose: 'consistency_check', enabled: true }, { populate: ['aiModel'] })
-    || await em.findOne(AiConfigSchema, { user: userId, purpose: 'extraction', enabled: true }, { populate: ['aiModel'] })
+  const config = await em.findOne(AiConfigSchema, { user: userId, purpose: 'consistency_check', enabled: true, isDefault: true }, { populate: ['aiModel', 'aiModel.provider'] })
+    || await em.findOne(AiConfigSchema, { user: userId, purpose: 'consistency_check', enabled: true }, { populate: ['aiModel', 'aiModel.provider'] })
+    || await em.findOne(AiConfigSchema, { user: userId, purpose: 'extraction', enabled: true }, { populate: ['aiModel', 'aiModel.provider'] })
   if (!config || !config.aiModel) return []
   const aiModel = config.aiModel as any
   if (!aiModel.enabled) return []
-  const aiConfig = { apiUrl: aiModel.apiUrl, apiKey: aiModel.apiKey, model: aiModel.model, modelId: aiModel.id }
+  const provider = aiModel.provider
+  if (!provider?.enabled) return []
+  const aiConfig = { apiUrl: provider.apiUrl, apiKey: provider.apiKey, model: aiModel.model, modelId: aiModel.id }
 
   const targetChapter = await em.findOne(ChapterSchema, {
     id: chapterId,

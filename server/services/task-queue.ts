@@ -33,17 +33,19 @@ async function resolveConfigForPurpose(em: any, purpose: string, userId?: number
   const filter: Record<string, unknown> = { purpose, enabled: true }
   if (userId) filter.user = userId
 
-  const config = await em.findOne(AiConfigSchema, { ...filter, isDefault: true }, { populate: ['aiModel'] })
-    || await em.findOne(AiConfigSchema, filter, { populate: ['aiModel'] })
+  const config = await em.findOne(AiConfigSchema, { ...filter, isDefault: true }, { populate: ['aiModel', 'aiModel.provider'] })
+    || await em.findOne(AiConfigSchema, filter, { populate: ['aiModel', 'aiModel.provider'] })
   if (!config || !config.aiModel) return null
   const aiModel = config.aiModel as any
   if (!aiModel.enabled) return null
+  const provider = aiModel.provider
+  if (!provider?.enabled) return null
   return {
     id: config.id,
     configId: config.id,
     modelId: aiModel.id,
-    apiUrl: aiModel.apiUrl,
-    apiKey: aiModel.apiKey,
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
     model: aiModel.model,
     temperature: config.temperature,
     maxTokens: aiModel.maxTokens
@@ -550,8 +552,8 @@ export async function processPendingTasks(): Promise<void> {
     )
 
     // Check if any AI config is available before processing
-    const anyConfig = await em.findOne(AiConfigSchema, { enabled: true }, { populate: ['aiModel'] })
-    if (!anyConfig || !(anyConfig.aiModel as any)?.enabled) {
+    const anyConfig = await em.findOne(AiConfigSchema, { enabled: true }, { populate: ['aiModel', 'aiModel.provider'] })
+    if (!anyConfig || !(anyConfig.aiModel as any)?.enabled || !(anyConfig.aiModel as any)?.provider?.enabled) {
       return
     }
 

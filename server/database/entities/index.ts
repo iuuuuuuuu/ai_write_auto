@@ -17,13 +17,27 @@ export interface SiteConfig {
   value: string
 }
 
-export interface AiModel {
+export interface AiProvider {
   [OptionalProps]?: 'id' | 'enabled' | 'lastCheckAt' | 'lastCheckAvailable' | 'lastCheckReason' | 'createdAt' | 'updatedAt'
   id: number
   user: User
   name: string
   apiUrl: string
   apiKey: string
+  enabled: boolean
+  lastCheckAt: Date | null
+  lastCheckAvailable: boolean | null
+  lastCheckReason: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface AiModel {
+  [OptionalProps]?: 'id' | 'enabled' | 'lastCheckAt' | 'lastCheckAvailable' | 'lastCheckReason' | 'createdAt' | 'updatedAt'
+  id: number
+  user: User
+  provider: AiProvider | null
+  name: string
   model: string
   maxTokens: number
   enabled: boolean
@@ -366,15 +380,41 @@ export const SiteConfigSchema = new EntitySchema<SiteConfig>({
   }
 })
 
-export const AiModelSchema = new EntitySchema<AiModel>({
-  name: 'AiModel',
-  tableName: 'ai_models',
+export const AiProviderSchema = new EntitySchema<AiProvider>({
+  name: 'AiProvider',
+  tableName: 'ai_providers',
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
     name: { type: 'string' },
     apiUrl: { type: 'string', fieldName: 'api_url' },
     apiKey: { type: 'string', fieldName: 'api_key' },
+    enabled: { type: 'boolean', default: true },
+    lastCheckAt: { type: UnixTimestampType, fieldName: 'last_check_at', nullable: true, default: null },
+    lastCheckAvailable: { type: 'boolean', fieldName: 'last_check_available', nullable: true, default: null },
+    lastCheckReason: { type: 'string', fieldName: 'last_check_reason', nullable: true, default: null },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    },
+    updatedAt: {
+      type: UnixTimestampType,
+      fieldName: 'updated_at',
+      onCreate: () => new Date(),
+      onUpdate: () => new Date()
+    }
+  }
+})
+
+export const AiModelSchema = new EntitySchema<AiModel>({
+  name: 'AiModel',
+  tableName: 'ai_models',
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
+    provider: { kind: 'm:1', entity: () => 'AiProvider', fieldName: 'provider_id', nullable: true },
+    name: { type: 'string' },
     model: { type: 'string' },
     maxTokens: { type: 'number', fieldName: 'max_tokens', default: 4096 },
     enabled: { type: 'boolean', default: true },
@@ -961,6 +1001,7 @@ export const ConsistencyIssueSchema = new EntitySchema<ConsistencyIssue>({
 export const allEntities = [
   UserSchema,
   SiteConfigSchema,
+  AiProviderSchema,
   AiModelSchema,
   AiConfigSchema,
   NovelSchema,

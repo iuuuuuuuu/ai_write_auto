@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
       limit: pagination.limit,
       offset: pagination.offset,
       orderBy: { createdAt: 'DESC' },
-      populate: ['aiModel', 'user']
+      populate: ['aiModel', 'aiModel.provider', 'user']
     }),
     em.count(AiConfigSchema, filter),
   ])
@@ -25,6 +25,7 @@ export default defineEventHandler(async (event) => {
   const items = configs.map((config) => {
     const aiModel = config.aiModel as any
     const user = config.user as any
+    const provider = aiModel?.provider
     return {
       id: config.id,
       userId: user?.id || user,
@@ -35,8 +36,8 @@ export default defineEventHandler(async (event) => {
       enabled: config.enabled,
       modelName: aiModel?.name || '',
       model: aiModel?.model || '',
-      apiUrl: aiModel?.apiUrl || '',
-      maskedApiKey: aiModel ? maskApiKey(aiModel.apiKey) : '',
+      apiUrl: provider?.apiUrl || '',
+      maskedApiKey: provider ? maskApiKey(provider.apiKey) : '',
       maxTokens: aiModel?.maxTokens || null,
       modelEnabled: aiModel?.enabled ?? true,
       createdAt: config.createdAt,

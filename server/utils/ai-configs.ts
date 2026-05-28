@@ -15,7 +15,7 @@
  * - 全局分析类操作 → resolveUserAiConfig（不依赖小说级别配置）
  */
 import type { EntityManager } from '@mikro-orm/core'
-import { AiConfigSchema, AiModelSchema, NovelSchema, type AiConfig, type AiModel } from '../database/entities'
+import { AiConfigSchema, NovelSchema, type AiConfig, type AiModel, type AiProvider } from '../database/entities'
 
 export type AiConfigPurpose =
   | 'generation'
@@ -42,12 +42,19 @@ function toResolved(config: AiConfig): ResolvedAiConfig {
       message: `模型「${aiModel.name}」已被禁用，请在模型库中启用或更换模型`
     })
   }
+  const provider = aiModel.provider as AiProvider
+  if (!provider.enabled) {
+    throw createError({
+      statusCode: 400,
+      message: `供应商「${provider.name}」已被禁用，请在模型库中启用或更换供应商`
+    })
+  }
   return {
     id: config.id,
     configId: config.id,
     modelId: aiModel.id,
-    apiUrl: aiModel.apiUrl,
-    apiKey: aiModel.apiKey,
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
     model: aiModel.model,
     temperature: config.temperature,
     maxTokens: aiModel.maxTokens
@@ -63,7 +70,7 @@ export async function resolveUserAiConfig(
   const configs = await em.find(AiConfigSchema, {
     user: userId,
     purpose,
-  }, { populate: ['aiModel'] })
+  }, { populate: ['aiModel', 'aiModel.provider'] })
 
   const enabledConfigs = configs.filter(c => c.enabled !== false)
   const config = aiConfigId
@@ -95,7 +102,7 @@ export async function resolveNovelAiConfig(
   if (novel?.aiConfig && (novel.aiConfig as any).id) {
     const novelConfig = await em.findOne(AiConfigSchema, {
       id: (novel.aiConfig as any).id
-    }, { populate: ['aiModel'] })
+    }, { populate: ['aiModel', 'aiModel.provider'] })
     if (novelConfig && novelConfig.enabled) {
       return toResolved(novelConfig)
     }
