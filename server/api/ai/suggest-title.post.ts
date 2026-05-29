@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { callAiWithUsage, toAiOptions } from '../../utils/ai-client'
+import { streamAi, toAiOptions } from '../../utils/ai-client'
 import { recordUsage } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import {
@@ -82,19 +82,25 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  const {
-    content: title,
-    inputTokens,
-    outputTokens
-  } = await callAiWithUsage(toAiOptions(aiConfig, {
+  let title = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(toAiOptions(aiConfig, {
     messages,
     temperature: 0.8,
     maxTokens: 1024,
+    stream: true,
     extraBody: {
       enable_thinking: false,
       reasoning_effort: 'low',
     }
-  }))
+  }))) {
+    if (chunk.content) title += chunk.content
+    if (chunk.usage) {
+      inputTokens = chunk.usage.prompt_tokens || inputTokens
+      outputTokens = chunk.usage.completion_tokens || outputTokens
+    }
+  }
 
   await recordUsage(
     {

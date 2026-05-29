@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { callAiWithUsage, toAiOptions } from '../../utils/ai-client'
+import { streamAi, toAiOptions } from '../../utils/ai-client'
+import { recordUsage } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { REVIEW_MAX_CHAPTERS } from '../../utils/ai-constants'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, ConsistencyIssueSchema } from '../../database/entities'
@@ -109,22 +110,33 @@ ${chapterContents.map(c => `### 第${c.number}章《${c.title}》\n${c.content}\
     { role: 'user' as const, content: reviewPrompt }
   ]
 
-  const result = await callAiWithUsage(toAiOptions(aiConfig, {
+  let reviewContent = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(toAiOptions(aiConfig, {
     messages,
     temperature: 0.2,
     maxTokens: 4096
-  }))
+  }))) {
+    if (chunk.content) reviewContent += chunk.content
+    if (chunk.usage) {
+      inputTokens = chunk.usage.prompt_tokens || inputTokens
+      outputTokens = chunk.usage.completion_tokens || outputTokens
+    }
+  }
+
+  await recordUsage({ em, userId: auth.userId, configId: aiConfig.configId, model: aiConfig.model }, inputTokens, outputTokens)
 
   let issues: ReviewIssue[] = []
   try {
-    const jsonMatch = result.content.match(/\[[\s\S]*\]/)
-    issues = JSON.parse(jsonMatch?.[0] || result.content)
+    const jsonMatch = reviewContent.match(/\[[\s\S]*\]/)
+    issues = JSON.parse(jsonMatch?.[0] || reviewContent)
   } catch {
     // If JSON parsing fails, return raw result
     return {
       success: true,
       issues: [],
-      rawResult: result.content,
+      rawResult: reviewContent,
       chaptersReviewed: chapters.length
     }
   }
@@ -170,17 +182,27 @@ ${chapterIssues.map(i => `- 问题：${i.description}\n  原文：${i.originalTe
         { role: 'user' as const, content: fixPrompt }
       ]
 
-      const fixResult = await callAiWithUsage(toAiOptions(aiConfig, {
+      let fixContent = ''
+      let fixInputTokens = 0
+      let fixOutputTokens = 0
+      for await (const chunk of streamAi(toAiOptions(aiConfig, {
         messages: fixMessages,
         temperature: 0.3,
         maxTokens: 8192
-      }))
+      }))) {
+        if (chunk.content) fixContent += chunk.content
+        if (chunk.usage) {
+          fixInputTokens = chunk.usage.prompt_tokens || fixInputTokens
+          fixOutputTokens = chunk.usage.completion_tokens || fixOutputTokens
+        }
+      }
+      await recordUsage({ em, userId: auth.userId, configId: aiConfig.configId, model: aiConfig.model }, fixInputTokens, fixOutputTokens)
 
-      if (fixResult.content && fixResult.content.length > 100) {
+      if (fixContent && fixContent.length > 100) {
         fixedChapters.push({
           chapterId,
           chapterNumber: chapter.chapterNumber,
-          fixedContent: fixResult.content
+          fixedContent: fixContent
         })
       }
     }

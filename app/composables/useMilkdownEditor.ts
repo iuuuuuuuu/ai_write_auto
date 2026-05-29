@@ -89,6 +89,33 @@ export function useMilkdownEditor(options: UseMilkdownEditorOptions = {}) {
     return selected
   }
 
+  function getSelectionRange(): { from: number; to: number } | null {
+    if (!editorInstance) return null
+    let range: { from: number; to: number } | null = null
+    editorInstance.action((ctx: Ctx) => {
+      const view = ctx.get(editorViewCtx)
+      const { selection } = view.state
+      if (!selection.empty) {
+        range = { from: selection.from, to: selection.to }
+      }
+    })
+    return range
+  }
+
+  function restoreSelectionRange(range: { from: number; to: number }) {
+    if (!editorInstance) return
+    editorInstance.action((ctx: Ctx) => {
+      const view = ctx.get(editorViewCtx)
+      const { state } = view
+      const { tr } = state
+      const $from = state.doc.resolve(range.from)
+      const SelClass = state.selection.constructor as any
+      const selection = SelClass.near ? SelClass.near($from) : state.selection
+      view.dispatch(tr.setSelection(selection))
+      view.focus()
+    })
+  }
+
   function replaceSelection(text: string) {
     if (!editorInstance) return
     editorInstance.action((ctx: Ctx) => {
@@ -183,6 +210,8 @@ export function useMilkdownEditor(options: UseMilkdownEditorOptions = {}) {
     getMarkdown,
     getPlainText,
     getSelectionText,
+    getSelectionRange,
+    restoreSelectionRange,
     replaceSelection,
     insertTextAtCursor,
     focus,

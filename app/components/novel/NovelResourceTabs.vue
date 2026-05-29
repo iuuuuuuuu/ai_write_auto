@@ -380,7 +380,14 @@ function selectChapter(chapterId: number) {
       </div>
 
       <div v-show="activeTab === 'workspace'" class="space-y-3 p-1">
-        <NovelWorkspacePanel :novel-id="props.novelId" :chapters="props.chapters" @refresh="$emit('refresh')" />
+        <div class="flex flex-col items-center gap-3 py-6">
+          <Icon icon="lucide:workflow" class="w-8 h-8 text-primary-500 opacity-50" />
+          <p class="text-xs text-(--ui-text-dimmed)">多章连贯生成与审核</p>
+          <NButton size="small" type="primary" @click="navigateTo(`/novels/${props.novelId}/workspace`)">
+            <template #icon><Icon icon="lucide:external-link" /></template>
+            打开工作区
+          </NButton>
+        </div>
       </div>
 
       <div v-show="activeTab === 'foreshadowing'" class="p-1">

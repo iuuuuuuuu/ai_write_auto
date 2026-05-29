@@ -618,6 +618,7 @@ const titleInputRef = ref<HTMLInputElement | null>(null)
 const showFloatingToolbar = ref(false)
 const floatingToolbarPos = reactive({ x: 0, y: 0 })
 const selectedText = ref('')
+const savedEditorSelection = ref<{ from: number; to: number } | null>(null)
 const expandingOrRewriting = ref(false)
 const aiActionResult = ref('')
 const aiActionType = ref<'expand' | 'rewrite' | 'continue' | null>(null)
@@ -820,6 +821,8 @@ const {
   getMarkdown: getEditorMarkdown,
   getPlainText: getEditorPlainText,
   getSelectionText: getEditorSelectionText,
+  getSelectionRange: getEditorSelectionRange,
+  restoreSelectionRange: restoreEditorSelectionRange,
   replaceSelection: replaceEditorSelection,
   insertTextAtCursor: insertEditorTextAtCursor,
   focus: focusEditor,
@@ -1339,6 +1342,8 @@ function discardTitleSuggestion() {
 }
 
 function handleTextSelect() {
+  // Don't clear selection during AI action — applyAiResult needs it
+  if (expandingOrRewriting.value) return
   const selected = getEditorSelectionText()
   if (selected && selected.trim().length > 0) {
     selectedText.value = selected
@@ -1355,7 +1360,23 @@ function handleTextSelect() {
   }
 }
 
-async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
+function onEditorMousedown(e: MouseEvent) {
+  if (expandingOrRewriting.value && savedEditorSelection.value) {
+    e.preventDefault()
+  }
+}
+
+function onDocumentMousedown(e: MouseEvent) {
+  // Preserve editor selection highlight during AI action
+  if (expandingOrRewriting.value && savedEditorSelection.value) {
+    // Allow clicks on the result panel buttons (apply/discard)
+    const target = e.target as HTMLElement
+    if (target.closest('.ai-result-panel')) return
+    e.preventDefault()
+  }
+}
+
+async function doAiAction(type: 'expand' | 'rewrite' | 'continue', direction?: string) {
   if (!aiStatus.value.available) {
     aiActionResult.value =
       aiStatus.value.reason || 'AI 当前不可用，仍可手动写作'
@@ -1366,6 +1387,8 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
   expandingOrRewriting.value = true
   aiActionResult.value = ''
   aiActionType.value = type
+  savedEditorSelection.value = getEditorSelectionRange()
+  document.addEventListener('mousedown', onDocumentMousedown, true)
 
   const controller = new AbortController()
   activeAbortController = controller
@@ -1379,6 +1402,7 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
     }
     if (type === 'continue') {
       body.contextBefore = getContextBeforeCursor()
+      if (direction) body.direction = direction
     } else {
       body.selectedText = selectedText.value
     }
@@ -1443,6 +1467,8 @@ async function doAiAction(type: 'expand' | 'rewrite' | 'continue') {
   } finally {
     clearTimeout(timeout)
     expandingOrRewriting.value = false
+    savedEditorSelection.value = null
+    document.removeEventListener('mousedown', onDocumentMousedown, true)
     activeAbortController = null
   }
 }
@@ -1548,10 +1574,12 @@ const trackChangesDiff = computed<DiffLine[]>(() => {
 
 function applyAiResult() {
   if (!aiActionResult.value) return
-  if (aiActionType.value === 'continue') {
+  if (aiActionType.value === 'continue' && selectedText.value) {
+    replaceEditorSelection(aiActionResult.value)
+  } else if (aiActionType.value === 'continue') {
     insertEditorTextAtCursor(aiActionResult.value)
   } else if (aiActionType.value === 'expand' && selectedText.value) {
-    replaceEditorSelection(selectedText.value + '\n\n' + aiActionResult.value)
+    replaceEditorSelection(aiActionResult.value)
   } else if (selectedText.value) {
     replaceEditorSelection(aiActionResult.value)
   }
@@ -2954,6 +2982,7 @@ onBeforeUnmount(() => {
               ref="editorContainerRef"
               class="chapter-writing-surface w-full min-h-full milkdown-editor px-4 py-4 text-(--ui-text) text-[15px] leading-[1.9] sm:px-6 sm:py-5"
               :class="zenMode ? 'min-h-screen leading-[2.05] lg:px-[6vw]' : ''"
+              @mousedown="onEditorMousedown"
               :style="
                 zenMode ?
                   { fontSize: `${zenFontSize}px`, fontFamily: zenFontFamily }
@@ -2966,7 +2995,7 @@ onBeforeUnmount(() => {
           <!-- AI Action Result -->
           <div
             v-if="aiActionResult || (expandingOrRewriting && aiActionType)"
-            class="mt-3 w-full rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 border-l-2 border-l-primary-400 shadow-sm max-h-[50vh] overflow-y-auto"
+            class="ai-result-panel mt-3 w-full rounded-xl bg-(--ui-bg-elevated) border border-(--ui-border)/50 border-l-2 border-l-primary-400 shadow-sm max-h-[50vh] overflow-y-auto"
             @mousedown.prevent
           >
             <div
@@ -3325,64 +3354,92 @@ onBeforeUnmount(() => {
             transform: 'translate(-50%, -100%)'
           }"
         >
-          <NButton
-            v-if="selectedText"
-            size="tiny"
-            quaternary
-            :loading="expandingOrRewriting"
-            @click="doAiAction('expand')"
-          >
-            <template #icon>
-              <Icon icon="lucide:expand" />
+          <NTooltip v-if="selectedText" trigger="hover">
+            <template #trigger>
+              <NButton
+                size="tiny"
+                quaternary
+                :loading="expandingOrRewriting"
+                @click="doAiAction('expand')"
+              >
+                <template #icon>
+                  <Icon icon="lucide:expand" />
+                </template>
+                {{ t('chapter.expand') }}
+              </NButton>
             </template>
-            {{ t('chapter.expand') }}
-          </NButton>
-          <NButton
-            v-if="selectedText"
-            size="tiny"
-            quaternary
-            :loading="expandingOrRewriting"
-            @click="doAiAction('rewrite')"
-          >
-            <template #icon>
-              <Icon icon="lucide:refresh-cw" />
+            补充细节，让选中内容更丰富生动
+          </NTooltip>
+          <NTooltip v-if="selectedText" trigger="hover">
+            <template #trigger>
+              <NButton
+                size="tiny"
+                quaternary
+                :loading="expandingOrRewriting"
+                @click="doAiAction('rewrite')"
+              >
+                <template #icon>
+                  <Icon icon="lucide:refresh-cw" />
+                </template>
+                {{ t('chapter.rewrite') }}
+              </NButton>
             </template>
-            {{ t('chapter.rewrite') }}
-          </NButton>
-          <NButton
-            v-if="!selectedText"
-            size="tiny"
-            quaternary
-            :loading="expandingOrRewriting"
-            :disabled="!aiStatus.available"
-            @click="doAiAction('continue')"
-          >
-            <template #icon>
-              <Icon icon="lucide:pen-line" />
+            换一种写法，提升选中内容的质量
+          </NTooltip>
+          <NTooltip trigger="hover">
+            <template #trigger>
+              <NButton
+                size="tiny"
+                quaternary
+                :loading="expandingOrRewriting"
+                :disabled="!aiStatus.available"
+                @click="doAiAction('continue')"
+              >
+                <template #icon>
+                  <Icon icon="lucide:pen-line" />
+                </template>
+                {{ t('chapter.continue') }}
+              </NButton>
             </template>
-            {{ t('chapter.continue') }}
-          </NButton>
+            从光标处接着往下写新内容
+          </NTooltip>
+          <NTooltip trigger="hover">
+            <template #trigger>
+              <NButton
+                size="tiny"
+                quaternary
+                :loading="expandingOrRewriting"
+                :disabled="!aiStatus.available"
+                @click="doAiAction('continue', '自然收尾')"
+              >
+                <template #icon>
+                  <Icon icon="lucide:circle-check" />
+                </template>
+                自然结尾
+              </NButton>
+            </template>
+            写一个收束段落，让情节自然停顿
+          </NTooltip>
           <NDropdown
-            v-if="!selectedText"
             trigger="hover"
             :options="[
               {
-                label: '对话',
+                label: '对话 - 生成人物对话',
                 key: 'dialogue',
                 icon: () => h(Icon, { icon: 'lucide:message-circle' })
               },
               {
-                label: '环境描写',
+                label: '环境描写 - 场景与氛围',
                 key: 'description',
                 icon: () => h(Icon, { icon: 'lucide:mountain' })
               },
               {
-                label: '动作场景',
+                label: '动作场景 - 节奏紧凑的画面',
                 key: 'action',
                 icon: () => h(Icon, { icon: 'lucide:swords' })
               },
               {
-                label: '内心独白',
+                label: '内心独白 - 角色心理活动',
                 key: 'monologue',
                 icon: () => h(Icon, { icon: 'lucide:brain' })
               }

@@ -2679,14 +2679,17 @@ async function savePlotPoint() {
       </NModal>
 
       
-        <!-- Workspace & Foreshadowing -->
+        <!-- Workspace -->
         <section class="card-glass p-5">
-          <div class="flex flex-col gap-3">
+          <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <Icon icon="lucide:workflow" class="size-4 text-primary-500" />
               <h2 class="font-semibold text-(--ui-text-highlighted)">AI 工作区</h2>
             </div>
-            <NovelWorkspacePanel :novel-id="novelId" :chapters="chapters || []" @refresh="refreshChapters" />
+            <NButton size="small" type="primary" @click="navigateTo(`/novels/${novelId}/workspace`)">
+              <template #icon><Icon icon="lucide:external-link" /></template>
+              打开工作区
+            </NButton>
           </div>
         </section>
 

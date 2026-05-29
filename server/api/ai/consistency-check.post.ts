@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { callAiWithUsage, toAiOptions } from '../../utils/ai-client'
+import { streamAi, toAiOptions } from '../../utils/ai-client'
 import { recordUsage } from '../../utils/ai-stream'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildConsistencyCheckPrompt } from '../../utils/ai-prompts'
@@ -42,11 +42,20 @@ export default defineEventHandler(async (event) => {
     targetChapter: { chapterNumber: targetChapter.chapterNumber, content: targetChapter.content || '' }
   })
 
-  const { content: result, inputTokens, outputTokens } = await callAiWithUsage(toAiOptions(resolved, {
+  let result = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(toAiOptions(resolved, {
     messages,
     temperature: 0.2,
     maxTokens: 2000,
-  }))
+  }))) {
+    if (chunk.content) result += chunk.content
+    if (chunk.usage) {
+      inputTokens = chunk.usage.prompt_tokens || inputTokens
+      outputTokens = chunk.usage.completion_tokens || outputTokens
+    }
+  }
 
   await recordUsage({ em, userId: auth.userId, configId: resolved.id, model: resolved.model }, inputTokens, outputTokens)
 

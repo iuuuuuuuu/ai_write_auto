@@ -66,6 +66,7 @@ interface StreamCollector {
   fullContent: string
   inputTokens: number
   outputTokens: number
+  truncated: boolean
 }
 
 function setSSEHeaders(event: H3Event) {
@@ -84,6 +85,7 @@ async function collectStream(
   let fullContent = ''
   let inputTokens = 0
   let outputTokens = 0
+  let truncated = false
 
   for await (const chunk of streamAi({ ...options, stream: true, signal })) {
     if (chunk.content) {
@@ -94,6 +96,7 @@ async function collectStream(
       inputTokens = chunk.usage.prompt_tokens || inputTokens
       outputTokens = chunk.usage.completion_tokens || outputTokens
     }
+    if (chunk.truncated) truncated = true
     if (chunk.done) break
   }
 
@@ -101,7 +104,7 @@ async function collectStream(
     outputTokens = estimateTokens(fullContent)
   }
 
-  return { fullContent, inputTokens, outputTokens }
+  return { fullContent, inputTokens, outputTokens, truncated }
 }
 
 export function createStreamResponse(
@@ -181,7 +184,7 @@ export function createInlineStreamResponse(
 
       controller.enqueue(encoder.encode(': connected\n\n'))
       try {
-        const { inputTokens, outputTokens } = await collectStream(
+        const { fullContent, inputTokens, outputTokens } = await collectStream(
           options,
           signal,
           (content) => send({ content, done: false })

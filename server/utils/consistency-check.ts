@@ -1,5 +1,5 @@
 import type { EntityManager } from '@mikro-orm/core'
-import { callAi, toAiOptions } from './ai-client'
+import { streamAi, toAiOptions } from './ai-client'
 import { buildConsistencyCheckPrompt } from './ai-prompts'
 import { AiConfigSchema, ChapterSchema, CharacterSchema, ConsistencyIssueSchema } from '../database/entities'
 
@@ -45,11 +45,14 @@ export async function runConsistencyCheck(
     targetChapter: { chapterNumber: targetChapter.chapterNumber, content: targetChapter.content }
   })
 
-  const result = await callAi(toAiOptions(aiConfig, {
+  let result = ''
+  for await (const chunk of streamAi(toAiOptions(aiConfig, {
     messages,
     temperature: 0.2,
     maxTokens: 2000,
-  }))
+  }))) {
+    if (chunk.content) result += chunk.content
+  }
 
   try {
     const jsonMatch = result.match(/\[[\s\S]*\]/)

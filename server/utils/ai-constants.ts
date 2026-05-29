@@ -1,8 +1,8 @@
-export const AI_CONNECT_TIMEOUT_MS = 15_000
-export const AI_STREAM_READ_TIMEOUT_MS = 30_000
+export const AI_CONNECT_TIMEOUT_MS = 30_000
+export const AI_STREAM_READ_TIMEOUT_MS = 60_000
 
-export const MAX_TOKENS_ACTION = 2000
-export const MAX_TOKENS_FRAGMENT = 1500
+export const MAX_TOKENS_ACTION = 4096
+export const MAX_TOKENS_FRAGMENT = 2000
 export const MAX_TOKENS_SUGGEST = 4000
 export const MAX_TOKENS_DEFAULT = 4096
 

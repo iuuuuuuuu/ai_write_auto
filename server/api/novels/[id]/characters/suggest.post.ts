@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { callAi, toAiOptions } from '../../../../utils/ai-client'
+import { streamAi, toAiOptions } from '../../../../utils/ai-client'
+import { recordUsage } from '../../../../utils/ai-stream'
 import { buildCharacterGenerationPrompt } from '../../../../utils/ai-prompts'
 import {
   NovelSchema,
@@ -58,11 +59,22 @@ export default defineEventHandler(async (event) => {
     count
   })
 
-  const result = await callAi(toAiOptions(aiConfig, {
+  let result = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(toAiOptions(aiConfig, {
     messages,
     temperature: 0.8,
     maxTokens: 4096
-  }))
+  }))) {
+    if (chunk.content) result += chunk.content
+    if (chunk.usage) {
+      inputTokens = chunk.usage.prompt_tokens || inputTokens
+      outputTokens = chunk.usage.completion_tokens || outputTokens
+    }
+  }
+
+  await recordUsage({ em, userId: auth.userId, configId: configEntry.id, model: aiConfig.model }, inputTokens, outputTokens)
 
   const parsed: unknown = JSON.parse(result)
   if (!Array.isArray(parsed)) {

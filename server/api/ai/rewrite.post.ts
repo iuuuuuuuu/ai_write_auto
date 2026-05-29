@@ -56,15 +56,26 @@ export default defineEventHandler(async (event) => {
     ? `\n角色：${characters.slice(0, 8).map(c => `${c.name}${c.traits ? `(${c.traits})` : ''}`).join('、')}`
     : ''
 
+  // Extract context around the selection, not from the beginning
+  const selIdx = chapterContent.indexOf(data.selectedText)
+  let contextWindow = ''
+  if (selIdx >= 0) {
+    const before = chapterContent.slice(Math.max(0, selIdx - CONTEXT_TRUNCATE_INLINE), selIdx)
+    const after = chapterContent.slice(selIdx + data.selectedText.length, selIdx + data.selectedText.length + CONTEXT_TRUNCATE_INLINE)
+    contextWindow = `...${before}【选中部分：${data.selectedText}】${after}...`
+  } else {
+    contextWindow = chapterContent.slice(0, CONTEXT_TRUNCATE_INLINE * 2)
+  }
+
   const messages = [
     {
       role: 'system' as const,
       content:
-        `你是一位专业的小说作家。请将用户选中的文本进行重写，使其质量更高。保持原有的情节走向和关键信息，但可以改变表达方式、句式结构和描写手法。只返回重写后的内容，不要其他说明。${novel?.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
+        `你是一位专业的小说作家。请将用户选中的文本进行重写，使其质量更高。保持原有的情节走向和关键信息，但可以改变表达方式、句式结构和描写手法。必须使用自然的段落换行（用空行分段），不要生成一整段没有换行的文字。只返回重写后的内容，不要其他说明。${novel?.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
     },
     {
       role: 'user' as const,
-      content: `小说：${novel?.title}${ragContextSection}\n\n章节上下文 || '未命名'}${novel?.genre ? `（${novel.genre}）` : ''}\n章节：第${chapter?.chapterNumber || '?'}章「${chapter?.title || ''}」${characterContext}\n\n章节上下文（供参考）：\n${chapterContent.slice(0, CONTEXT_TRUNCATE_INLINE)}\n\n需要重写的段落：\n${data.selectedText}${data.direction ? `\n\n重写方向：${data.direction}` : ''}`
+      content: `小说：${novel?.title || '未命名'}${novel?.genre ? `（${novel.genre}）` : ''}\n章节：第${chapter?.chapterNumber || '?'}章「${chapter?.title || ''}」${characterContext}\n${ragContextSection}\n章节上下文（选中位置前后）：\n${contextWindow}\n\n需要重写的段落：\n${data.selectedText}${data.direction ? `\n\n重写方向：${data.direction}` : ''}`
     }
   ]
 

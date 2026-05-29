@@ -222,22 +222,24 @@ async function deleteProvider(provider: AiProviderItem) {
 const checkingProviderId = ref<number | null>(null)
 
 async function checkProviderConnectivity(provider: AiProviderItem) {
-  checkingProviderId.value = provider.id
-  try {
-    await $fetch('/api/ai/models-test', {
-      method: 'POST',
-      body: {
-        apiUrl: provider.apiUrl,
-        model: 'gpt-4o-mini',
-        providerId: provider.id
-      }
-    })
-    await refreshProviders()
-  } catch {
-    message.error(`${provider.name} 检测失败`)
-  } finally {
-    checkingProviderId.value = null
+  const enabledModels = provider.models.filter((m) => m.enabled)
+  if (!enabledModels.length) {
+    message.info('该供应商下无已启用的模型')
+    return
   }
+  checkingProviderId.value = provider.id
+  let passed = 0
+  for (const model of enabledModels) {
+    checkingModelId.value = model.id
+    try {
+      await $fetch('/api/ai/models-check', { params: { id: model.id } })
+      passed++
+    } catch {}
+  }
+  checkingModelId.value = null
+  await refreshProviders()
+  checkingProviderId.value = null
+  message.info(`检测完成：${passed}/${enabledModels.length} 个模型可用`)
 }
 
 /* ─────────────── Models ─────────────── */
@@ -316,9 +318,9 @@ function startCreateModel(providerId?: number) {
   showModelForm.value = true
 }
 
-function startEditModel(model: AiModelItem) {
+function startEditModel(model: AiModelItem, providerId: number) {
   modelForm.id = model.id
-  modelForm.providerId = model.providerId
+  modelForm.providerId = providerId
   modelForm.name = model.name
   modelForm.model = model.model
   modelForm.maxTokens = model.maxTokens
@@ -877,7 +879,7 @@ async function deleteConfig(config: AiConfigItem) {
                 <NBtn
                   size="tiny"
                   quaternary
-                  @click="startEditModel(model)"
+                  @click="startEditModel(model, provider.id)"
                 >
                   <template #icon
                     ><Icon

@@ -33,6 +33,7 @@ export function toAiOptions(
 export interface AiStreamChunk {
   content: string
   done: boolean
+  truncated?: boolean
   usage?: { prompt_tokens: number; completion_tokens: number }
 }
 
@@ -91,7 +92,7 @@ async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Resp
     clearTimeout(connectTimeout)
     if (e.name === 'AbortError') {
       if (timedOut) {
-        throw new Error(`AI API 连接超时（30秒），请检查 API 地址是否可达: ${options.apiUrl}`)
+        throw new Error(`AI API 连接超时（${AI_CONNECT_TIMEOUT_MS / 1000}秒），请检查 API 地址是否可达: ${options.apiUrl}`)
       }
       throw new Error('请求已被取消')
     }
@@ -159,7 +160,7 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
       let timeoutId: ReturnType<typeof setTimeout>
       const readPromise = reader.read()
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('AI API 流式读取超时（30秒无数据）')), AI_STREAM_READ_TIMEOUT_MS)
+        timeoutId = setTimeout(() => reject(new Error(`AI API 流式读取超时（${AI_STREAM_READ_TIMEOUT_MS / 1000}秒无数据）`)), AI_STREAM_READ_TIMEOUT_MS)
       })
       const { done, value } = await Promise.race([readPromise, timeoutPromise])
       clearTimeout(timeoutId!)
@@ -216,7 +217,7 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
           }
           if (finishReason === 'stop' || finishReason === 'length') {
             if (!hasContent) break
-            yield { content: '', done: true, usage }
+            yield { content: '', done: true, truncated: finishReason === 'length', usage }
             return
           }
         } catch {}
