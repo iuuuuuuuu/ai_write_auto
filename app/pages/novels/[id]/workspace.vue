@@ -1,6 +1,4 @@
 <script setup lang="ts">
-import { cleanAiChapterTitle } from '../../../utils/chapter-title'
-
 definePageMeta({ layout: 'default' })
 
 const route = useRoute()
@@ -44,7 +42,6 @@ const generationProgress = ref({ current: 0, total: 0 })
 const completedChapters = ref<number[]>([])
 const generatedChunks = ref<Map<number, string>>(new Map())
 const generatedTitles = ref<Map<number, string>>(new Map())
-const isGeneratingTitles = ref(false)
 let abortController: AbortController | null = null
 
 function getMaxChapter() {
@@ -59,82 +56,6 @@ function initDefaults() {
 }
 
 initDefaults()
-
-/* ─────── Title generation ─────── */
-
-/** 从已生成内容中提取首个 `# ` 标题行 */
-function extractTitleFromContent(content: string): string | null {
-  const match = content.match(/^#\s+(.+)/m)
-  return match && match[1] ? cleanAiChapterTitle(match[1]) : null
-}
-
-/** 将标题保存到数据库（利用现有的 PUT 章节接口） */
-async function saveChapterTitle(chapterId: number, title: string) {
-  try {
-    await $fetch(`/api/novels/${novelId.value}/chapters/${chapterId}`, {
-      method: 'PUT' as any,
-      body: { title }
-    })
-  } catch {
-    // 不影响主流程
-  }
-}
-
-async function generateTitlesForCompleted() {
-  if (!completedChapters.value.length) return
-  isGeneratingTitles.value = true
-  await refreshChapters()
-  const sortedTitles: string[] = []
-
-  for (const chNum of [...completedChapters.value].sort((a, b) => a - b)) {
-    const ch = chapters.value?.find((c) => c.chapterNumber === chNum)
-    if (!ch) continue
-
-    // ① 优先从内容中提取（AI 生成时可能已写入 `# 标题`）
-    const generated = generatedChunks.value.get(chNum)
-    let title = generated ? extractTitleFromContent(generated) : null
-
-    // ② 已有自定义标题（不是默认 `第X章`）则跳过，避免覆盖用户手动设定
-    const defaultTitle = `第${chNum}章`
-    if (
-      !title &&
-      ch.title !== defaultTitle &&
-      ch.title !== `${defaultTitle} `
-    ) {
-      title = ch.title
-    }
-
-    // ③ 仍无标题，调用 AI 接口生成
-    if (!title) {
-      const prevCh = chapters.value?.find((c) => c.chapterNumber === chNum - 1)
-      try {
-        const res = await $fetch<{ title: string }>('/api/ai/suggest-title', {
-          method: 'POST',
-          body: {
-            novelId: novelId.value,
-            chapterId: ch.id,
-            previousChapterTitle:
-              prevCh?.title ||
-              sortedTitles[sortedTitles.length - 1] ||
-              undefined
-          }
-        })
-        title = cleanAiChapterTitle(res.title) || null
-      } catch {}
-    }
-
-    if (title) {
-      generatedTitles.value.set(chNum, title)
-      sortedTitles.push(title)
-      // 后端 `done` 时已 flush，chapter entity 存在于 DB，立即保存标题
-      await saveChapterTitle(ch.id, title)
-    }
-  }
-
-  // 刷新章节列表以反映新标题
-  await refreshChapters()
-  isGeneratingTitles.value = false
-}
 
 /* ─────── Generation ─────── */
 async function startGeneration() {
@@ -193,7 +114,9 @@ async function startGeneration() {
           if (data.type === 'outline_filled') {
             const chs: number[] = data.chapters || []
             if (chs.length) {
-              message.info(`已自动规划第 ${Math.min(...chs)}–${Math.max(...chs)} 章大纲`)
+              message.info(
+                `已自动规划第 ${Math.min(...chs)}–${Math.max(...chs)} 章大纲`
+              )
             }
           } else if (data.type === 'progress') {
             generationProgress.value = {
@@ -203,15 +126,20 @@ async function startGeneration() {
           } else if (data.type === 'chunk') {
             const existing = generatedChunks.value.get(data.chapter) || ''
             generatedChunks.value.set(data.chapter, existing + data.content)
+          } else if (data.type === 'title_generated') {
+            generatedTitles.value.set(data.chapter, data.title)
           } else if (data.type === 'chapter_done') {
             completedChapters.value.push(data.chapter)
+            if (data.title) {
+              generatedTitles.value.set(data.chapter, data.title)
+            }
             generationProgress.value = {
               current: data.completed,
               total: data.total
             }
           } else if (data.type === 'done') {
             message.success(`成功生成 ${data.completed} 章`)
-            generateTitlesForCompleted()
+            await refreshChapters()
           } else if (data.type === 'error') {
             message.error(data.message || '生成失败')
           } else if (data.type === 'cancelled') {
@@ -239,11 +167,20 @@ const selectedChapterIds = ref<number[]>([])
 const isReviewing = ref(false)
 // 逐章审核：实时累加的问题列表与统计
 const reviewIssues = ref<any[]>([])
-const reviewStats = ref({ reviewedCount: 0, totalIssues: 0, high: 0, medium: 0, low: 0 })
+const reviewStats = ref({
+  reviewedCount: 0,
+  totalIssues: 0,
+  high: 0,
+  medium: 0,
+  low: 0
+})
 const reviewProgress = ref({ completed: 0, total: 0 })
 const reviewDone = ref(false)
 // 严重度软停止：本次因某章 high 问题暂停，剩余章节待用户决定是否继续
-const reviewStopped = ref<{ atChapterNumber: number; pendingChapterIds: number[] } | null>(null)
+const reviewStopped = ref<{
+  atChapterNumber: number
+  pendingChapterIds: number[]
+} | null>(null)
 
 /** 审核期间的章节内容快照，避免采纳后多次 fetch 导致 originalText 失效 */
 const chapterContentSnapshot = ref<Map<number, string>>(new Map())
@@ -440,8 +377,17 @@ async function startReview() {
   if (isReviewing.value) return
   // 重置审核状态
   reviewIssues.value = []
-  reviewStats.value = { reviewedCount: 0, totalIssues: 0, high: 0, medium: 0, low: 0 }
-  reviewProgress.value = { completed: 0, total: selectedChapterIds.value.length }
+  reviewStats.value = {
+    reviewedCount: 0,
+    totalIssues: 0,
+    high: 0,
+    medium: 0,
+    low: 0
+  }
+  reviewProgress.value = {
+    completed: 0,
+    total: selectedChapterIds.value.length
+  }
   reviewDone.value = false
   reviewStopped.value = null
   appliedIssueKeys.value = new Set()
@@ -709,16 +655,6 @@ const reviewPercent = computed(() => {
                 >第{{ ch }}章</NTag
               >
             </div>
-            <div
-              v-if="isGeneratingTitles"
-              class="flex items-center gap-2 text-xs text-(--ui-text-dimmed)"
-            >
-              <Icon
-                icon="lucide:loader-2"
-                class="w-3 h-3 animate-spin"
-              />
-              正在生成标题...
-            </div>
           </div>
         </template>
 
@@ -925,7 +861,12 @@ const reviewPercent = computed(() => {
           class="h-full"
         >
           <div
-            v-if="!isReviewing && !reviewIssues.length && !reviewDone && !reviewStopped"
+            v-if="
+              !isReviewing &&
+              !reviewIssues.length &&
+              !reviewDone &&
+              !reviewStopped
+            "
             class="h-full flex flex-col items-center justify-center text-(--ui-text-dimmed)"
           >
             <Icon
