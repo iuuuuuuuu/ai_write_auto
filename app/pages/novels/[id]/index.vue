@@ -4,6 +4,7 @@ import {
   formatAiTitleUsage,
   type AiTitleUsage
 } from '../../../utils/chapter-title'
+import { getNovelGenreColor } from '~~/shared/novel-catalog'
 
 definePageMeta({ layout: 'default' })
 
@@ -193,10 +194,12 @@ watch(
   { immediate: true }
 )
 
-const { data: chapters, refresh: refreshChapters } = await useFetch<ChapterItem[]>(
-  `/api/novels/${novelId.value}/chapters`,
-  { immediate: !!novel.value, default: () => [] }
-)
+const { data: chapters, refresh: refreshChapters } = await useFetch<
+  ChapterItem[]
+>(`/api/novels/${novelId.value}/chapters`, {
+  immediate: !!novel.value,
+  default: () => []
+})
 const { data: outlines, refresh: refreshOutlines } = await useFetch<
   OutlineItem[]
 >(`/api/novels/${novelId.value}/outlines`, {
@@ -356,20 +359,7 @@ const statusColor = computed(() => {
   return 'default'
 })
 
-const genreColor = (genre: string | null) => {
-  const colors: Record<string, string> = {
-    fantasy: '#d97706',
-    scifi: '#0891b2',
-    romance: '#e11d48',
-    mystery: '#4f46e5',
-    horror: '#dc2626',
-    historical: '#c2410c',
-    wuxia: '#059669',
-    urban: '#475569',
-    other: '#94a3b8'
-  }
-  return colors[genre || ''] || colors.other
-}
+const genreColor = (genre: string | null) => getNovelGenreColor(genre)
 
 function formatDate(date: string) {
   return new Date(date).toLocaleDateString('zh-CN', {
@@ -2682,27 +2672,37 @@ async function savePlotPoint() {
         </template>
       </NModal>
 
-      
-        <!-- Workspace -->
-        <section class="card-glass p-5">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <Icon icon="lucide:workflow" class="size-4 text-primary-500" />
-              <h2 class="font-semibold text-(--ui-text-highlighted)">AI 工作区</h2>
-            </div>
-            <NButton size="small" type="primary" @click="navigateTo(`/novels/${novelId}/workspace`)">
-              <template #icon><Icon icon="lucide:external-link" /></template>
-              打开工作区
-            </NButton>
+      <!-- Workspace -->
+      <section class="card-glass p-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <Icon
+              icon="lucide:workflow"
+              class="size-4 text-primary-500"
+            />
+            <h2 class="font-semibold text-(--ui-text-highlighted)">
+              AI 工作区
+            </h2>
           </div>
-        </section>
+          <NButton
+            size="small"
+            type="primary"
+            @click="navigateTo(`/novels/${novelId}/workspace`)"
+          >
+            <template #icon><Icon icon="lucide:external-link" /></template>
+            打开工作区
+          </NButton>
+        </div>
+      </section>
 
-        <section class="card-glass p-5">
-          <NovelForeshadowingPanel :novel-id="novelId" :chapters="chapters || []" />
-        </section>
+      <section class="card-glass p-5">
+        <NovelForeshadowingPanel
+          :novel-id="novelId"
+          :chapters="chapters || []"
+        />
+      </section>
 
-        
-        <!-- AI Generate Outline Dialog -->
+      <!-- AI Generate Outline Dialog -->
       <NModal
         v-model:show="showGenerateOutlineDialog"
         preset="card"
@@ -3148,9 +3148,7 @@ async function savePlotPoint() {
             </p>
           </div>
           <div class="space-y-1.5">
-            <label class="text-sm font-medium text-(--ui-text)"
-              >风格指南</label
-            >
+            <label class="text-sm font-medium text-(--ui-text)">风格指南</label>
             <NInput
               v-model:value="aiSettingsForm.styleGuide"
               type="textarea"

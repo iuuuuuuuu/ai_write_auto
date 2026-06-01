@@ -1,5 +1,10 @@
 import type { MikroORM } from '@mikro-orm/core'
-import { SchemaMigrationSchema, SiteConfigSchema, AiProviderSchema } from './entities'
+import {
+  SchemaMigrationSchema,
+  SiteConfigSchema,
+  AiProviderSchema
+} from './entities'
+import { syncNovelTemplateSeeds } from '../services/novel-template-seeds'
 
 export const DATABASE_SCHEMA_VERSION = '2026.05.27.001'
 
@@ -66,11 +71,11 @@ async function migrateModelsToProviders(orm: MikroORM): Promise<void> {
   } catch {}
 
   // Read all models that have api_url/api_key but no provider_id
-  const rows = await conn.execute(
+  const rows = (await conn.execute(
     `SELECT id, user_id, api_url, api_key FROM ai_models
      WHERE (provider_id IS NULL OR provider_id = 0)
        AND api_url IS NOT NULL AND api_url != ''`
-  ) as any[]
+  )) as any[]
 
   if (!rows || rows.length === 0) {
     try {
@@ -95,7 +100,9 @@ async function migrateModelsToProviders(orm: MikroORM): Promise<void> {
         providerMap.set(mapKey, existing.id)
       } else {
         let name = 'API Provider'
-        try { name = new URL(row.api_url).hostname } catch {}
+        try {
+          name = new URL(row.api_url).hostname
+        } catch {}
         const provider = em.create(AiProviderSchema, {
           user: row.user_id,
           name,
@@ -110,9 +117,14 @@ async function migrateModelsToProviders(orm: MikroORM): Promise<void> {
   }
 
   for (const row of rows) {
-    const providerId = providerMap.get(`${row.user_id}|${row.api_url}|${row.api_key}`)
+    const providerId = providerMap.get(
+      `${row.user_id}|${row.api_url}|${row.api_key}`
+    )
     if (providerId) {
-      await conn.execute('UPDATE ai_models SET provider_id = ? WHERE id = ?', [providerId, row.id])
+      await conn.execute('UPDATE ai_models SET provider_id = ? WHERE id = ?', [
+        providerId,
+        row.id
+      ])
     }
   }
 
@@ -171,6 +183,9 @@ export async function syncDatabaseSchema(
 
   // Migrate existing ai_models data to new provider structure
   await migrateModelsToProviders(orm)
+  if (source !== 'setup') {
+    await syncNovelTemplateSeeds(orm)
+  }
 
   await recordSchemaMigration(orm, DATABASE_SCHEMA_VERSION, source)
   await upsertSiteConfig(orm, 'schema_version', DATABASE_SCHEMA_VERSION)

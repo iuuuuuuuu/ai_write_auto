@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { NovelTemplateSchema } from '../../database/entities'
+import { NOVEL_GENRE_VALUES } from '~~/shared/novel-catalog'
 
 export default defineEventHandler(async (event) => {
   requireAdmin(event)
@@ -9,25 +10,35 @@ export default defineEventHandler(async (event) => {
   if (method === 'GET') {
     const pagination = parsePagination(event)
     const [templates, total] = await Promise.all([
-      em.find(NovelTemplateSchema, {}, {
-        limit: pagination.limit,
-        offset: pagination.offset,
-        orderBy: { id: 'DESC' },
-      }),
-      em.count(NovelTemplateSchema, {}),
+      em.find(
+        NovelTemplateSchema,
+        {},
+        {
+          limit: pagination.limit,
+          offset: pagination.offset,
+          orderBy: { id: 'DESC' }
+        }
+      ),
+      em.count(NovelTemplateSchema, {})
     ])
     return paginatedResult(templates, total, pagination)
   }
 
   if (method === 'POST') {
     const body = await readBody(event)
-    const data = z.object({
-      name: z.string().min(1).max(100),
-      genre: z.string().min(1).max(50),
-      defaultStyleGuide: z.string().nullable().optional(),
-      defaultAiPrompt: z.string().nullable().optional(),
-      defaultTemperature: z.string().nullable().optional(),
-    }).parse(body)
+    const data = z
+      .object({
+        name: z.string().min(1).max(100),
+        genre: z
+          .string()
+          .min(1)
+          .max(50)
+          .refine((genre) => NOVEL_GENRE_VALUES.includes(genre), '类型不存在'),
+        defaultStyleGuide: z.string().nullable().optional(),
+        defaultAiPrompt: z.string().nullable().optional(),
+        defaultTemperature: z.string().nullable().optional()
+      })
+      .parse(body)
 
     const template = em.create(NovelTemplateSchema, data)
     await em.flush()

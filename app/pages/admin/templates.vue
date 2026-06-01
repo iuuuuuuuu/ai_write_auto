@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { FormInst } from 'naive-ui'
+import { NOVEL_GENRES, getNovelGenreLabelKey } from '~~/shared/novel-catalog'
+
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
 interface NovelTemplate {
@@ -22,9 +25,11 @@ const {
 } = usePagination<NovelTemplate>({ url: '/api/admin/templates' })
 
 const { post, put, del: apiDel } = useApi()
+const { t } = useI18n()
 
 const showModal = ref(false)
 const editing = ref<NovelTemplate | null>(null)
+const formRef = useTemplateRef<FormInst>('formRef')
 const form = ref({
   name: '',
   genre: '',
@@ -33,6 +38,18 @@ const form = ref({
   defaultTemperature: '0.7'
 })
 const saving = ref(false)
+const syncingDefaults = shallowRef(false)
+
+const genreOptions = computed(() =>
+  NOVEL_GENRES.map((genre) => ({
+    label: t(genre.labelKey),
+    value: genre.value
+  }))
+)
+
+function getGenreLabel(genre: string) {
+  return t(getNovelGenreLabelKey(genre))
+}
 
 function openCreate() {
   editing.value = null
@@ -59,6 +76,18 @@ function openEdit(t: NovelTemplate) {
 }
 
 async function save() {
+  try {
+    await formRef.value?.validate()
+  } catch (error) {
+    if (Array.isArray(error)) {
+      const firstError = error.flat().find((item) => item?.message)
+      messageError(firstError?.message || '表单校验未通过')
+      return
+    }
+    messageError('表单校验未通过')
+    return
+  }
+
   saving.value = true
   try {
     const body = {
@@ -77,6 +106,23 @@ async function save() {
   } finally {
     saving.value = false
   }
+}
+
+async function syncDefaultTemplates() {
+  syncingDefaults.value = true
+  try {
+    await post('/api/admin/templates/sync-defaults', undefined, {
+      successMessage: '默认模板已同步'
+    })
+    refresh()
+  } finally {
+    syncingDefaults.value = false
+  }
+}
+
+function messageError(content: string) {
+  const message = useMessage()
+  message.error(content)
 }
 
 const deleting = ref<number | null>(null)
@@ -128,10 +174,16 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
 <template>
   <div class="space-y-5">
     <section class="card-glass relative overflow-hidden p-6 sm:p-7">
-      <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div
+        class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+      >
         <div>
-          <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">Admin / Templates</p>
-          <h1 class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)">
+          <p class="text-xs uppercase tracking-[0.24em] text-primary-500/80">
+            Admin / Templates
+          </p>
+          <h1
+            class="mt-2 text-3xl font-semibold tracking-[-0.05em] text-(--ui-text-highlighted)"
+          >
             小说模板
           </h1>
           <p class="mt-3 text-sm text-(--ui-text-muted)">
@@ -145,6 +197,15 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
         >
           <template #icon><Icon icon="lucide:plus" /></template>
           新建模板
+        </NButton>
+        <NButton
+          round
+          secondary
+          :loading="syncingDefaults"
+          @click="syncDefaultTemplates"
+        >
+          <template #icon><Icon icon="lucide:refresh-cw" /></template>
+          同步默认模板
         </NButton>
       </div>
     </section>
@@ -179,7 +240,8 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
                 {{ templateItem.name }}
               </h3>
               <p class="mt-1 text-sm text-(--ui-text-muted)">
-                {{ templateItem.genre }} · Temperature {{ templateItem.defaultTemperature || '0.7' }}
+                {{ getGenreLabel(templateItem.genre) }} · Temperature
+                {{ templateItem.defaultTemperature || '0.7' }}
               </p>
             </div>
             <div class="flex gap-1">
@@ -232,76 +294,114 @@ async function aiExpandField(field: 'defaultStyleGuide' | 'defaultAiPrompt') {
       :title="editing ? '编辑模板' : '新建模板'"
       style="max-width: 500px"
     >
-      <div class="space-y-4">
-        <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)">模板名称</label>
-          <NInput
-            v-model:value="form.name"
-            placeholder="如：都市修仙"
-          />
+      <NForm
+        ref="formRef"
+        :model="form"
+        label-placement="top"
+      >
+        <div class="space-y-4">
+          <NFormItem
+            label="模板名称"
+            path="name"
+            :rule="{
+              required: true,
+              message: '请输入模板名称',
+              trigger: ['blur', 'input']
+            }"
+          >
+            <NInput
+              v-model:value="form.name"
+              placeholder="如：都市修仙"
+            />
+          </NFormItem>
+          <NFormItem
+            label="类型"
+            path="genre"
+            :rule="{
+              required: true,
+              message: '请选择类型',
+              trigger: ['change']
+            }"
+          >
+            <NSelect
+              v-model:value="form.genre"
+              :options="genreOptions"
+              placeholder="选择模板类型"
+              filterable
+            />
+          </NFormItem>
+          <NFormItem
+            label="默认风格指南"
+            path="defaultStyleGuide"
+          >
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-(--ui-text)"
+                >默认风格指南</span
+              >
+              <NButton
+                size="tiny"
+                quaternary
+                round
+                :loading="aiProcessing"
+                :disabled="!form.defaultStyleGuide?.trim()"
+                @click="aiExpandField('defaultStyleGuide')"
+              >
+                <template #icon><Icon icon="lucide:sparkles" /></template>
+                AI 扩写
+              </NButton>
+            </div>
+            <NInput
+              v-model:value="form.defaultStyleGuide"
+              type="textarea"
+              :rows="3"
+              placeholder="可选"
+            />
+          </NFormItem>
+          <NFormItem
+            label="默认 AI 提示词"
+            path="defaultAiPrompt"
+          >
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-(--ui-text)"
+                >默认 AI 提示词</span
+              >
+              <NButton
+                size="tiny"
+                quaternary
+                round
+                :loading="aiProcessing"
+                :disabled="!form.defaultAiPrompt?.trim()"
+                @click="aiExpandField('defaultAiPrompt')"
+              >
+                <template #icon><Icon icon="lucide:sparkles" /></template>
+                AI 扩写
+              </NButton>
+            </div>
+            <NInput
+              v-model:value="form.defaultAiPrompt"
+              type="textarea"
+              :rows="3"
+              placeholder="可选"
+            />
+          </NFormItem>
+          <NFormItem
+            label="默认 Temperature"
+            path="defaultTemperature"
+          >
+            <NInput
+              v-model:value="form.defaultTemperature"
+              placeholder="0.7"
+            />
+          </NFormItem>
         </div>
-        <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)">类型</label>
-          <NInput
-            v-model:value="form.genre"
-            placeholder="如：fantasy"
-          />
-        </div>
-        <div class="space-y-1.5">
-          <div class="flex items-center justify-between">
-            <label class="text-sm font-medium text-(--ui-text)">默认风格指南</label>
-            <NButton
-              size="tiny"
-              quaternary
-              round
-              :loading="aiProcessing"
-              :disabled="!form.defaultStyleGuide?.trim()"
-              @click="aiExpandField('defaultStyleGuide')"
-            >
-              <template #icon><Icon icon="lucide:sparkles" /></template>
-              AI 扩写
-            </NButton>
-          </div>
-          <NInput
-            v-model:value="form.defaultStyleGuide"
-            type="textarea"
-            :rows="3"
-            placeholder="可选"
-          />
-        </div>
-        <div class="space-y-1.5">
-          <div class="flex items-center justify-between">
-            <label class="text-sm font-medium text-(--ui-text)">默认 AI 提示词</label>
-            <NButton
-              size="tiny"
-              quaternary
-              round
-              :loading="aiProcessing"
-              :disabled="!form.defaultAiPrompt?.trim()"
-              @click="aiExpandField('defaultAiPrompt')"
-            >
-              <template #icon><Icon icon="lucide:sparkles" /></template>
-              AI 扩写
-            </NButton>
-          </div>
-          <NInput
-            v-model:value="form.defaultAiPrompt"
-            type="textarea"
-            :rows="3"
-            placeholder="可选"
-          />
-        </div>
-        <div class="space-y-1.5">
-          <label class="text-sm font-medium text-(--ui-text)">默认 Temperature</label>
-          <NInput
-            v-model:value="form.defaultTemperature"
-            placeholder="0.7"
-          />
-        </div>
-      </div>
+      </NForm>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <NButton round @click="showModal = false">取消</NButton>
+          <NButton
+            round
+            @click="showModal = false"
+            >取消</NButton
+          >
           <NButton
             type="primary"
             round

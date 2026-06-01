@@ -7,10 +7,7 @@ import {
   startScheduledBackup,
   stopScheduledBackup
 } from '../services/database-backup'
-import {
-  startTrashCleanup,
-  stopTrashCleanup
-} from '../services/trash-cleanup'
+import { startTrashCleanup, stopTrashCleanup } from '../services/trash-cleanup'
 import { ensureVectorTable } from '../services/vector-store'
 import { tryAutoLoadEmbedding, stopEmbedding } from '../services/embedding'
 import { processPendingTasks } from '../services/task-queue'
@@ -31,7 +28,8 @@ export default defineNitroPlugin(async (nitroApp) => {
     setTimeout(async () => {
       try {
         const backupName = await createStartupBackupIfEnabled(orm)
-        if (backupName) console.log(`[db] Startup SQLite backup created: ${backupName}`)
+        if (backupName)
+          console.log(`[db] Startup SQLite backup created: ${backupName}`)
       } catch {}
 
       try {

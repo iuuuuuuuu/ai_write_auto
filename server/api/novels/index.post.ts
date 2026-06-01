@@ -1,10 +1,15 @@
 import { z } from 'zod'
 import { NovelSchema } from '../../database/entities'
+import { NOVEL_GENRE_VALUES } from '~~/shared/novel-catalog'
 
 const createNovelSchema = z.object({
   title: z.string().min(1, '标题不能为空').max(200, '标题不能超过200字'),
   description: z.string().max(5000, '简介不能超过5000字').optional(),
-  genre: z.string().max(50).optional(),
+  genre: z
+    .string()
+    .max(50)
+    .refine((genre) => NOVEL_GENRE_VALUES.includes(genre), '类型不存在')
+    .optional(),
   styleGuide: z.string().max(10000, '风格指南不能超过10000字').optional(),
   worldSetting: z.string().max(20000, '世界观设定不能超过20000字').optional(),
   aiTemperature: z.string().optional(),

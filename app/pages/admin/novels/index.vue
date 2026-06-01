@@ -2,6 +2,7 @@
 import { h } from 'vue'
 import { NTag, NButton } from 'naive-ui'
 import { Icon } from '@iconify/vue'
+import { getNovelGenreLabelKey } from '~~/shared/novel-catalog'
 
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
@@ -80,10 +81,24 @@ const tableColumns = [
     ellipsis: { tooltip: true },
     render(row: AdminNovelListItem) {
       const children: any[] = [
-        h(resolveComponent('NuxtLink') as any, { to: `/admin/novels/${row.id}`, class: 'font-medium text-(--ui-text-highlighted) hover:text-primary-500' }, () => row.title)
+        h(
+          resolveComponent('NuxtLink') as any,
+          {
+            to: `/admin/novels/${row.id}`,
+            class:
+              'font-medium text-(--ui-text-highlighted) hover:text-primary-500'
+          },
+          () => row.title
+        )
       ]
       if (row.deletedAt) {
-        children.push(h(NTag, { type: 'warning', size: 'tiny', class: 'ml-2' }, () => '回收站'))
+        children.push(
+          h(
+            NTag,
+            { type: 'warning', size: 'tiny', class: 'ml-2' },
+            () => '回收站'
+          )
+        )
       }
       return h('div', { class: 'flex items-center gap-1' }, children)
     }
@@ -101,7 +116,9 @@ const tableColumns = [
     key: 'status',
     width: 90,
     render(row: AdminNovelListItem) {
-      return h(NTag, { type: statusType(row.status), size: 'small' }, () => statusLabel(row.status))
+      return h(NTag, { type: statusType(row.status), size: 'small' }, () =>
+        statusLabel(row.status)
+      )
     }
   },
   {
@@ -110,11 +127,7 @@ const tableColumns = [
     width: 90,
     render(row: AdminNovelListItem) {
       if (!row.genre) return '-'
-      const genreMap: Record<string, string> = {
-        fantasy: '奇幻', scifi: '科幻', romance: '言情', mystery: '悬疑',
-        horror: '恐怖', historical: '历史', urban: '都市', wuxia: '武侠', other: '其他'
-      }
-      return genreMap[row.genre] || row.genre
+      return t(getNovelGenreLabelKey(row.genre))
     }
   },
   {
@@ -150,12 +163,31 @@ const tableColumns = [
     align: 'center' as const,
     render(row: AdminNovelListItem) {
       return h('div', { class: 'flex gap-1 justify-center' }, [
-        h(NButton, { size: 'small', quaternary: true, round: true, onClick: () => navigateTo(`/admin/novels/${row.id}`) }, {
-          icon: () => h(Icon, { icon: 'lucide:eye' })
-        }),
-        h(NButton, { size: 'small', quaternary: true, round: true, type: 'error', onClick: () => deleteNovel(row) }, {
-          icon: () => h(Icon, { icon: 'lucide:trash-2' })
-        })
+        h(
+          NButton,
+          {
+            size: 'small',
+            quaternary: true,
+            round: true,
+            onClick: () => navigateTo(`/admin/novels/${row.id}`)
+          },
+          {
+            icon: () => h(Icon, { icon: 'lucide:eye' })
+          }
+        ),
+        h(
+          NButton,
+          {
+            size: 'small',
+            quaternary: true,
+            round: true,
+            type: 'error',
+            onClick: () => deleteNovel(row)
+          },
+          {
+            icon: () => h(Icon, { icon: 'lucide:trash-2' })
+          }
+        )
       ])
     }
   }
@@ -165,10 +197,14 @@ const tableColumns = [
 <template>
   <div class="flex flex-col gap-4 h-full overflow-hidden">
     <section class="card-glass relative overflow-hidden p-5 md:p-6 shrink-0">
-      <div class="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div
+        class="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"
+      >
         <div>
           <p class="text-sm text-(--ui-text-muted)">Admin / Novels</p>
-          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)">
+          <h1
+            class="mt-1 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)"
+          >
             小说查阅
           </h1>
           <p class="mt-1 max-w-2xl text-sm text-(--ui-text-muted)">
@@ -183,7 +219,10 @@ const tableColumns = [
             class="w-52"
           >
             <template #prefix>
-              <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+              <Icon
+                icon="lucide:search"
+                class="text-(--ui-text-dimmed)"
+              />
             </template>
           </NInput>
           <NSelect
