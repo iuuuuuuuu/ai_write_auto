@@ -8,7 +8,7 @@ import {
   buildSuggestionPrompt,
   buildOutlineGenerationPrompt,
   buildCharacterExtractionPrompt,
-  buildStoryArcPrompt,
+  buildStoryArcPrompt
 } from '../server/utils/ai-prompts'
 
 describe('ai-prompts', () => {
@@ -18,7 +18,7 @@ describe('ai-prompts', () => {
         novel: { title: '测试小说', genre: '玄幻' },
         chapters: [],
         characters: [],
-        plotPoints: [],
+        plotPoints: []
       })
       expect(result).toHaveLength(2)
       expect(result[0].role).toBe('system')
@@ -31,11 +31,67 @@ describe('ai-prompts', () => {
       const result = buildGenerationPrompt({
         novel: { title: '测试' },
         chapters: [],
-        characters: [{ name: '张三', description: '主角', traits: '勇敢' }],
-        plotPoints: [],
+        characters: [
+          {
+            name: '张三',
+            description: '主角',
+            traits: '勇敢',
+            overallArc: '从犹豫到承担'
+          }
+        ],
+        plotPoints: []
       })
       expect(result[1].content).toContain('张三')
       expect(result[1].content).toContain('勇敢')
+      expect(result[1].content).toContain('从犹豫到承担')
+    })
+
+    it('keeps other character profiles when rag context scopes one character', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [],
+        characters: [
+          { name: '张三', description: '主角', traits: '勇敢' },
+          { name: '李四', description: '盟友', relationships: '张三的旧识' }
+        ],
+        plotPoints: [],
+        ragContext: [
+          {
+            characterName: '张三',
+            contentType: 'chapter_story',
+            content: '张三上一章负伤',
+            chapterId: 1
+          }
+        ]
+      })
+      expect(result[1].content).toContain('张三上一章负伤')
+      expect(result[1].content).toContain('其他角色档案')
+      expect(result[1].content).toContain('李四')
+      expect(result[1].content).toContain('张三的旧识')
+    })
+
+    it('includes non-character rag memories', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [],
+        characters: [],
+        plotPoints: [],
+        ragContext: [
+          {
+            contentType: 'world_detail',
+            content: '地下城入口只在雨夜开启',
+            chapterId: null
+          },
+          {
+            contentType: 'plot_event',
+            content: '铜钥匙已经交给李四',
+            chapterId: 2
+          }
+        ]
+      })
+      expect(result[1].content).toContain('相关记忆')
+      expect(result[1].content).toContain('地下城入口只在雨夜开启')
+      expect(result[1].content).toContain('铜钥匙已经交给李四')
     })
 
     it('includes chapter summaries', () => {
@@ -43,7 +99,7 @@ describe('ai-prompts', () => {
         novel: { title: '测试' },
         chapters: [{ title: '第一章', chapterNumber: 1, summary: '开篇介绍' }],
         characters: [],
-        plotPoints: [],
+        plotPoints: []
       })
       expect(result[1].content).toContain('开篇介绍')
     })
@@ -53,7 +109,7 @@ describe('ai-prompts', () => {
         novel: { title: '测试', styleGuide: '第一人称叙述' },
         chapters: [],
         characters: [],
-        plotPoints: [],
+        plotPoints: []
       })
       expect(result[0].content).toContain('第一人称叙述')
     })
@@ -65,8 +121,8 @@ describe('ai-prompts', () => {
         characters: [],
         plotPoints: [
           { type: 'foreshadowing', status: 'active', description: '神秘信件' },
-          { type: 'conflict', status: 'resolved', description: '已解决的冲突' },
-        ],
+          { type: 'conflict', status: 'resolved', description: '已解决的冲突' }
+        ]
       })
       expect(result[1].content).toContain('神秘信件')
       expect(result[1].content).not.toContain('已解决的冲突')
@@ -79,8 +135,12 @@ describe('ai-prompts', () => {
         characters: [],
         plotPoints: [],
         foreshadowing: [
-          { content: '墙上的猎枪', description: '第三幕会击发', chapterNumber: 1 },
-        ],
+          {
+            content: '墙上的猎枪',
+            description: '第三幕会击发',
+            chapterNumber: 1
+          }
+        ]
       })
       expect(result[1].content).toContain('待回收伏笔')
       expect(result[1].content).toContain('墙上的猎枪')
@@ -91,14 +151,19 @@ describe('ai-prompts', () => {
       const result = buildGenerationPrompt({
         novel: { title: '测试' },
         chapters: [
-          { title: '第99章', chapterNumber: 99, summary: '末尾摘要', content: '全书最后一章的正文' },
+          {
+            title: '第99章',
+            chapterNumber: 99,
+            summary: '末尾摘要',
+            content: '全书最后一章的正文'
+          }
         ],
         characters: [],
         plotPoints: [],
         currentChapter: { title: '第50章', chapterNumber: 50 },
         recentChapterContent: [
-          { chapterNumber: 49, title: '前一章', content: '第49章的衔接正文' },
-        ],
+          { chapterNumber: 49, title: '前一章', content: '第49章的衔接正文' }
+        ]
       })
       // 应使用传入的前序章节正文，而非 chapters 末尾的第99章
       expect(result[1].content).toContain('第49章的衔接正文')
@@ -111,7 +176,7 @@ describe('ai-prompts', () => {
         chapters: [],
         characters: [],
         plotPoints: [],
-        currentChapter: { title: '初入江湖', chapterNumber: 7 },
+        currentChapter: { title: '初入江湖', chapterNumber: 7 }
       })
       // 批量生成必须让 AI 明确知道在写第几章、章节标题是什么
       expect(result[1].content).toContain('第7章')
@@ -125,7 +190,7 @@ describe('ai-prompts', () => {
         chapters: [],
         characters: [],
         plotPoints: [],
-        currentChapter: { title: '第7章', chapterNumber: 7 },
+        currentChapter: { title: '第7章', chapterNumber: 7 }
       })
       // 占位标题（第N章）不应被当作"已确定的标题"要求 AI 紧扣
       expect(result[1].content).toContain('第7章')
@@ -142,7 +207,7 @@ describe('ai-prompts', () => {
         characters: [],
         plotPoints: [],
         previousResult: '之前生成的内容',
-        feedback: '需要更多对话',
+        feedback: '需要更多对话'
       })
       expect(result[1].content).toContain('之前生成的内容')
       expect(result[1].content).toContain('需要更多对话')
@@ -172,7 +237,7 @@ describe('ai-prompts', () => {
       const result = buildConsistencyCheckPrompt({
         characters: [{ name: '李四', description: '配角', traits: '狡猾' }],
         recentSummaries: [{ chapterNumber: 1, summary: '李四出场' }],
-        targetChapter: { chapterNumber: 2, content: '李四再次出现' },
+        targetChapter: { chapterNumber: 2, content: '李四再次出现' }
       })
       expect(result[1].content).toContain('李四')
       expect(result[1].content).toContain('李四出场')
@@ -184,8 +249,12 @@ describe('ai-prompts', () => {
     it('includes novel and chapter info', () => {
       const result = buildSuggestionPrompt({
         novel: { title: '测试小说', genre: '科幻' },
-        chapter: { chapterNumber: 3, title: '星际旅行', content: '飞船启动了引擎...' },
-        characters: [{ name: '船长' }],
+        chapter: {
+          chapterNumber: 3,
+          title: '星际旅行',
+          content: '飞船启动了引擎...'
+        },
+        characters: [{ name: '船长' }]
       })
       expect(result[1].content).toContain('测试小说')
       expect(result[1].content).toContain('第3章')
@@ -197,7 +266,7 @@ describe('ai-prompts', () => {
       const result = buildSuggestionPrompt({
         novel: { title: '测试' },
         chapter: { chapterNumber: 1, title: '长章', content: longContent },
-        characters: [],
+        characters: []
       })
       expect(result[1].content.length).toBeLessThan(15000)
     })
@@ -210,7 +279,7 @@ describe('ai-prompts', () => {
         characters: [],
         idea: '一个少年学武的故事',
         chapterCount: 10,
-        startChapter: 1,
+        startChapter: 1
       })
       expect(result[0].content).toContain('10')
       expect(result[1].content).toContain('一个少年学武的故事')
@@ -226,8 +295,8 @@ describe('ai-prompts', () => {
         existingOutlines: [
           { chapterNumber: 1, description: '开篇' },
           { chapterNumber: 2, description: '发展' },
-          { chapterNumber: 3, description: '转折' },
-        ],
+          { chapterNumber: 3, description: '转折' }
+        ]
       })
       expect(result[1].content).toContain('已有大纲')
       expect(result[1].content).toContain('开篇')

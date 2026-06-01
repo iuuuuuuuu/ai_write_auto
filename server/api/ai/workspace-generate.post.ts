@@ -25,7 +25,8 @@ import { enqueuePostProcessing } from '../../services/task-queue'
 import { isEmbeddingReady } from '../../services/embedding'
 import {
   retrieveRelevant,
-  getActiveForeshadowing
+  getActiveForeshadowing,
+  type ContentContext
 } from '../../services/content-rag'
 import {
   WORKSPACE_MAX_CHAPTERS,
@@ -71,6 +72,25 @@ function cleanGeneratedChapterTitle(rawTitle: string) {
 function fallbackTitleFromOutline(chapterNumber: number, outline?: string) {
   const title = outline ? cleanGeneratedChapterTitle(outline) : ''
   return title || `第${chapterNumber}章`
+}
+
+function mergeRagContexts(...groups: ContentContext[][]) {
+  const seen = new Set<string>()
+  const merged: ContentContext[] = []
+  for (const group of groups) {
+    for (const item of group) {
+      const key = `${item.contentType}:${item.chapterId ?? 'novel'}:${item.characterName || ''}:${item.content}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(item)
+    }
+  }
+  return merged
+}
+
+function buildBatchChapterSummary(content: string) {
+  const plain = content.replace(/\s+/g, ' ').trim()
+  return plain.length > 240 ? `${plain.slice(0, 240)}…` : plain
 }
 
 async function generateChapterTitle(options: {
@@ -209,12 +229,7 @@ export default defineEventHandler(async (event) => {
   } catch {}
 
   // Pre-fetch RAG context for the entire batch
-  let sharedRagContext: Array<{
-    content: string
-    contentType: string
-    chapterId: number | null
-    characterName?: string
-  }> = []
+  let sharedRagContext: ContentContext[] = []
   if (isEmbeddingReady()) {
     const batchQuery = [novel.title, novel.description, data.direction]
       .filter(Boolean)
@@ -288,6 +303,10 @@ export default defineEventHandler(async (event) => {
         // Track previous chapter content for sliding window
         let prevChapterContent: string | null = null
         let prevPrevChapterContent: string | null = null
+        const batchChapterSummaries = new Map<
+          number,
+          { title: string; summary: string }
+        >()
 
         for (
           let chapterNum = data.fromChapter;
@@ -325,9 +344,35 @@ export default defineEventHandler(async (event) => {
             { orderBy: { chapterNumber: 'ASC' }, populate: ['content'] }
           )
           // 仅把「当前章之前」的章节作为上下文，避免把尚未生成/将被覆盖的后续章节摘要泄露给 AI
-          const chapters = allChapters.filter(
-            (c) => c.chapterNumber < chapterNum
-          )
+          const chapters = allChapters
+            .filter((c) => c.chapterNumber < chapterNum)
+            .map((c) => {
+              const batchSummary = batchChapterSummaries.get(c.chapterNumber)
+              return {
+                title: batchSummary?.title || c.title,
+                chapterNumber: c.chapterNumber,
+                summary: c.summary || batchSummary?.summary || null,
+                content: c.content
+              }
+            })
+          const promptNovel =
+            (await em.findOne(NovelSchema, {
+              id: data.novelId,
+              user: auth.userId
+            })) || novel
+          const promptCharacters = await em.find(CharacterSchema, {
+            novel: data.novelId
+          })
+          const promptPlotPoints = await em.find(PlotPointSchema, {
+            novel: data.novelId
+          })
+          const promptStoryArcs = await em.find(StoryArcSchema, {
+            novel: data.novelId
+          })
+          let promptForeshadowing = foreshadowing
+          try {
+            promptForeshadowing = await getActiveForeshadowing(data.novelId)
+          } catch {}
 
           const chapterOutline = outlines.find(
             (o) => o.chapterNumber === chapterNum
@@ -376,7 +421,7 @@ export default defineEventHandler(async (event) => {
                 em,
                 userId: auth.userId,
                 aiConfig,
-                novel,
+                novel: promptNovel,
                 chapterNumber: chapterNum,
                 chapterOutline: chapterOutline?.description,
                 previousChapterTitle: previousTitle,
@@ -416,20 +461,21 @@ export default defineEventHandler(async (event) => {
                 perChapterQuery,
                 10
               )
+              ragContext = mergeRagContexts(ragContext, sharedRagContext)
             }
           }
 
           const prompt = buildGenerationPrompt({
-            novel,
+            novel: promptNovel,
             chapters,
-            characters,
-            plotPoints,
-            storyArcs,
+            characters: promptCharacters,
+            plotPoints: promptPlotPoints,
+            storyArcs: promptStoryArcs,
             currentChapter,
             currentChapterOutline: chapterOutline?.description,
             userDirection: data.direction,
             ragContext,
-            foreshadowing,
+            foreshadowing: promptForeshadowing,
             recentChapterContent
           })
 
@@ -441,8 +487,8 @@ export default defineEventHandler(async (event) => {
           for await (const chunk of streamAi(
             toAiOptions(aiConfig, {
               temperature:
-                novel.aiTemperature ?
-                  parseFloat(novel.aiTemperature)
+                promptNovel.aiTemperature ?
+                  parseFloat(promptNovel.aiTemperature)
                 : parseFloat(aiConfig.temperature ?? '0.7'),
               maxTokens: aiConfig.maxTokens || MAX_TOKENS_WORKSPACE,
               messages: prompt,
@@ -523,6 +569,13 @@ export default defineEventHandler(async (event) => {
           // Track content for next chapter's sliding window
           prevPrevChapterContent = prevChapterContent
           prevChapterContent = generatedContent
+          const batchSummary = buildBatchChapterSummary(generatedContent)
+          if (batchSummary) {
+            batchChapterSummaries.set(chapterNum, {
+              title: chapterTitle,
+              summary: batchSummary
+            })
+          }
 
           await recordAiGeneration(em, auth.userId)
           enqueuePostProcessing(data.novelId, savedChapterId).catch(() => {})

@@ -58,12 +58,16 @@ export interface RagContextItem {
   score?: number
 }
 
-function buildChapterSummaries(chapters: PromptChapter[], storyArcs?: PromptStoryArc[]): string {
+function buildChapterSummaries(
+  chapters: PromptChapter[],
+  storyArcs?: PromptStoryArc[]
+): string {
   let result = ''
   const totalChapters = chapters.length
   if (totalChapters <= 30) {
     for (const ch of chapters) {
-      if (ch.summary) result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+      if (ch.summary)
+        result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
     }
   } else if (totalChapters <= 100) {
     for (const ch of chapters) {
@@ -73,7 +77,8 @@ function buildChapterSummaries(chapters: PromptChapter[], storyArcs?: PromptStor
       if (isRecent || isFirst) {
         result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
       } else {
-        const compressed = ch.summary.length > 80 ? ch.summary.slice(0, 80) + '…' : ch.summary
+        const compressed =
+          ch.summary.length > 80 ? ch.summary.slice(0, 80) + '…' : ch.summary
         result += `第${ch.chapterNumber}章：${compressed}\n`
       }
     }
@@ -86,20 +91,36 @@ function buildChapterSummaries(chapters: PromptChapter[], storyArcs?: PromptStor
     }
     result += '### 开篇章节\n'
     for (const ch of chapters.slice(0, 5)) {
-      if (ch.summary) result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+      if (ch.summary)
+        result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
     }
     result += '\n### 关键节点\n'
     for (const ch of chapters) {
-      if (ch.chapterNumber % 10 === 0 && ch.summary) result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+      if (ch.chapterNumber % 10 === 0 && ch.summary)
+        result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
     }
     result += '\n### 近期章节\n'
     const recentStart = Math.max(0, totalChapters - 15)
     for (let i = recentStart; i < totalChapters; i++) {
       const ch = chapters[i]
-      if (ch?.summary) result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
+      if (ch?.summary)
+        result += `第${ch.chapterNumber}章《${ch.title}》：${ch.summary}\n`
     }
   }
   return result
+}
+
+function getRagContextLabel(contentType: string) {
+  const labels: Record<string, string> = {
+    plot_event: '剧情线索',
+    world_detail: '世界观',
+    chapter_summary: '章节摘要',
+    foreshadowing: '伏笔',
+    overall_arc: '角色弧线',
+    profile: '角色档案',
+    chapter_story: '角色经历'
+  }
+  return labels[contentType] || contentType
 }
 
 export function buildGenerationPrompt(context: {
@@ -113,7 +134,11 @@ export function buildGenerationPrompt(context: {
   storyArcs?: PromptStoryArc[]
   ragContext?: RagContextItem[]
   foreshadowing?: PromptForeshadowing[]
-  recentChapterContent?: Array<{ chapterNumber: number; title: string; content: string }>
+  recentChapterContent?: Array<{
+    chapterNumber: number
+    title: string
+    content: string
+  }>
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const {
     novel,
@@ -153,53 +178,59 @@ export function buildGenerationPrompt(context: {
     userPrompt += `\n## 世界观设定\n${novel.worldSetting}\n`
 
   // Characters
-  if (ragContext?.length) {
-    // 仅对带角色名的检索结果按角色分组；摘要/伏笔/世界观等无角色条目跳过，避免生成 "### undefined" 脏标题
-    const charScoped = ragContext.filter((i): i is RagContextItem & { characterName: string } => Boolean(i.characterName))
-    if (charScoped.length) {
-      userPrompt += `\n## 角色档案（基于本章相关性检索）\n`
-      const grouped = new Map<string, typeof charScoped>()
-      for (const item of charScoped) {
-        const list = grouped.get(item.characterName) || []
-        list.push(item)
-        grouped.set(item.characterName, list)
-      }
-      for (const [name, items] of grouped) {
-        const char = characters.find(c => c.name === name)
-        userPrompt += `\n### ${name}\n`
-        if (char?.description) userPrompt += `简介：${char.description}\n`
-        if (char?.traits) userPrompt += `性格：${char.traits}\n`
-        if (char?.relationships) userPrompt += `关系：${char.relationships}\n`
-        if (char?.currentState) userPrompt += `当前状态：${char.currentState}\n`
-        if (char?.overallArc) userPrompt += `整体弧线：${char.overallArc}\n`
-        const stories = items.filter(i => i.contentType === 'chapter_story')
-        if (stories.length) {
-          userPrompt += `相关章节经历：\n`
-          for (const s of stories) {
-            userPrompt += `- ${s.content}\n`
-          }
+  const ragItems = ragContext || []
+  const charScoped = ragItems.filter(
+    (i): i is RagContextItem & { characterName: string } =>
+      Boolean(i.characterName)
+  )
+  const scopedCharacterNames = new Set(charScoped.map((i) => i.characterName))
+  if (charScoped.length) {
+    userPrompt += `\n## 角色档案（基于本章相关性检索）\n`
+    const grouped = new Map<string, typeof charScoped>()
+    for (const item of charScoped) {
+      const list = grouped.get(item.characterName) || []
+      list.push(item)
+      grouped.set(item.characterName, list)
+    }
+    for (const [name, items] of grouped) {
+      const char = characters.find((c) => c.name === name)
+      userPrompt += `\n### ${name}\n`
+      if (char?.description) userPrompt += `简介：${char.description}\n`
+      if (char?.traits) userPrompt += `性格：${char.traits}\n`
+      if (char?.relationships) userPrompt += `关系：${char.relationships}\n`
+      if (char?.currentState) userPrompt += `当前状态：${char.currentState}\n`
+      if (char?.overallArc) userPrompt += `整体弧线：${char.overallArc}\n`
+      const stories = items.filter((i) => i.contentType === 'chapter_story')
+      if (stories.length) {
+        userPrompt += `相关章节经历：\n`
+        for (const s of stories) {
+          userPrompt += `- ${s.content}\n`
         }
       }
-    } else if (characters.length > 0) {
-      userPrompt += `\n## 角色档案\n`
-      for (const char of characters) {
-        userPrompt += `- ${char.name}`
-        if (char.description) userPrompt += `：${char.description}`
-        if (char.traits) userPrompt += `（性格：${char.traits}）`
-        if (char.relationships) userPrompt += `（关系：${char.relationships}）`
-        if (char.currentState) userPrompt += `【当前状态：${char.currentState}】`
-        userPrompt += '\n'
-      }
     }
-  } else if (characters.length > 0) {
-    userPrompt += `\n## 角色档案\n`
-    for (const char of characters) {
+  }
+  const characterList =
+    charScoped.length ?
+      characters.filter((char) => !scopedCharacterNames.has(char.name))
+    : characters
+  if (characterList.length > 0) {
+    userPrompt += charScoped.length ? `\n## 其他角色档案\n` : `\n## 角色档案\n`
+    for (const char of characterList) {
       userPrompt += `- ${char.name}`
       if (char.description) userPrompt += `：${char.description}`
       if (char.traits) userPrompt += `（性格：${char.traits}）`
       if (char.relationships) userPrompt += `（关系：${char.relationships}）`
       if (char.currentState) userPrompt += `【当前状态：${char.currentState}】`
+      if (char.overallArc) userPrompt += `【整体弧线：${char.overallArc}】`
       userPrompt += '\n'
+    }
+  }
+
+  const nonCharacterRagItems = ragItems.filter((item) => !item.characterName)
+  if (nonCharacterRagItems.length > 0) {
+    userPrompt += `\n## 相关记忆（基于本章检索）\n`
+    for (const item of nonCharacterRagItems.slice(0, 12)) {
+      userPrompt += `- [${getRagContextLabel(item.contentType)}] ${item.content}\n`
     }
   }
 
@@ -231,7 +262,7 @@ export function buildGenerationPrompt(context: {
 
   // Plot points
   if (plotPoints.length > 0) {
-    const active = plotPoints.filter(p => p.status !== 'resolved')
+    const active = plotPoints.filter((p) => p.status !== 'resolved')
     if (active.length > 0) {
       userPrompt += `\n## 活跃剧情线索\n`
       for (const p of active) {
@@ -253,9 +284,13 @@ export function buildGenerationPrompt(context: {
   userPrompt += `\n## 生成指令\n`
   // 区分「真实标题」与「占位标题」：占位标题（第N章）只用于定位章节序号，
   // 不应要求 AI 紧扣这个空洞符号；只有用户/已有章节起过的真实标题才让 AI 围绕展开。
-  const isPlaceholderTitle = (t: string, n: number) => /^第\d+章\s*$/.test(t) || t.trim() === `第${n}章`
+  const isPlaceholderTitle = (t: string, n: number) =>
+    /^第\d+章\s*$/.test(t) || t.trim() === `第${n}章`
   if (currentChapter) {
-    const hasRealTitle = !isPlaceholderTitle(currentChapter.title, currentChapter.chapterNumber)
+    const hasRealTitle = !isPlaceholderTitle(
+      currentChapter.title,
+      currentChapter.chapterNumber
+    )
     if (hasRealTitle) {
       userPrompt += `当前章节：第${currentChapter.chapterNumber}章「${currentChapter.title}」\n`
       userPrompt += `请围绕章节标题「${currentChapter.title}」展开内容，标题已确定，不要更改。生成的内容应与章节标题紧密相关。\n`
@@ -304,7 +339,7 @@ export function buildChapterStoryPrompt(
   appearances: Array<{ snippet: string | null; background: string | null }>
 ): Array<{ role: 'system' | 'user'; content: string }> {
   const snippets = appearances
-    .map(a => a.background || a.snippet)
+    .map((a) => a.background || a.snippet)
     .filter(Boolean)
     .join('\n')
 
@@ -345,23 +380,40 @@ export function buildOverallArcPrompt(
       role: 'user',
       content: [
         description ? `## 角色简介\n${description}` : '',
-        previousArc ? `## 已有故事弧线\n${previousArc}` : '## 已有故事弧线\n（暂无，这是该角色首次出场）',
+        previousArc ?
+          `## 已有故事弧线\n${previousArc}`
+        : '## 已有故事弧线\n（暂无，这是该角色首次出场）',
         `## 第${chapterNumber}章经历\n${newChapterStory}`
-      ].filter(Boolean).join('\n\n')
+      ]
+        .filter(Boolean)
+        .join('\n\n')
     }
   ]
 }
 
 export function buildCharacterGenerationPrompt(context: {
-  novel: { title: string; description?: string; genre?: string; worldSetting?: string; styleGuide?: string }
-  existingCharacters: Array<{ name: string; description?: string; traits?: string; currentState?: string }>
+  novel: {
+    title: string
+    description?: string
+    genre?: string
+    worldSetting?: string
+    styleGuide?: string
+  }
+  existingCharacters: Array<{
+    name: string
+    description?: string
+    traits?: string
+    currentState?: string
+  }>
   outlines: Array<{ chapterNumber: number; description: string }>
   count: number
   customPrompt?: string
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const { novel, existingCharacters, outlines, count, customPrompt } = context
 
-  let systemPrompt = customPrompt || `你是一位专业的小说角色设计师。请根据小说的背景信息，设计出性格鲜明、关系合理、有故事张力的角色。
+  let systemPrompt =
+    customPrompt ||
+    `你是一位专业的小说角色设计师。请根据小说的背景信息，设计出性格鲜明、关系合理、有故事张力的角色。
 
 ## 设计原则
 - 角色性格要有层次感，避免脸谱化
@@ -372,7 +424,8 @@ export function buildCharacterGenerationPrompt(context: {
   let userPrompt = `## 小说信息\n标题：${novel.title}\n`
   if (novel.genre) userPrompt += `类型：${novel.genre}\n`
   if (novel.description) userPrompt += `简介：${novel.description}\n`
-  if (novel.worldSetting) userPrompt += `\n## 世界观设定\n${novel.worldSetting}\n`
+  if (novel.worldSetting)
+    userPrompt += `\n## 世界观设定\n${novel.worldSetting}\n`
   if (novel.styleGuide) userPrompt += `\n## 风格指南\n${novel.styleGuide}\n`
 
   if (existingCharacters.length > 0) {
@@ -464,12 +517,16 @@ export function buildCharacterExtractionPrompt(
 }
 
 export function buildStoryArcPrompt(
-  chapterSummaries: Array<{ chapterNumber: number; title: string; summary: string }>,
+  chapterSummaries: Array<{
+    chapterNumber: number
+    title: string
+    summary: string
+  }>,
   startChapter: number,
   endChapter: number
 ): Array<{ role: 'system' | 'user'; content: string }> {
   const summaryText = chapterSummaries
-    .map(ch => `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}`)
+    .map((ch) => `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}`)
     .join('\n')
 
   return [
@@ -502,7 +559,19 @@ export function buildRegenerationPrompt(context: {
   ragContext?: RagContextItem[]
   foreshadowing?: PromptForeshadowing[]
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const { novel, chapters, characters, plotPoints, storyArcs, currentChapter, currentChapterOutline, previousResult, feedback, ragContext, foreshadowing } = context
+  const {
+    novel,
+    chapters,
+    characters,
+    plotPoints,
+    storyArcs,
+    currentChapter,
+    currentChapterOutline,
+    previousResult,
+    feedback,
+    ragContext,
+    foreshadowing
+  } = context
 
   const systemPrompt = `你是一位专业的小说作家。用户对上一次生成的章节内容不满意，并提供了修改反馈。请根据反馈重新生成章节内容。
 
@@ -516,14 +585,15 @@ export function buildRegenerationPrompt(context: {
 
   let userPrompt = `## 小说信息\n标题：${novel.title}\n`
   if (novel.genre) userPrompt += `类型：${novel.genre}\n`
-  if (novel.worldSetting) userPrompt += `\n## 世界观设定\n${novel.worldSetting}\n`
+  if (novel.worldSetting)
+    userPrompt += `\n## 世界观设定\n${novel.worldSetting}\n`
 
   if (currentChapter) {
     userPrompt += `\n## 当前章节\n第${currentChapter.chapterNumber}章「${currentChapter.title}」\n`
   }
 
   if (ragContext?.length) {
-    const charScoped = ragContext.filter(i => i.characterName)
+    const charScoped = ragContext.filter((i) => i.characterName)
     if (charScoped.length) {
       userPrompt += `\n## 相关角色事件（基于本章检索）\n`
       for (const item of charScoped) {
@@ -543,10 +613,16 @@ export function buildRegenerationPrompt(context: {
 
   if (chapters.length > 0) {
     userPrompt += `\n## 近期章节\n`
-    const currentIdx = currentChapter
-      ? chapters.findIndex(ch => ch.chapterNumber === currentChapter.chapterNumber)
+    const currentIdx =
+      currentChapter ?
+        chapters.findIndex(
+          (ch) => ch.chapterNumber === currentChapter.chapterNumber
+        )
       : chapters.length
-    const precedingChapters = chapters.slice(Math.max(0, currentIdx - 5), currentIdx)
+    const precedingChapters = chapters.slice(
+      Math.max(0, currentIdx - 5),
+      currentIdx
+    )
     for (const ch of precedingChapters) {
       if (ch.summary) {
         userPrompt += `第${ch.chapterNumber}章「${ch.title}」：${ch.summary}\n`
@@ -559,7 +635,7 @@ export function buildRegenerationPrompt(context: {
   }
 
   if (plotPoints.length > 0) {
-    const active = plotPoints.filter(p => p.status !== 'resolved')
+    const active = plotPoints.filter((p) => p.status !== 'resolved')
     if (active.length > 0) {
       userPrompt += `\n## 活跃剧情线索\n`
       for (const p of active.slice(0, 10)) {
@@ -615,18 +691,22 @@ export function buildStyleAnalysisPrompt(
 }
 
 export function buildConsistencyCheckPrompt(context: {
-  characters: Array<{ name: string; description?: string | null; traits?: string | null }>
+  characters: Array<{
+    name: string
+    description?: string | null
+    traits?: string | null
+  }>
   recentSummaries: Array<{ chapterNumber: number; summary: string }>
   targetChapter: { chapterNumber: number; content: string }
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const { characters, recentSummaries, targetChapter } = context
 
   const charInfo = characters
-    .map(c => `${c.name}: ${c.description || ''} (${c.traits || ''})`)
+    .map((c) => `${c.name}: ${c.description || ''} (${c.traits || ''})`)
     .join('\n')
 
   const summaryText = recentSummaries
-    .map(c => `第${c.chapterNumber}章: ${c.summary}`)
+    .map((c) => `第${c.chapterNumber}章: ${c.summary}`)
     .join('\n')
 
   return [
@@ -657,8 +737,9 @@ export function buildSuggestionPrompt(context: {
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const { novel, chapter, characters } = context
 
-  const charInfo = characters.length > 0
-    ? characters.map(c => `${c.name}: ${c.description || ''}`).join('\n')
+  const charInfo =
+    characters.length > 0 ?
+      characters.map((c) => `${c.name}: ${c.description || ''}`).join('\n')
     : ''
 
   return [
@@ -697,18 +778,34 @@ export function buildOutlineGenerationPrompt(context: {
   startChapter: number
   existingOutlines?: Array<{ chapterNumber: number; description: string }>
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const { novel, characters, idea, chapterCount, startChapter, existingOutlines } = context
+  const {
+    novel,
+    characters,
+    idea,
+    chapterCount,
+    startChapter,
+    existingOutlines
+  } = context
 
-  const worldContext = novel.worldSetting ? `\n世界观设定：${novel.worldSetting.slice(0, CONTEXT_TRUNCATE_WORLD)}` : ''
-  const characterContext = characters.length > 0
-    ? `\n角色：${characters.slice(0, 15).map(c => `${c.name}${c.description ? `(${c.description})` : ''}`).join('、')}`
+  const worldContext =
+    novel.worldSetting ?
+      `\n世界观设定：${novel.worldSetting.slice(0, CONTEXT_TRUNCATE_WORLD)}`
+    : ''
+  const characterContext =
+    characters.length > 0 ?
+      `\n角色：${characters
+        .slice(0, 15)
+        .map((c) => `${c.name}${c.description ? `(${c.description})` : ''}`)
+        .join('、')}`
     : ''
 
   let existingContext = ''
   if (existingOutlines?.length) {
-    const before = existingOutlines.filter(o => o.chapterNumber < startChapter)
+    const before = existingOutlines.filter(
+      (o) => o.chapterNumber < startChapter
+    )
     if (before.length > 0) {
-      existingContext = `\n\n已有大纲（保留参考）：\n${before.map(o => `第${o.chapterNumber}章：${o.description}`).join('\n')}`
+      existingContext = `\n\n已有大纲（保留参考）：\n${before.map((o) => `第${o.chapterNumber}章：${o.description}`).join('\n')}`
     }
   }
 
@@ -729,13 +826,30 @@ export function buildOutlineGenerationPrompt(context: {
 }
 
 export function buildCharacterEnrichPrompt(context: {
-  novel: { title: string; description?: string; genre?: string; worldSetting?: string; styleGuide?: string }
-  character: { name: string; description?: string; traits?: string; relationships?: string }
-  existingCharacters: Array<{ name: string; description?: string; traits?: string; relationships?: string }>
+  novel: {
+    title: string
+    description?: string
+    genre?: string
+    worldSetting?: string
+    styleGuide?: string
+  }
+  character: {
+    name: string
+    description?: string
+    traits?: string
+    relationships?: string
+  }
+  existingCharacters: Array<{
+    name: string
+    description?: string
+    traits?: string
+    relationships?: string
+  }>
   outlines: Array<{ chapterNumber: number; description: string }>
   fieldsToEnrich: string[]
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const { novel, character, existingCharacters, outlines, fieldsToEnrich } = context
+  const { novel, character, existingCharacters, outlines, fieldsToEnrich } =
+    context
 
   const fieldDescriptions: Record<string, string> = {
     description: '简介（角色的身份、背景、定位，50-150字）',
@@ -744,7 +858,7 @@ export function buildCharacterEnrichPrompt(context: {
   }
 
   const fieldsInstruction = fieldsToEnrich
-    .map(f => `- ${f}: ${fieldDescriptions[f]}`)
+    .map((f) => `- ${f}: ${fieldDescriptions[f]}`)
     .join('\n')
 
   const systemPrompt = `你是一位专业的小说角色设计师。用户已经创建了一个角色但部分字段为空，请根据角色名、已有信息和小说背景，为空白字段生成合理的内容。
@@ -759,13 +873,17 @@ export function buildCharacterEnrichPrompt(context: {
   let userPrompt = `## 小说信息\n标题：${novel.title}\n`
   if (novel.genre) userPrompt += `类型：${novel.genre}\n`
   if (novel.description) userPrompt += `简介：${novel.description}\n`
-  if (novel.worldSetting) userPrompt += `\n## 世界观设定\n${novel.worldSetting.slice(0, 2000)}\n`
-  if (novel.styleGuide) userPrompt += `\n## 风格指南\n${novel.styleGuide.slice(0, 1000)}\n`
+  if (novel.worldSetting)
+    userPrompt += `\n## 世界观设定\n${novel.worldSetting.slice(0, 2000)}\n`
+  if (novel.styleGuide)
+    userPrompt += `\n## 风格指南\n${novel.styleGuide.slice(0, 1000)}\n`
 
   userPrompt += `\n## 当前角色\n名字：${character.name}\n`
-  if (character.description) userPrompt += `已有简介：${character.description}\n`
+  if (character.description)
+    userPrompt += `已有简介：${character.description}\n`
   if (character.traits) userPrompt += `已有性格：${character.traits}\n`
-  if (character.relationships) userPrompt += `已有关系：${character.relationships}\n`
+  if (character.relationships)
+    userPrompt += `已有关系：${character.relationships}\n`
 
   if (existingCharacters.length > 0) {
     userPrompt += `\n## 其他角色\n`
