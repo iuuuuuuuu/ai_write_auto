@@ -55,6 +55,7 @@ const showVersionDiff = ref(false)
 const diffVersion = ref<ChapterVersionItem | null>(null)
 const diffLines = ref<DiffLine[]>([])
 const rollingBack = ref(false)
+const undoingVersionId = ref<number | null>(null)
 
 /* ─────────────── 作者笔记 ─────────────── */
 const { data: chapterNote, refresh: refreshChapterNote } = await useFetch<{
@@ -1381,7 +1382,10 @@ function onDocumentMousedown(e: MouseEvent) {
   }
 }
 
-async function doAiAction(type: 'expand' | 'rewrite' | 'continue', direction?: string) {
+async function doAiAction(
+  type: 'expand' | 'rewrite' | 'continue',
+  direction?: string
+) {
   if (!aiStatus.value.available) {
     aiActionResult.value =
       aiStatus.value.reason || 'AI 当前不可用，仍可手动写作'
@@ -1852,6 +1856,37 @@ async function rollbackVersion(version: ChapterVersionItem) {
   } finally {
     rollingBack.value = false
   }
+}
+
+function undoVersion(version: ChapterVersionItem) {
+  dialog.warning({
+    title: '直接撤销',
+    content: `确定直接撤销到 V${version.versionNumber} 吗？此操作不会生成新版本记录，也不会保留当前内容备份。`,
+    positiveText: '直接撤销',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      undoingVersionId.value = version.id
+      try {
+        await $fetch(
+          `/api/novels/${novelId.value}/chapters/${chapterId.value}/versions/${version.id}/undo`,
+          { method: 'POST' }
+        )
+        await Promise.all([
+          refreshChapter(),
+          refreshVersions(),
+          refreshAllChapters()
+        ])
+        content.value = version.content
+        await setEditorMarkdown(version.content)
+        showVersionDiff.value = false
+        message.success(`已直接撤销到 V${version.versionNumber}`)
+      } catch {
+        message.error('直接撤销失败，请稍后重试')
+      } finally {
+        undoingVersionId.value = null
+      }
+    }
+  })
 }
 
 function isEditableShortcutTarget(target: EventTarget | null) {
@@ -2755,7 +2790,11 @@ onBeforeUnmount(() => {
                     @click="extractCharactersWithAi"
                   >
                     <Icon
-                      :icon="aiExtractingCharacters ? 'lucide:loader-2' : 'lucide:sparkles'"
+                      :icon="
+                        aiExtractingCharacters ? 'lucide:loader-2' : (
+                          'lucide:sparkles'
+                        )
+                      "
                       class="w-3 h-3"
                       :class="{ 'animate-spin': aiExtractingCharacters }"
                     />
@@ -2781,12 +2820,15 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <button
+              <div
                 v-for="char in allCharacters"
                 :key="char.id"
-                type="button"
-                class="w-full text-left rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-(--ui-bg-muted) group border border-transparent hover:border-(--ui-border)"
+                role="button"
+                tabindex="0"
+                class="w-full cursor-pointer text-left rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-(--ui-bg-muted) group border border-transparent hover:border-(--ui-border)"
                 @click="toggleChapterCharacter(char.id)"
+                @keydown.enter.prevent="toggleChapterCharacter(char.id)"
+                @keydown.space.prevent="toggleChapterCharacter(char.id)"
               >
                 <div class="flex items-center gap-2">
                   <Icon
@@ -2803,11 +2845,15 @@ onBeforeUnmount(() => {
                     "
                   />
                   <div class="min-w-0 flex-1">
-                    <span class="font-semibold text-(--ui-text-highlighted) truncate">{{ char.name }}</span>
                     <span
-                      v-if="detectedCharacters.some(d => d.id === char.id)"
+                      class="font-semibold text-(--ui-text-highlighted) truncate"
+                      >{{ char.name }}</span
+                    >
+                    <span
+                      v-if="detectedCharacters.some((d) => d.id === char.id)"
                       class="ml-1 text-[9px] text-emerald-500"
-                    >正文中</span>
+                      >正文中</span
+                    >
                   </div>
                   <button
                     type="button"
@@ -2820,7 +2866,7 @@ onBeforeUnmount(() => {
                     />
                   </button>
                 </div>
-              </button>
+              </div>
 
               <div
                 v-if="!allCharacters?.length"
@@ -2884,7 +2930,7 @@ onBeforeUnmount(() => {
               <p class="text-[10px] text-(--ui-text-dimmed) mb-1.5">
                 {{ new Date(v.createdAt).toLocaleString() }}
               </p>
-              <div class="flex items-center gap-1">
+              <div class="flex flex-wrap items-center gap-1">
                 <NButton
                   size="tiny"
                   quaternary
@@ -2901,6 +2947,16 @@ onBeforeUnmount(() => {
                 >
                   <template #icon><Icon icon="lucide:undo-2" /></template>
                   回滚
+                </NButton>
+                <NButton
+                  size="tiny"
+                  quaternary
+                  type="warning"
+                  :loading="undoingVersionId === v.id"
+                  @click="undoVersion(v)"
+                >
+                  <template #icon><Icon icon="lucide:rotate-ccw" /></template>
+                  撤销
                 </NButton>
               </div>
             </div>
@@ -3357,7 +3413,10 @@ onBeforeUnmount(() => {
             transform: 'translate(-50%, -100%)'
           }"
         >
-          <NTooltip v-if="selectedText" trigger="hover">
+          <NTooltip
+            v-if="selectedText"
+            trigger="hover"
+          >
             <template #trigger>
               <NButton
                 size="tiny"
@@ -3373,7 +3432,10 @@ onBeforeUnmount(() => {
             </template>
             补充细节，让选中内容更丰富生动
           </NTooltip>
-          <NTooltip v-if="selectedText" trigger="hover">
+          <NTooltip
+            v-if="selectedText"
+            trigger="hover"
+          >
             <template #trigger>
               <NButton
                 size="tiny"
@@ -3698,6 +3760,16 @@ onBeforeUnmount(() => {
             @click="showVersionDiff = false"
           >
             关闭
+          </NButton>
+          <NButton
+            v-if="diffVersion"
+            size="small"
+            type="warning"
+            :loading="undoingVersionId === diffVersion.id"
+            @click="undoVersion(diffVersion)"
+          >
+            <template #icon><Icon icon="lucide:rotate-ccw" /></template>
+            直接撤销
           </NButton>
           <NButton
             v-if="diffVersion"

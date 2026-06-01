@@ -7,11 +7,10 @@ export default defineEventHandler(() => {
     info: {
       title: 'AI Novel Writer API',
       version: '1.0.0',
-      description: 'AI 小说写作平台的开放 API。使用方式：在请求头中传入 `Authorization: Bearer <API Token>`，API Token 可在设置页的 Open API 面板创建。SSE 接口返回 `data: {...}` 格式的流式片段。'
+      description:
+        'AI 小说写作平台的开放 API。使用方式：在请求头中传入 `Authorization: Bearer <API Token>`，API Token 可在设置页的 Open API 面板创建。SSE 接口返回 `data: {...}` 格式的流式片段。'
     },
-    servers: [
-      { url: baseUrl || '/', description: 'Current server' }
-    ],
+    servers: [{ url: baseUrl || '/', description: 'Current server' }],
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -28,7 +27,11 @@ export default defineEventHandler(() => {
             title: { type: 'string', example: '我的小说' },
             description: { type: 'string', example: '这是一个描述' },
             genre: { type: 'string', example: 'fantasy' },
-            status: { type: 'string', enum: ['draft', 'in_progress', 'completed'], example: 'draft' },
+            status: {
+              type: 'string',
+              enum: ['draft', 'in_progress', 'completed'],
+              example: 'draft'
+            },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' }
           }
@@ -42,7 +45,10 @@ export default defineEventHandler(() => {
             title: { type: 'string', example: '第一章' },
             content: { type: 'string', example: '正文内容...' },
             summary: { type: 'string' },
-            status: { type: 'string', enum: ['draft', 'generated', 'edited', 'final'] },
+            status: {
+              type: 'string',
+              enum: ['draft', 'generated', 'edited', 'final']
+            },
             wordCount: { type: 'integer', example: 3000 },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' }
@@ -95,7 +101,10 @@ export default defineEventHandler(() => {
           properties: {
             id: { type: 'integer', example: 1 },
             name: { type: 'string', example: 'CI 部署脚本' },
-            token: { type: 'string', example: 'ak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
+            token: {
+              type: 'string',
+              example: 'ak_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+            },
             createdAt: { type: 'string', format: 'date-time' }
           }
         },
@@ -154,7 +163,14 @@ export default defineEventHandler(() => {
             }
           },
           responses: {
-            '200': { description: '创建的小说', content: { 'application/json': { schema: { $ref: '#/components/schemas/Novel' } } } }
+            '200': {
+              description: '创建的小说',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Novel' }
+                }
+              }
+            }
           }
         }
       },
@@ -162,15 +178,36 @@ export default defineEventHandler(() => {
         get: {
           tags: ['Novels'],
           summary: '获取小说详情',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
+          ],
           responses: {
-            '200': { description: '小说详情', content: { 'application/json': { schema: { $ref: '#/components/schemas/Novel' } } } }
+            '200': {
+              description: '小说详情',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Novel' }
+                }
+              }
+            }
           }
         },
         put: {
           tags: ['Novels'],
           summary: '更新小说',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
+          ],
           requestBody: {
             required: true,
             content: {
@@ -192,7 +229,14 @@ export default defineEventHandler(() => {
         delete: {
           tags: ['Novels'],
           summary: '删除小说（移入回收站）',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
+          ],
           responses: { '200': { description: '删除成功' } }
         }
       },
@@ -200,18 +244,39 @@ export default defineEventHandler(() => {
         get: {
           tags: ['Chapters'],
           summary: '获取章节列表',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
+          ],
           responses: {
             '200': {
               description: '章节列表',
-              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Chapter' } } } }
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/Chapter' }
+                  }
+                }
+              }
             }
           }
         },
         post: {
           tags: ['Chapters'],
           summary: '创建章节',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
+          ],
           requestBody: {
             required: true,
             content: {
@@ -227,7 +292,16 @@ export default defineEventHandler(() => {
               }
             }
           },
-          responses: { '200': { description: '创建的章节', content: { 'application/json': { schema: { $ref: '#/components/schemas/Chapter' } } } } }
+          responses: {
+            '200': {
+              description: '创建的章节',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Chapter' }
+                }
+              }
+            }
+          }
         }
       },
       '/api/novels/{id}/chapters/{chapterId}': {
@@ -235,19 +309,46 @@ export default defineEventHandler(() => {
           tags: ['Chapters'],
           summary: '获取章节详情',
           parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
-            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'chapterId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
           ],
           responses: {
-            '200': { description: '章节详情', content: { 'application/json': { schema: { $ref: '#/components/schemas/Chapter' } } } }
+            '200': {
+              description: '章节详情',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Chapter' }
+                }
+              }
+            }
           }
         },
         put: {
           tags: ['Chapters'],
           summary: '更新章节',
           parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
-            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'chapterId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
           ],
           requestBody: {
             required: true,
@@ -272,18 +373,39 @@ export default defineEventHandler(() => {
         get: {
           tags: ['Characters'],
           summary: '获取角色列表',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
+          ],
           responses: {
             '200': {
               description: '角色列表',
-              content: { 'application/json': { schema: { type: 'array', items: { $ref: '#/components/schemas/Character' } } } }
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'array',
+                    items: { $ref: '#/components/schemas/Character' }
+                  }
+                }
+              }
             }
           }
         },
         post: {
           tags: ['Characters'],
           summary: '创建角色',
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
+          ],
           requestBody: {
             required: true,
             content: {
@@ -300,7 +422,16 @@ export default defineEventHandler(() => {
               }
             }
           },
-          responses: { '200': { description: '创建的角色', content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } }
+          responses: {
+            '200': {
+              description: '创建的角色',
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Character' }
+                }
+              }
+            }
+          }
         }
       },
       '/api/ai/generate': {
@@ -317,7 +448,8 @@ export default defineEventHandler(() => {
           },
           responses: {
             '200': {
-              description: 'SSE 流，格式：data: { "content": "...", "done": false }',
+              description:
+                'SSE 流，格式：data: { "content": "...", "done": false }',
               content: { 'text/event-stream': { schema: { type: 'string' } } }
             }
           }
@@ -376,7 +508,10 @@ export default defineEventHandler(() => {
                   properties: {
                     novelId: { type: 'integer' },
                     chapterId: { type: 'integer' },
-                    contextBefore: { type: 'string', description: '光标前的文本上下文' },
+                    contextBefore: {
+                      type: 'string',
+                      description: '光标前的文本上下文'
+                    },
                     direction: { type: 'string' },
                     aiConfigId: { type: 'integer' }
                   },
@@ -431,7 +566,12 @@ export default defineEventHandler(() => {
                 schema: {
                   type: 'object',
                   properties: {
-                    name: { type: 'string', minLength: 1, maxLength: 100, example: 'CI 部署脚本' }
+                    name: {
+                      type: 'string',
+                      minLength: 1,
+                      maxLength: 100,
+                      example: 'CI 部署脚本'
+                    }
                   },
                   required: ['name']
                 },
@@ -456,7 +596,12 @@ export default defineEventHandler(() => {
           tags: ['Open API'],
           summary: '删除 API Token',
           parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
           ],
           responses: {
             '200': {
@@ -475,8 +620,19 @@ export default defineEventHandler(() => {
           tags: ['Search'],
           summary: '全文搜索',
           parameters: [
-            { name: 'q', in: 'query', required: true, schema: { type: 'string' }, description: '搜索关键词' },
-            { name: 'novelId', in: 'query', schema: { type: 'integer' }, description: '限定搜索范围到指定小说' }
+            {
+              name: 'q',
+              in: 'query',
+              required: true,
+              schema: { type: 'string' },
+              description: '搜索关键词'
+            },
+            {
+              name: 'novelId',
+              in: 'query',
+              schema: { type: 'integer' },
+              description: '限定搜索范围到指定小说'
+            }
           ],
           responses: {
             '200': { description: '搜索结果（chapters, novels, characters）' }
@@ -496,8 +652,15 @@ export default defineEventHandler(() => {
                   properties: {
                     novelId: { type: 'integer' },
                     chapterId: { type: 'integer' },
-                    previousResult: { type: 'string', description: '上次生成的内容' },
-                    feedback: { type: 'string', description: '用户反馈', example: '节奏太快，多加对话' },
+                    previousResult: {
+                      type: 'string',
+                      description: '上次生成的内容'
+                    },
+                    feedback: {
+                      type: 'string',
+                      description: '用户反馈',
+                      example: '节奏太快，多加对话'
+                    },
                     aiConfigId: { type: 'integer' },
                     temperature: { type: 'number' },
                     maxTokens: { type: 'integer' }
@@ -508,7 +671,10 @@ export default defineEventHandler(() => {
             }
           },
           responses: {
-            '200': { description: 'SSE 流', content: { 'text/event-stream': { schema: { type: 'string' } } } }
+            '200': {
+              description: 'SSE 流',
+              content: { 'text/event-stream': { schema: { type: 'string' } } }
+            }
           }
         }
       },
@@ -525,7 +691,10 @@ export default defineEventHandler(() => {
                   properties: {
                     novelId: { type: 'integer' },
                     chapterId: { type: 'integer' },
-                    fragmentType: { type: 'string', enum: ['dialogue', 'description', 'action', 'monologue'] },
+                    fragmentType: {
+                      type: 'string',
+                      enum: ['dialogue', 'description', 'action', 'monologue']
+                    },
                     contextBefore: { type: 'string' },
                     aiConfigId: { type: 'integer' }
                   },
@@ -535,7 +704,10 @@ export default defineEventHandler(() => {
             }
           },
           responses: {
-            '200': { description: 'SSE 流', content: { 'text/event-stream': { schema: { type: 'string' } } } }
+            '200': {
+              description: 'SSE 流',
+              content: { 'text/event-stream': { schema: { type: 'string' } } }
+            }
           }
         }
       },
@@ -559,7 +731,29 @@ export default defineEventHandler(() => {
             }
           },
           responses: {
-            '200': { description: '检查结果', content: { 'application/json': { schema: { type: 'object', properties: { issues: { type: 'array', items: { type: 'object', properties: { type: { type: 'string' }, severity: { type: 'string' }, description: { type: 'string' } } } } } } } } }
+            '200': {
+              description: '检查结果',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      issues: {
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            type: { type: 'string' },
+                            severity: { type: 'string' },
+                            description: { type: 'string' }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -638,8 +832,18 @@ export default defineEventHandler(() => {
           tags: ['Chapters'],
           summary: '获取章节版本历史',
           parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
-            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'chapterId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
           ],
           responses: {
             '200': { description: '版本列表' }
@@ -651,12 +855,58 @@ export default defineEventHandler(() => {
           tags: ['Chapters'],
           summary: '回滚到指定版本',
           parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
-            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } },
-            { name: 'versionId', in: 'path', required: true, schema: { type: 'integer' } }
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'chapterId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
           ],
           responses: {
             '200': { description: '回滚成功' }
+          }
+        }
+      },
+      '/api/novels/{id}/chapters/{chapterId}/versions/{versionId}/undo': {
+        post: {
+          tags: ['Chapters'],
+          summary: '直接撤销到指定版本',
+          description:
+            '将章节当前内容直接替换为指定历史版本内容，不新增版本记录。',
+          parameters: [
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'chapterId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
+          ],
+          responses: {
+            '200': { description: '直接撤销成功' }
           }
         }
       },
@@ -665,8 +915,18 @@ export default defineEventHandler(() => {
           tags: ['Chapters'],
           summary: '获取章节作者笔记',
           parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
-            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'chapterId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
           ],
           responses: { '200': { description: '笔记内容' } }
         },
@@ -674,12 +934,30 @@ export default defineEventHandler(() => {
           tags: ['Chapters'],
           summary: '更新章节作者笔记',
           parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
-            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'chapterId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
           ],
           requestBody: {
             required: true,
-            content: { 'application/json': { schema: { type: 'object', properties: { content: { type: 'string' } }, required: ['content'] } } }
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { content: { type: 'string' } },
+                  required: ['content']
+                }
+              }
+            }
           },
           responses: { '200': { description: '更新成功' } }
         }
@@ -689,8 +967,18 @@ export default defineEventHandler(() => {
           tags: ['AI'],
           summary: '获取章节一致性问题列表',
           parameters: [
-            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } },
-            { name: 'chapterId', in: 'path', required: true, schema: { type: 'integer' } }
+            {
+              name: 'id',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            },
+            {
+              name: 'chapterId',
+              in: 'path',
+              required: true,
+              schema: { type: 'integer' }
+            }
           ],
           responses: { '200': { description: '一致性问题列表' } }
         }
@@ -700,7 +988,12 @@ export default defineEventHandler(() => {
           tags: ['Stats'],
           summary: '获取 Token 用量统计',
           parameters: [
-            { name: 'days', in: 'query', schema: { type: 'integer', default: 30 }, description: '统计天数' }
+            {
+              name: 'days',
+              in: 'query',
+              schema: { type: 'integer', default: 30 },
+              description: '统计天数'
+            }
           ],
           responses: { '200': { description: 'Token 用量数据' } }
         }
