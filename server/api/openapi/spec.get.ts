@@ -539,32 +539,6 @@ export default defineEventHandler(() => {
           }
         }
       },
-      '/api/ai/batch-generate': {
-        post: {
-          tags: ['AI'],
-          summary: '批量生成多章节',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    novelId: { type: 'integer' },
-                    startChapter: { type: 'integer' },
-                    endChapter: { type: 'integer' },
-                    aiConfigId: { type: 'integer' }
-                  },
-                  required: ['novelId', 'startChapter', 'endChapter']
-                }
-              }
-            }
-          },
-          responses: {
-            '200': { description: '批量任务已创建' }
-          }
-        }
-      },
       '/api/ai/consistency-check': {
         post: {
           tags: ['AI'],

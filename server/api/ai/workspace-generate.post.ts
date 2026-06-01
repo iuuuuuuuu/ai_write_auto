@@ -11,7 +11,8 @@ import { recordAiGeneration } from '../../utils/writing-stats'
 import { enqueuePostProcessing } from '../../services/task-queue'
 import { isEmbeddingReady } from '../../services/embedding'
 import { retrieveRelevant, getActiveForeshadowing } from '../../services/content-rag'
-import { WORKSPACE_MAX_CHAPTERS } from '../../utils/ai-constants'
+import { WORKSPACE_MAX_CHAPTERS, MAX_TOKENS_WORKSPACE } from '../../utils/ai-constants'
+import { ensureOutlinesForRange } from '../../services/outline-autofill'
 
 const workspaceSchema = z.object({
   novelId: z.number().int().positive(),
@@ -91,6 +92,25 @@ export default defineEventHandler(async (event) => {
       controller.enqueue(encoder.encode(': connected\n\n'))
 
       try {
+        // 先大纲、再正文：批量生成前一次性补齐整段缺失的大纲（只补缺口、不覆盖已有；失败则降级继续）
+        try {
+          const { filled } = await ensureOutlinesForRange({
+            em,
+            novel,
+            novelId: data.novelId,
+            fromChapter: data.fromChapter,
+            toChapter: data.toChapter,
+            characters,
+            existingOutlines: outlines,
+            direction: data.direction,
+            aiConfig,
+            userId: auth.userId
+          })
+          if (filled.length) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'outline_filled', taskId, chapters: filled })}\n\n`))
+          }
+        } catch { /* 降级：补全失败按无大纲继续生成 */ }
+
         // Track previous chapter content for sliding window
         let prevChapterContent: string | null = null
         let prevPrevChapterContent: string | null = null
@@ -109,22 +129,36 @@ export default defineEventHandler(async (event) => {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'progress', taskId, current: chapterNum, completed: chapterNum - data.fromChapter, total: totalChapters })}\n\n`))
 
           // Re-fetch chapters for up-to-date summaries
-          const chapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' }, populate: ['content'] })
+          const allChapters = await em.find(ChapterSchema, { novel: data.novelId, deletedAt: null }, { orderBy: { chapterNumber: 'ASC' }, populate: ['content'] })
+          // 仅把「当前章之前」的章节作为上下文，避免把尚未生成/将被覆盖的后续章节摘要泄露给 AI
+          const chapters = allChapters.filter(c => c.chapterNumber < chapterNum)
 
           const chapterOutline = outlines.find(o => o.chapterNumber === chapterNum)
 
-          // Build recent chapter content (sliding window from workspace)
+          // Build recent chapter content (sliding window).
+          // 优先用本次会话刚生成的正文；从中间章节起步时本地缓存为空，则回退到 DB 中的已有前序章节，保证首章也有前文衔接。
           const recentChapterContent: Array<{ chapterNumber: number; title: string; content: string }> = []
-          if (prevPrevChapterContent) {
-            const prevPrevCh = chapters.find(c => c.chapterNumber === chapterNum - 2)
-            if (prevPrevCh) {
-              recentChapterContent.push({ chapterNumber: prevPrevCh.chapterNumber, title: prevPrevCh.title, content: prevPrevChapterContent.slice(-3000) })
-            }
+          const prevPrevCh = allChapters.find(c => c.chapterNumber === chapterNum - 2)
+          if (prevPrevCh) {
+            const body = prevPrevChapterContent ?? prevPrevCh.content
+            if (body) recentChapterContent.push({ chapterNumber: prevPrevCh.chapterNumber, title: prevPrevCh.title, content: body.slice(-3000) })
           }
-          if (prevChapterContent) {
-            const prevCh = chapters.find(c => c.chapterNumber === chapterNum - 1)
-            if (prevCh) {
-              recentChapterContent.push({ chapterNumber: prevCh.chapterNumber, title: prevCh.title, content: prevChapterContent.slice(-4000) })
+          const prevCh = allChapters.find(c => c.chapterNumber === chapterNum - 1)
+          if (prevCh) {
+            const body = prevChapterContent ?? prevCh.content
+            if (body) recentChapterContent.push({ chapterNumber: prevCh.chapterNumber, title: prevCh.title, content: body.slice(-4000) })
+          }
+
+          // 章节定位锚点：覆盖生成时沿用已有标题，全新章节用占位标题，确保 AI 明确知道在写第几章
+          const existingForNum = allChapters.find(c => c.chapterNumber === chapterNum)
+          const currentChapter = { chapterNumber: chapterNum, title: existingForNum?.title || `第${chapterNum}章` }
+
+          // 每章针对本章剧情独立检索相关角色近况；缺少本章锚点时回退到整批共享检索
+          let ragContext = sharedRagContext
+          if (isEmbeddingReady()) {
+            const perChapterQuery = [chapterOutline?.description, data.direction].filter(Boolean).join(' ')
+            if (perChapterQuery) {
+              ragContext = await retrieveRelevant(data.novelId, perChapterQuery, 10)
             }
           }
 
@@ -134,9 +168,10 @@ export default defineEventHandler(async (event) => {
             characters,
             plotPoints,
             storyArcs,
+            currentChapter,
             currentChapterOutline: chapterOutline?.description,
             userDirection: data.direction,
-            ragContext: sharedRagContext,
+            ragContext,
             foreshadowing,
             recentChapterContent
           })
@@ -148,7 +183,7 @@ export default defineEventHandler(async (event) => {
 
           for await (const chunk of streamAi(toAiOptions(aiConfig, {
             temperature: novel.aiTemperature ? parseFloat(novel.aiTemperature) : parseFloat(aiConfig.temperature ?? '0.7'),
-            maxTokens: aiConfig.maxTokens || 4096,
+            maxTokens: aiConfig.maxTokens || MAX_TOKENS_WORKSPACE,
             messages: prompt,
             stream: true,
             signal
@@ -176,7 +211,7 @@ export default defineEventHandler(async (event) => {
           await recordUsage({ em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, inputTokens, outputTokens)
 
           // Save chapter
-          const existingChapter = chapters.find(c => c.chapterNumber === chapterNum)
+          const existingChapter = allChapters.find(c => c.chapterNumber === chapterNum)
           let savedChapterId: number
           if (existingChapter) {
             await em.nativeUpdate(ChapterSchema, { id: existingChapter.id }, {

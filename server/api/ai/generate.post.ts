@@ -6,6 +6,7 @@ import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, NovelOutlineSchema } from '../../database/entities'
 import { isEmbeddingReady } from '../../services/embedding'
 import { retrieveRelevant, getActiveForeshadowing } from '../../services/content-rag'
+import { ensureChapterOutline } from '../../services/outline-autofill'
 
 const generateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -42,8 +43,21 @@ export default defineEventHandler(async (event) => {
 
   let chapterOutline = data.chapterOutline
   if (!chapterOutline && currentChapter) {
-    const outline = await em.findOne(NovelOutlineSchema, { novel: data.novelId, chapterNumber: currentChapter.chapterNumber })
-    if (outline) chapterOutline = outline.description
+    // 先大纲、再正文：本章无显式大纲时，查库；仍缺失则自动生成一条并落库，
+    // 保证生成流程不缺「大纲」这一环（失败则降级为无大纲续写，不阻断）。
+    const existingOutlines = await em.find(NovelOutlineSchema, { novel: data.novelId }, { orderBy: { sortOrder: 'ASC' } })
+    const ensured = await ensureChapterOutline({
+      em,
+      novel,
+      novelId: data.novelId,
+      chapterNumber: currentChapter.chapterNumber,
+      characters,
+      existingOutlines: existingOutlines.map(o => ({ chapterNumber: o.chapterNumber, description: o.description, sortOrder: o.sortOrder })),
+      direction: data.direction,
+      aiConfig,
+      userId: auth.userId
+    })
+    chapterOutline = ensured.description
   }
 
   let foreshadowing: Array<{ content: string; description: string | null; chapterNumber: number | null }> | undefined
@@ -54,7 +68,7 @@ export default defineEventHandler(async (event) => {
     if (ch.content) recentChapterContent.push({ chapterNumber: ch.chapterNumber, title: ch.title, content: ch.content.slice(-4000) })
   }
 
-  let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
+  let ragContext: Array<{ characterName?: string; content: string; contentType: string; chapterId: number | null }> | undefined
   if (isEmbeddingReady()) {
     const query = [currentChapter?.title, chapterOutline, data.direction].filter(Boolean).join(' ')
     if (query) {

@@ -76,7 +76,8 @@ export default defineEventHandler(async (event) => {
 
   await recordUsage({ em, userId: auth.userId, configId: configEntry.id, model: aiConfig.model }, inputTokens, outputTokens)
 
-  const parsed: unknown = JSON.parse(result)
+  const cleaned = result.replace(/^```(?:json|JSON)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
+  const parsed: unknown = JSON.parse(cleaned)
   if (!Array.isArray(parsed)) {
     throw createError({ statusCode: 500, message: 'AI returned invalid format' })
   }

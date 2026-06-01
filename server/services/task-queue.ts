@@ -24,7 +24,7 @@ import {
 import type { GenerationTask } from '../database/entities'
 import type { ResolvedAiConfig } from '../utils/ai-configs'
 
-/** Streaming wrapper that returns the same shape as the old callAiStreaming. */
+/** Streaming wrapper that returns the same shape as the old callAiWithUsage. */
 async function callAiStreaming(options: Parameters<typeof streamAi>[0]) {
   let content = ''
   let inputTokens = 0
@@ -36,6 +36,8 @@ async function callAiStreaming(options: Parameters<typeof streamAi>[0]) {
       outputTokens = chunk.usage.completion_tokens || outputTokens
     }
   }
+  // Strip markdown code fences that some models wrap around JSON responses
+  content = content.replace(/^```(?:json|JSON)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
   return { content, inputTokens, outputTokens }
 }
 

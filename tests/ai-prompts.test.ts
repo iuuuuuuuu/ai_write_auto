@@ -71,6 +71,67 @@ describe('ai-prompts', () => {
       expect(result[1].content).toContain('神秘信件')
       expect(result[1].content).not.toContain('已解决的冲突')
     })
+
+    it('includes foreshadowing to be paid off', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [],
+        characters: [],
+        plotPoints: [],
+        foreshadowing: [
+          { content: '墙上的猎枪', description: '第三幕会击发', chapterNumber: 1 },
+        ],
+      })
+      expect(result[1].content).toContain('待回收伏笔')
+      expect(result[1].content).toContain('墙上的猎枪')
+      expect(result[1].content).toContain('第1章')
+    })
+
+    it('prefers explicit recentChapterContent over chapters tail for continuity', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [
+          { title: '第99章', chapterNumber: 99, summary: '末尾摘要', content: '全书最后一章的正文' },
+        ],
+        characters: [],
+        plotPoints: [],
+        currentChapter: { title: '第50章', chapterNumber: 50 },
+        recentChapterContent: [
+          { chapterNumber: 49, title: '前一章', content: '第49章的衔接正文' },
+        ],
+      })
+      // 应使用传入的前序章节正文，而非 chapters 末尾的第99章
+      expect(result[1].content).toContain('第49章的衔接正文')
+      expect(result[1].content).not.toContain('全书最后一章的正文')
+    })
+
+    it('anchors generation to the current chapter number and title', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [],
+        characters: [],
+        plotPoints: [],
+        currentChapter: { title: '初入江湖', chapterNumber: 7 },
+      })
+      // 批量生成必须让 AI 明确知道在写第几章、章节标题是什么
+      expect(result[1].content).toContain('第7章')
+      expect(result[1].content).toContain('初入江湖')
+      expect(result[1].content).toContain('请生成第7章')
+    })
+
+    it('does not force AI to stick to a placeholder title', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [],
+        characters: [],
+        plotPoints: [],
+        currentChapter: { title: '第7章', chapterNumber: 7 },
+      })
+      // 占位标题（第N章）不应被当作"已确定的标题"要求 AI 紧扣
+      expect(result[1].content).toContain('第7章')
+      expect(result[1].content).toContain('标题未定')
+      expect(result[1].content).not.toContain('请围绕章节标题')
+    })
   })
 
   describe('buildRegenerationPrompt', () => {

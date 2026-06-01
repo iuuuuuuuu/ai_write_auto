@@ -12,7 +12,7 @@ const novelId = computed(() => Number(route.params.id))
 const message = useMessage()
 const { post, put, del: apiDel } = useApi()
 const { startStream } = useAiStream()
-const { updateActiveTabTitle, removeTab, activeTab, setActiveTab } =
+const { tabs, updateActiveTabTitle, removeTab, activeTab, setActiveTab } =
   useTabs('user')
 
 function closeAndGoHome() {
@@ -110,15 +110,6 @@ interface GenerateOutlineForm {
   chapterCount: number
 }
 
-interface GenerateOutlineResponse {
-  outlines: Array<{
-    chapterNumber: number
-    description: string
-    sortOrder?: number
-  }>
-  raw?: string
-}
-
 interface PlotPointItem {
   id: number
   description: string
@@ -157,13 +148,17 @@ const savingAiSettings = shallowRef(false)
 const aiSettingsForm = reactive({
   aiConfigId: null as number | null,
   aiTemperature: '',
-  aiExtraPrompt: ''
+  aiExtraPrompt: '',
+  worldSetting: '',
+  styleGuide: ''
 })
 
 function openAiSettings() {
   aiSettingsForm.aiConfigId = novel.value?.aiConfigId ?? null
   aiSettingsForm.aiTemperature = novel.value?.aiTemperature || ''
   aiSettingsForm.aiExtraPrompt = novel.value?.aiExtraPrompt || ''
+  aiSettingsForm.worldSetting = novel.value?.worldSetting || ''
+  aiSettingsForm.styleGuide = novel.value?.styleGuide || ''
   showAiSettingsModal.value = true
 }
 
@@ -175,7 +170,9 @@ async function saveAiSettings() {
       {
         aiConfigId: aiSettingsForm.aiConfigId,
         aiTemperature: aiSettingsForm.aiTemperature || undefined,
-        aiExtraPrompt: aiSettingsForm.aiExtraPrompt || undefined
+        aiExtraPrompt: aiSettingsForm.aiExtraPrompt || undefined,
+        worldSetting: aiSettingsForm.worldSetting || undefined,
+        styleGuide: aiSettingsForm.styleGuide || undefined
       },
       { successMessage: 'AI 设定已保存' }
     )
@@ -275,9 +272,6 @@ const showGenerateOutlineDialog = shallowRef(false)
 const showRegenerateOutlineDialog = shallowRef(false)
 const generatingOutline = shallowRef(false)
 const outlineStreamText = ref('')
-const outlineStreamParsed = ref<
-  Array<{ chapterNumber: number; description: string }>
->([])
 
 const outlineStreamItems = computed(() => {
   const text = outlineStreamText.value
@@ -337,7 +331,15 @@ async function deleteNovel() {
   const confirmed = await confirmDelete(novel.value?.title || '此小说')
   if (!confirmed) return
   await $fetch(`/api/novels/${novelId.value}`, { method: 'DELETE' })
-  navigateTo('/dashboard')
+  // 关闭所有指向该小说的标签页（详情/章节/工作区/阅读），并切回首页，
+  // 避免删除后残留指向已不存在小说的死标签。
+  setActiveTab('home')
+  const prefix = `/novels/${novelId.value}`
+  for (const tab of tabs.value.filter(
+    (t) => t.closable && (t.path === prefix || t.path.startsWith(`${prefix}/`))
+  )) {
+    removeTab(tab.id)
+  }
 }
 
 const statusLabel = computed(() => {
@@ -407,10 +409,12 @@ function clearChapterFilters() {
 }
 
 const sortedOutlines = computed(() => {
+  // 主按章号排序：大纲条目本质是「第N章的大纲」，按章号排序最直观；
+  // 也保证生成流程自动补全的大纲（不一定带连续 sortOrder）能正确插入到对应章号位置。
   return [...(outlines.value || [])].sort((left, right) => {
     return (
-      left.sortOrder - right.sortOrder ||
-      left.chapterNumber - right.chapterNumber
+      left.chapterNumber - right.chapterNumber ||
+      left.sortOrder - right.sortOrder
     )
   })
 })
@@ -1544,7 +1548,7 @@ async function savePlotPoint() {
               v-if="!setupStep1Done"
               size="tiny"
               type="primary"
-              @click="showAiSettingsModal = true"
+              @click="openAiSettings"
             >
               去设定
             </NButton>
@@ -3121,14 +3125,42 @@ async function savePlotPoint() {
       <NModal
         v-model:show="showAiSettingsModal"
         preset="card"
-        title="AI 设定"
+        title="AI 与世界观设定"
         style="max-width: 480px"
       >
         <p class="mb-4 text-sm text-(--ui-text-muted)">
-          为本小说配置专属的 AI
-          生成参数。章节生成、续写、扩写、改写等所有写作操作都会使用这里的设定。
+          配置本小说的世界观、风格与 AI
+          生成参数。这些设定会作为章节生成、续写、审核等所有写作操作的上下文。
         </p>
         <div class="space-y-4">
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium text-(--ui-text)"
+              >世界观设定</label
+            >
+            <NInput
+              v-model:value="aiSettingsForm.worldSetting"
+              type="textarea"
+              :autosize="{ minRows: 3, maxRows: 8 }"
+              placeholder="描述故事发生的世界背景、时代、规则、地理等"
+            />
+            <p class="text-xs text-(--ui-text-dimmed)">
+              故事的世界背景设定，会作为生成、角色、大纲等 AI 操作的重要上下文。
+            </p>
+          </div>
+          <div class="space-y-1.5">
+            <label class="text-sm font-medium text-(--ui-text)"
+              >风格指南</label
+            >
+            <NInput
+              v-model:value="aiSettingsForm.styleGuide"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 6 }"
+              placeholder="例如：叙事节奏明快，多用短句，对白生动"
+            />
+            <p class="text-xs text-(--ui-text-dimmed)">
+              整体写作风格约定，用于审核与生成时保持风格一致。
+            </p>
+          </div>
           <div class="space-y-1.5">
             <label class="text-sm font-medium text-(--ui-text)"
               >内容生成模型</label

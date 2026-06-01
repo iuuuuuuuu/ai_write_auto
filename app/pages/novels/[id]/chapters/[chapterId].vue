@@ -732,7 +732,6 @@ const {
   fetchSuggestions,
   acceptSuggestion: acceptSuggestionAt,
   rejectSuggestion: rejectSuggestionAt,
-  acceptAll: acceptAllSuggestions,
   rejectAll: rejectAllSuggestions,
   clearSuggestions
 } = useSuggestionMode(novelId, chapterId)
@@ -815,18 +814,13 @@ watch(aiActionResult, (val) => {
 /* ─────────────── Milkdown 编辑器 ─────────────── */
 const {
   containerRef: editorContainerRef,
-  isReady: editorReady,
   createEditor,
   setMarkdown: setEditorMarkdown,
-  getMarkdown: getEditorMarkdown,
-  getPlainText: getEditorPlainText,
   getSelectionText: getEditorSelectionText,
   getSelectionRange: getEditorSelectionRange,
-  restoreSelectionRange: restoreEditorSelectionRange,
   replaceSelection: replaceEditorSelection,
   insertTextAtCursor: insertEditorTextAtCursor,
   focus: focusEditor,
-  getCursorClientPos,
   getContextBeforeCursor,
   setEditable: setEditorEditable
 } = useMilkdownEditor({
@@ -1192,6 +1186,15 @@ const estimatedContextTokens = computed(() =>
   Math.round(currentWordCount.value * 1.5)
 )
 
+// 一致性检查是后台异步任务，保存/生成后分几个时间点重试刷新结果（替代写死的单次延时）
+let consistencyRefreshTimers: ReturnType<typeof setTimeout>[] = []
+function scheduleConsistencyRefresh() {
+  for (const t of consistencyRefreshTimers) clearTimeout(t)
+  consistencyRefreshTimers = [5000, 12000, 20000].map((delay) =>
+    setTimeout(() => consistencyWarningsRef.value?.refresh(), delay)
+  )
+}
+
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
 
 watch(content, () => {
@@ -1236,6 +1239,8 @@ async function saveContent(source?: 'ai_generated' | 'user_edited') {
     }
     syncCurrentChapterListItem(result)
     conflictDetected.value = false
+    // 内容已保存 → 后端异步入队一致性检查，安排刷新以拉取结果
+    scheduleConsistencyRefresh()
   } catch (error: unknown) {
     if (
       typeof error === 'object' &&
@@ -1681,7 +1686,7 @@ async function generateChapter() {
             await saveContent('ai_generated')
             await refreshChapter()
             clearDraftRecovery()
-            setTimeout(() => consistencyWarningsRef.value?.refresh(), 15000)
+            scheduleConsistencyRefresh()
             reader.cancel()
             return
           }
@@ -1950,8 +1955,6 @@ const hasUnsavedChanges = computed(() => {
   if (saving.value) return false
   return (content.value || '') !== (chapter.value?.content || '')
 })
-
-const editorPlainText = computed(() => getEditorPlainText())
 
 function handleBeforeUnload(e: BeforeUnloadEvent) {
   if (hasUnsavedChanges.value) {

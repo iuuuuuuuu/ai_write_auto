@@ -7,7 +7,7 @@
  *
  * resolveNovelAiConfig(em, userId, novelId, purpose, aiConfigId?)
  *   优先使用小说级别配置覆盖，回退到用户级别。
- *   用于：generate, regenerate, batch-generate, continue, rewrite, expand,
+ *   用于：generate, regenerate, continue, rewrite, expand,
  *         fragment, suggest, generate-outline (均为 generation 用途)
  *
  * 选择原则：

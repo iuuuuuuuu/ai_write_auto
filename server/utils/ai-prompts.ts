@@ -154,27 +154,41 @@ export function buildGenerationPrompt(context: {
 
   // Characters
   if (ragContext?.length) {
-    userPrompt += `\n## 角色档案（基于本章相关性检索）\n`
-    const grouped = new Map<string, typeof ragContext>()
-    for (const item of ragContext) {
-      const list = grouped.get(item.characterName) || []
-      list.push(item)
-      grouped.set(item.characterName, list)
-    }
-    for (const [name, items] of grouped) {
-      const char = characters.find(c => c.name === name)
-      userPrompt += `\n### ${name}\n`
-      if (char?.description) userPrompt += `简介：${char.description}\n`
-      if (char?.traits) userPrompt += `性格：${char.traits}\n`
-      if (char?.relationships) userPrompt += `关系：${char.relationships}\n`
-      if (char?.currentState) userPrompt += `当前状态：${char.currentState}\n`
-      if (char?.overallArc) userPrompt += `整体弧线：${char.overallArc}\n`
-      const stories = items.filter(i => i.contentType === 'chapter_story')
-      if (stories.length) {
-        userPrompt += `相关章节经历：\n`
-        for (const s of stories) {
-          userPrompt += `- ${s.content}\n`
+    // 仅对带角色名的检索结果按角色分组；摘要/伏笔/世界观等无角色条目跳过，避免生成 "### undefined" 脏标题
+    const charScoped = ragContext.filter((i): i is RagContextItem & { characterName: string } => Boolean(i.characterName))
+    if (charScoped.length) {
+      userPrompt += `\n## 角色档案（基于本章相关性检索）\n`
+      const grouped = new Map<string, typeof charScoped>()
+      for (const item of charScoped) {
+        const list = grouped.get(item.characterName) || []
+        list.push(item)
+        grouped.set(item.characterName, list)
+      }
+      for (const [name, items] of grouped) {
+        const char = characters.find(c => c.name === name)
+        userPrompt += `\n### ${name}\n`
+        if (char?.description) userPrompt += `简介：${char.description}\n`
+        if (char?.traits) userPrompt += `性格：${char.traits}\n`
+        if (char?.relationships) userPrompt += `关系：${char.relationships}\n`
+        if (char?.currentState) userPrompt += `当前状态：${char.currentState}\n`
+        if (char?.overallArc) userPrompt += `整体弧线：${char.overallArc}\n`
+        const stories = items.filter(i => i.contentType === 'chapter_story')
+        if (stories.length) {
+          userPrompt += `相关章节经历：\n`
+          for (const s of stories) {
+            userPrompt += `- ${s.content}\n`
+          }
         }
+      }
+    } else if (characters.length > 0) {
+      userPrompt += `\n## 角色档案\n`
+      for (const char of characters) {
+        userPrompt += `- ${char.name}`
+        if (char.description) userPrompt += `：${char.description}`
+        if (char.traits) userPrompt += `（性格：${char.traits}）`
+        if (char.relationships) userPrompt += `（关系：${char.relationships}）`
+        if (char.currentState) userPrompt += `【当前状态：${char.currentState}】`
+        userPrompt += '\n'
       }
     }
   } else if (characters.length > 0) {
@@ -193,7 +207,17 @@ export function buildGenerationPrompt(context: {
   if (chapters.length > 0) {
     userPrompt += `\n## 已有章节摘要\n`
     userPrompt += buildChapterSummaries(chapters, storyArcs)
-    // Sliding window: last 1-2 chapters full text
+  }
+
+  // Recent chapters full text — directly衔接当前章节的前序正文，保证剧情连贯。
+  // 调用方传入的 recentChapterContent 是「当前章节的前 N 章」（连续生成场景已正确构建滑动窗口）；
+  // 缺省时回退到从 chapters 末尾取，兼容未传该参数的旧调用。
+  if (recentChapterContent?.length) {
+    userPrompt += `\n## 最近章节全文\n`
+    for (const ch of recentChapterContent) {
+      userPrompt += `\n### 第${ch.chapterNumber}章「${ch.title}」\n${ch.content}\n`
+    }
+  } else if (chapters.length > 0) {
     const windowSize = chapters.length > 20 ? 1 : 2
     const windowStart = Math.max(0, chapters.length - windowSize)
     userPrompt += `\n## 最近章节全文\n`
@@ -216,11 +240,29 @@ export function buildGenerationPrompt(context: {
     }
   }
 
+  // Foreshadowing — 待回收伏笔，提示 AI 在合适时机呼应或推进，避免伏笔悬空。
+  if (foreshadowing?.length) {
+    userPrompt += `\n## 待回收伏笔\n`
+    for (const f of foreshadowing) {
+      const where = f.chapterNumber ? `（第${f.chapterNumber}章埋设）` : ''
+      userPrompt += `- ${f.content}${where}${f.description ? `：${f.description}` : ''}\n`
+    }
+  }
+
   // Generation instruction
   userPrompt += `\n## 生成指令\n`
+  // 区分「真实标题」与「占位标题」：占位标题（第N章）只用于定位章节序号，
+  // 不应要求 AI 紧扣这个空洞符号；只有用户/已有章节起过的真实标题才让 AI 围绕展开。
+  const isPlaceholderTitle = (t: string, n: number) => /^第\d+章\s*$/.test(t) || t.trim() === `第${n}章`
   if (currentChapter) {
-    userPrompt += `当前章节：第${currentChapter.chapterNumber}章「${currentChapter.title}」\n`
-    userPrompt += `请围绕章节标题「${currentChapter.title}」展开内容，标题已确定，不要更改。生成的内容应与章节标题紧密相关。\n`
+    const hasRealTitle = !isPlaceholderTitle(currentChapter.title, currentChapter.chapterNumber)
+    if (hasRealTitle) {
+      userPrompt += `当前章节：第${currentChapter.chapterNumber}章「${currentChapter.title}」\n`
+      userPrompt += `请围绕章节标题「${currentChapter.title}」展开内容，标题已确定，不要更改。生成的内容应与章节标题紧密相关。\n`
+    } else {
+      userPrompt += `当前生成：第${currentChapter.chapterNumber}章（标题未定）\n`
+      userPrompt += `请承接前文、依据本章大纲与写作方向自然推进剧情，不要受占位标题约束。\n`
+    }
   }
   if (currentChapterOutline) {
     userPrompt += `本章大纲：${currentChapterOutline}\n`
@@ -232,7 +274,7 @@ export function buildGenerationPrompt(context: {
     userPrompt += `额外指示：${novel.aiExtraPrompt}\n`
   }
   if (currentChapter) {
-    userPrompt += `\n请生成第${currentChapter.chapterNumber}章「${currentChapter.title}」的完整内容。不要包含章节标题，直接从正文开始。`
+    userPrompt += `\n请生成第${currentChapter.chapterNumber}章的完整内容。不要包含章节标题，直接从正文开始。`
   } else {
     userPrompt += `\n请生成下一章的完整内容。`
   }
@@ -481,9 +523,12 @@ export function buildRegenerationPrompt(context: {
   }
 
   if (ragContext?.length) {
-    userPrompt += `\n## 相关角色事件（基于本章检索）\n`
-    for (const item of ragContext) {
-      userPrompt += `- ${item.characterName}：${item.content}\n`
+    const charScoped = ragContext.filter(i => i.characterName)
+    if (charScoped.length) {
+      userPrompt += `\n## 相关角色事件（基于本章检索）\n`
+      for (const item of charScoped) {
+        userPrompt += `- ${item.characterName}：${item.content}\n`
+      }
     }
   } else if (characters.length > 0) {
     userPrompt += `\n## 角色档案\n`
@@ -520,6 +565,14 @@ export function buildRegenerationPrompt(context: {
       for (const p of active.slice(0, 10)) {
         userPrompt += `- [${p.type}/${p.status}] ${p.description}\n`
       }
+    }
+  }
+
+  if (foreshadowing?.length) {
+    userPrompt += `\n## 待回收伏笔\n`
+    for (const f of foreshadowing.slice(0, 10)) {
+      const where = f.chapterNumber ? `（第${f.chapterNumber}章埋设）` : ''
+      userPrompt += `- ${f.content}${where}${f.description ? `：${f.description}` : ''}\n`
     }
   }
 

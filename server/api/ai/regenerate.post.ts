@@ -43,7 +43,7 @@ export default defineEventHandler(async (event) => {
   let foreshadowing: Array<{ content: string; description: string | null; chapterNumber: number | null }> | undefined
   try { foreshadowing = await getActiveForeshadowing(data.novelId) } catch {}
 
-  let ragContext: Array<{ characterName: string; content: string; contentType: string; chapterId: number | null }> | undefined
+  let ragContext: Array<{ characterName?: string; content: string; contentType: string; chapterId: number | null }> | undefined
   if (isEmbeddingReady()) {
     const query = [currentChapter?.title, data.feedback].filter(Boolean).join(' ')
     if (query) {
