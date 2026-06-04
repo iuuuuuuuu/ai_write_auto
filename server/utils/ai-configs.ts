@@ -3,7 +3,7 @@
  *
  * resolveUserAiConfig(em, userId, purpose, aiConfigId?)
  *   按用户级别解析配置，不考虑小说级别覆盖。
- *   用于：analyze-style (style_analysis), consistency-check (consistency_check)
+ *   用于：analyze-style (style_analysis)
  *
  * resolveNovelAiConfig(em, userId, novelId, purpose, aiConfigId?)
  *   优先使用小说级别配置覆盖，回退到用户级别。
@@ -22,6 +22,7 @@ export type AiConfigPurpose =
   | 'extraction'
   | 'consistency_check'
   | 'style_analysis'
+  | 'planning'
 
 export interface ResolvedAiConfig {
   id: number
@@ -115,4 +116,34 @@ export function maskApiKey(apiKey: string) {
   if (!apiKey) return ''
   if (apiKey.length <= 8) return '********'
   return `${apiKey.slice(0, 4)}********${apiKey.slice(-4)}`
+}
+
+/**
+ * 解析「生成检索 query」这一步用的配置（决策③：走廉价模型，正文仍用 generation）。
+ * 用 USER 级解析（不走小说级覆盖，避免把小说的 generation 高配模型误用作 query 生成）：
+ * 依次尝试 planning → extraction → generation，全部缺失返回 null（调用方降级为 seed-only），
+ * **绝不抛错**——缺 planning 配置不能中断生成。
+ */
+export async function resolvePlanningConfig(
+  em: EntityManager,
+  userId: number
+): Promise<ResolvedAiConfig | null> {
+  const purposes: AiConfigPurpose[] = ['planning', 'extraction', 'generation']
+  for (const purpose of purposes) {
+    try {
+      return await resolveUserAiConfig(em, userId, purpose)
+    } catch {
+      /* 该用途无可用配置，尝试下一个 */
+    }
+  }
+  return null
+}
+
+/**
+ * 代理式按需检索总开关（决策⑤）。默认开；设 AGENTIC_RETRIEVAL=off|false|0 作 kill-switch。
+ * 关闭时全部端点回落 seed-only（≈现状启发式检索）。
+ */
+export function isAgenticRetrievalEnabled(): boolean {
+  const v = (process.env.AGENTIC_RETRIEVAL || '').trim().toLowerCase()
+  return v !== 'off' && v !== 'false' && v !== '0'
 }

@@ -4,8 +4,8 @@ import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { MAX_TOKENS_ACTION, CONTEXT_TRUNCATE_CHAPTER } from '../../utils/ai-constants'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
-import { isEmbeddingReady } from '../../services/embedding'
-import { retrieveRelevant, getActiveForeshadowing } from '../../services/content-rag'
+import { getActiveForeshadowing } from '../../services/content-rag'
+import { gatherRelevantContext } from '../../services/chapter-context'
 
 const continueSchema = z.object({
   novelId: z.number().int().positive(),
@@ -39,18 +39,25 @@ export default defineEventHandler(async (event) => {
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
 
   
-  // RAG: retrieve relevant context for continuity
+  const isEnding = data.direction?.includes('自然收尾')
+
+  // RAG: 按需检索（query-only，廉价模型产 query；失败回落 seed-only）。
+  // 「自然收尾」分支不检索——短自包含任务，保持原样。
   let ragContextSection = ''
-  if (isEmbeddingReady()) {
-    const query = [chapter.title, data.contextBefore.slice(-200), data.direction].filter(Boolean).join(' ')
-    if (query) {
-      const ragResults = await retrieveRelevant(data.novelId, query, 8)
-      if (ragResults.length) {
-        ragContextSection = '\n## 相关上下文（基于续写位置检索）\n'
-        for (const item of ragResults) {
-          const label = item.characterName || `[${item.contentType}]`
-          ragContextSection += `- ${label}：${item.content}\n`
-        }
+  if (!isEnding) {
+    const { retrievedNotes } = await gatherRelevantContext(em, {
+      novelId: data.novelId,
+      userId: auth.userId,
+      intent: '续写衔接',
+      seed: [chapter.title, data.contextBefore.slice(-200), data.direction].filter(Boolean).join(' '),
+      depth: 'query-only',
+      topK: 8
+    })
+    if (retrievedNotes.length) {
+      ragContextSection = '\n## 相关上下文（基于续写位置检索）\n'
+      for (const item of retrievedNotes) {
+        const label = item.characterName || `[${item.contentType}]`
+        ragContextSection += `- ${label}：${item.content}\n`
       }
     }
   }
@@ -68,8 +75,6 @@ export default defineEventHandler(async (event) => {
   const characterContext = characters.length > 0
     ? `\n角色：${characters.slice(0, 8).map(c => `${c.name}${c.traits ? `(${c.traits})` : ''}`).join('、')}`
     : ''
-
-  const isEnding = data.direction?.includes('自然收尾')
 
   const messages = [
     {

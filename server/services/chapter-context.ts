@@ -1,0 +1,254 @@
+import type { EntityManager } from '@mikro-orm/core'
+import { callAiWithUsage, toAiOptions } from '../utils/ai-client'
+import {
+  resolvePlanningConfig,
+  isAgenticRetrievalEnabled
+} from '../utils/ai-configs'
+import {
+  buildQueryPlanningPrompt,
+  buildGenerationPrompt,
+  type RagContextItem,
+  type PromptNovel,
+  type PromptChapter,
+  type PromptCharacter,
+  type PromptPlotPoint,
+  type PromptStoryArc,
+  type PromptForeshadowing
+} from '../utils/ai-prompts'
+import { retrieveRelevant, type ContentContext } from './content-rag'
+import { isEmbeddingReady } from './embedding'
+
+export type RetrievalDepth = 'full' | 'query-only' | 'seed-only'
+
+interface Usage {
+  inputTokens: number
+  outputTokens: number
+}
+
+export interface GatherOptions {
+  novelId: number
+  userId: number
+  /** 本次操作意图，用于 query 规划，如「续写衔接」「扩写」「按反馈重写」「生成第3章」 */
+  intent: string
+  /** 种子/兜底文本（标题+大纲+方向 / 选中文本 / feedback 等）：query 规划失败或 seed-only 时直接当 query */
+  seed: string
+  depth: RetrievalDepth
+  topK?: number
+  contentType?: string | string[]
+  // 轻量地板（供 query 规划，可选）
+  novelInfo?: { title: string; genre?: string | null; description?: string | null }
+  characterNames?: string[]
+  foreshadowingTitles?: string[]
+  recentSummaries?: string[]
+  /** 额外要合并进结果的 notes（如批量的整批 sharedRagContext） */
+  extraNotes?: RagContextItem[]
+}
+
+export interface GatherResult {
+  retrievedNotes: RagContextItem[]
+  queries?: string[]
+  usage: Usage
+}
+
+const MAX_QUERIES = 5
+
+function notesToItems(notes: ContentContext[]): RagContextItem[] {
+  return notes.map((n) => ({
+    content: n.content,
+    contentType: n.contentType,
+    chapterId: n.chapterId,
+    characterName: n.characterName,
+    score: n.score
+  }))
+}
+
+/** 与 workspace-generate 的 mergeRagContexts 同构的去重键，保证合并行为一致 */
+function dedupeNotes(items: RagContextItem[]): RagContextItem[] {
+  const seen = new Set<string>()
+  const out: RagContextItem[] = []
+  for (const it of items) {
+    const key = `${it.contentType}:${it.chapterId ?? 'novel'}:${it.characterName || ''}:${it.content}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(it)
+  }
+  return out
+}
+
+function parseQueryList(raw: string): string[] {
+  try {
+    const m = raw.match(/\[[\s\S]*\]/)
+    const arr = JSON.parse(m?.[0] || raw)
+    if (Array.isArray(arr)) {
+      return arr
+        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        .map((x) => x.trim())
+        .slice(0, MAX_QUERIES + 1)
+    }
+  } catch {
+    /* 非法 JSON → 调用方回落 seed-only */
+  }
+  return []
+}
+
+/** query-only：用廉价模型（决策③）产出检索 query 列表。失败/无配置返回 []（调用方回落 seed）。 */
+async function planQueries(
+  em: EntityManager,
+  opts: GatherOptions,
+  usage: Usage
+): Promise<string[]> {
+  const cfg = await resolvePlanningConfig(em, opts.userId)
+  if (!cfg) return []
+  const messages = buildQueryPlanningPrompt({
+    intent: opts.intent,
+    seed: opts.seed,
+    novel: opts.novelInfo,
+    characterNames: opts.characterNames,
+    foreshadowingTitles: opts.foreshadowingTitles,
+    recentSummaries: opts.recentSummaries
+  })
+  const res = await callAiWithUsage(
+    toAiOptions(cfg, { messages, temperature: 0.3, maxTokens: 256 })
+  )
+  usage.inputTokens += res.inputTokens
+  usage.outputTokens += res.outputTokens
+  return parseQueryList(res.content)
+}
+
+/**
+ * 唯一的「按需检索」核心。6 个正文端点都调它。
+ * 降级链：query-only →（规划失败/无配置/非法 JSON）→ seed-only → 不检索。
+ * 任一环失败只影响检索质量，绝不抛错中断生成（调用方据此放心 await）。
+ */
+export async function gatherRelevantContext(
+  em: EntityManager,
+  opts: GatherOptions
+): Promise<GatherResult> {
+  const usage: Usage = { inputTokens: 0, outputTokens: 0 }
+  const topK = opts.topK ?? 10
+  const extra = opts.extraNotes || []
+
+  // 无向量库：只能返回调用方给的 extraNotes
+  if (!isEmbeddingReady()) {
+    return { retrievedNotes: dedupeNotes(extra), usage }
+  }
+
+  // 总开关关 → 强制 seed-only；v1 没有工具循环，full 等价 query-only
+  let depth = opts.depth
+  if (!isAgenticRetrievalEnabled()) depth = 'seed-only'
+  if (depth === 'full') depth = 'query-only'
+
+  let queries: string[] | undefined
+  if (depth === 'query-only') {
+    try {
+      const q = await planQueries(em, opts, usage)
+      if (q.length) queries = q
+    } catch {
+      /* 规划失败 → 下面回落 seed */
+    }
+  }
+
+  let notes: ContentContext[] = []
+  try {
+    if (queries && queries.length) {
+      const groups = await Promise.all(
+        queries
+          .slice(0, MAX_QUERIES)
+          .map((q) => retrieveRelevant(opts.novelId, q, topK, opts.contentType))
+      )
+      notes = groups.flat()
+    } else if (opts.seed.trim()) {
+      notes = await retrieveRelevant(opts.novelId, opts.seed, topK, opts.contentType)
+    }
+  } catch {
+    notes = []
+  }
+
+  const merged = dedupeNotes([...notesToItems(notes), ...extra])
+  return { retrievedNotes: merged, queries, usage }
+}
+
+export interface PrepareChapterOptions {
+  novel: PromptNovel
+  novelId: number
+  userId: number
+  currentChapter?: { title: string; chapterNumber: number }
+  outline?: string
+  direction?: string
+  /** 已构建好的 PromptChapter[]（批量场景由调用方做 batchSummary 覆盖后传入，本函数不重新派生） */
+  precedingChapters: PromptChapter[]
+  characters: PromptCharacter[]
+  plotPoints: PromptPlotPoint[]
+  storyArcs?: PromptStoryArc[]
+  foreshadowing?: PromptForeshadowing[]
+  recentChapterContent?: Array<{
+    chapterNumber: number
+    title: string
+    content: string
+  }>
+  depth: RetrievalDepth
+  /** 批量的整批 sharedRagContext，合并进本章 notes */
+  extraNotes?: RagContextItem[]
+}
+
+export interface PrepareChapterResult {
+  messages: Array<{ role: 'system' | 'user'; content: string }>
+  retrievedNotes: RagContextItem[]
+  queries?: string[]
+  usage: Usage
+}
+
+/** 整章封装（仅单章/批量用）：调检索核心拿 notes，再走现有 buildGenerationPrompt 拼整章 messages。 */
+export async function prepareChapterContext(
+  em: EntityManager,
+  opts: PrepareChapterOptions
+): Promise<PrepareChapterResult> {
+  const intent = opts.currentChapter
+    ? `生成第${opts.currentChapter.chapterNumber}章${opts.currentChapter.title ? `「${opts.currentChapter.title}」` : ''}`
+    : '生成下一章'
+  const seed = [opts.currentChapter?.title, opts.outline, opts.direction]
+    .filter(Boolean)
+    .join(' ')
+
+  const gathered = await gatherRelevantContext(em, {
+    novelId: opts.novelId,
+    userId: opts.userId,
+    intent,
+    seed,
+    depth: opts.depth,
+    topK: 10,
+    novelInfo: {
+      title: opts.novel.title,
+      genre: opts.novel.genre,
+      description: opts.novel.description
+    },
+    characterNames: opts.characters.map((c) => c.name),
+    foreshadowingTitles: (opts.foreshadowing || []).map((f) => f.content),
+    recentSummaries: opts.precedingChapters
+      .filter((c) => c.summary)
+      .slice(-8)
+      .map((c) => `第${c.chapterNumber}章：${c.summary}`),
+    extraNotes: opts.extraNotes
+  })
+
+  const messages = buildGenerationPrompt({
+    novel: opts.novel,
+    chapters: opts.precedingChapters,
+    characters: opts.characters,
+    plotPoints: opts.plotPoints,
+    storyArcs: opts.storyArcs,
+    currentChapter: opts.currentChapter,
+    currentChapterOutline: opts.outline,
+    userDirection: opts.direction,
+    ragContext: gathered.retrievedNotes,
+    foreshadowing: opts.foreshadowing,
+    recentChapterContent: opts.recentChapterContent
+  })
+
+  return {
+    messages,
+    retrievedNotes: gathered.retrievedNotes,
+    queries: gathered.queries,
+    usage: gathered.usage
+  }
+}

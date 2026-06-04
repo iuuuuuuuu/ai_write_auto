@@ -26,6 +26,10 @@ export default defineEventHandler(async (event) => {
     type: issue.type,
     severity: issue.severity,
     description: issue.description,
+    quote: issue.quote ?? null,
+    priorQuote: issue.priorQuote ?? null,
+    priorChapter: issue.priorChapter ?? null,
+    confidence: issue.confidence ?? null,
     createdAt: issue.createdAt
   }))
 })

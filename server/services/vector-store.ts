@@ -115,16 +115,23 @@ export async function upsertVector(record: VectorRecord): Promise<void> {
 export async function searchVectors(
   queryEmbedding: Float32Array,
   novelId: number,
-  topK: number = 10
+  topK: number = 10,
+  contentType?: string | string[]
 ): Promise<VectorSearchResult[]> {
   const orm = getOrm()
   const conn = orm.em.getConnection()
   const config = readDbConfig()
 
+  const types =
+    contentType ? (Array.isArray(contentType) ? contentType : [contentType]) : null
+  const typeFilter = types && types.length ? types : null
+
   if (config?.type === 'mysql') {
+    // contentType 过滤同时缩小后续 JS 打分集（MySQL 路径在内存里算余弦相似度）
+    const whereType = typeFilter ? ` AND content_type IN (${typeFilter.map(() => '?').join(',')})` : ''
     const rows = await conn.execute(
-      `SELECT id, character_id, chapter_id, content_type, content, embedding FROM character_embeddings WHERE novel_id = ?`,
-      [novelId]
+      `SELECT id, character_id, chapter_id, content_type, content, embedding FROM character_embeddings WHERE novel_id = ?${whereType}`,
+      typeFilter ? [novelId, ...typeFilter] : [novelId]
     ) as any[]
 
     const scored = rows.map((row: any) => {
@@ -144,14 +151,17 @@ export async function searchVectors(
     return scored.slice(0, topK)
   } else {
     const embeddingJson = JSON.stringify(Array.from(queryEmbedding))
+    const whereType = typeFilter ? ` AND content_type IN (${typeFilter.map(() => '?').join(',')})` : ''
     const rows = await conn.execute(
       `SELECT id, character_id, chapter_id, content_type, content,
               vector_distance_cos(embedding, vector32(?)) as distance
        FROM character_embeddings
-       WHERE novel_id = ?
+       WHERE novel_id = ?${whereType}
        ORDER BY distance
        LIMIT ?`,
-      [embeddingJson, novelId, topK]
+      typeFilter
+        ? [embeddingJson, novelId, ...typeFilter, topK]
+        : [embeddingJson, novelId, topK]
     ) as any[]
 
     return rows.map((row: any) => ({

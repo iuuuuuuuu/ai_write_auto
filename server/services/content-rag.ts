@@ -48,10 +48,10 @@ export async function indexChapterSummary(novelId: number, chapterId: number, su
   await upsertVector({ characterId: 0, chapterId, novelId, contentType: 'chapter_summary', content: summary, embedding })
 }
 
-export async function retrieveRelevant(novelId: number, query: string, topK: number = 15): Promise<ContentContext[]> {
+export async function retrieveRelevant(novelId: number, query: string, topK: number = 15, contentType?: string | string[]): Promise<ContentContext[]> {
   if (!isEmbeddingReady() || !query.trim()) return []
   const queryEmbedding = await embedSingle(query)
-  const results = await searchVectors(queryEmbedding, novelId, topK)
+  const results = await searchVectors(queryEmbedding, novelId, topK, contentType)
   const orm = getOrm()
   const em = orm.em.fork()
   const characterIds = [...new Set(results.filter(r => !['plot_event','world_detail','chapter_summary','foreshadowing'].includes(r.contentType)).map(r => r.characterId))]

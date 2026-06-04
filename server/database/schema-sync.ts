@@ -6,7 +6,7 @@ import {
 } from './entities'
 import { syncNovelTemplateSeeds } from '../services/novel-template-seeds'
 
-export const DATABASE_SCHEMA_VERSION = '2026.05.27.001'
+export const DATABASE_SCHEMA_VERSION = '2026.06.04.001'
 
 export interface DatabaseSchemaSyncResult {
   version: string

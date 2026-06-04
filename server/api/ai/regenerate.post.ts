@@ -4,8 +4,8 @@ import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildRegenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema } from '../../database/entities'
-import { isEmbeddingReady } from '../../services/embedding'
-import { retrieveRelevant, getActiveForeshadowing } from '../../services/content-rag'
+import { getActiveForeshadowing } from '../../services/content-rag'
+import { gatherRelevantContext } from '../../services/chapter-context'
 
 const regenerateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -43,13 +43,15 @@ export default defineEventHandler(async (event) => {
   let foreshadowing: Array<{ content: string; description: string | null; chapterNumber: number | null }> | undefined
   try { foreshadowing = await getActiveForeshadowing(data.novelId) } catch {}
 
-  let ragContext: Array<{ characterName?: string; content: string; contentType: string; chapterId: number | null }> | undefined
-  if (isEmbeddingReady()) {
-    const query = [currentChapter?.title, data.feedback].filter(Boolean).join(' ')
-    if (query) {
-      ragContext = await retrieveRelevant(data.novelId, query, 10)
-    }
-  }
+  // RAG: 按需检索（query-only，廉价模型产 query；失败回落 seed-only），注入 buildRegenerationPrompt 现有 ragContext 槽
+  const { retrievedNotes } = await gatherRelevantContext(em, {
+    novelId: data.novelId,
+    userId: auth.userId,
+    intent: '按反馈重写',
+    seed: [currentChapter?.title, data.feedback].filter(Boolean).join(' '),
+    depth: 'query-only',
+    topK: 10
+  })
 
   const messages = buildRegenerationPrompt({
     novel,
@@ -61,7 +63,7 @@ export default defineEventHandler(async (event) => {
     currentChapterOutline: currentChapter?.summary || undefined,
     previousResult: data.previousResult,
     feedback: data.feedback,
-    ragContext,
+    ragContext: retrievedNotes,
     foreshadowing
   })
 

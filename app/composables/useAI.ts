@@ -95,14 +95,6 @@ export function useAI() {
     return streamGenerate('/api/ai/generate-outline', { novelId, idea })
   }
 
-  async function checkConsistency(novelId: number, chapterId: number) {
-    const data = await $fetch('/api/ai/consistency-check', {
-      method: 'POST',
-      body: { novelId, chapterId }
-    })
-    return data
-  }
-
   async function analyzeStyle(novelId: number) {
     const data = await $fetch('/api/ai/analyze-style', {
       method: 'POST',
@@ -121,7 +113,6 @@ export function useAI() {
     expandText,
     rewriteText,
     generateOutline,
-    checkConsistency,
     analyzeStyle
   }
 }

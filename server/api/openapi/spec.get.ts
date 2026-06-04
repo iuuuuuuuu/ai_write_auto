@@ -711,52 +711,6 @@ export default defineEventHandler(() => {
           }
         }
       },
-      '/api/ai/consistency-check': {
-        post: {
-          tags: ['AI'],
-          summary: '手动触发一致性检查',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    novelId: { type: 'integer' },
-                    chapterId: { type: 'integer' }
-                  },
-                  required: ['novelId', 'chapterId']
-                }
-              }
-            }
-          },
-          responses: {
-            '200': {
-              description: '检查结果',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      issues: {
-                        type: 'array',
-                        items: {
-                          type: 'object',
-                          properties: {
-                            type: { type: 'string' },
-                            severity: { type: 'string' },
-                            description: { type: 'string' }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
       '/api/ai/analyze-style': {
         post: {
           tags: ['AI'],

@@ -10,7 +10,7 @@ import {
   resolveNovelAiConfig,
   type ResolvedAiConfig
 } from '../../utils/ai-configs'
-import { buildGenerationPrompt } from '../../utils/ai-prompts'
+import { prepareChapterContext } from '../../services/chapter-context'
 import {
   NovelSchema,
   ChapterSchema,
@@ -72,20 +72,6 @@ function cleanGeneratedChapterTitle(rawTitle: string) {
 function fallbackTitleFromOutline(chapterNumber: number, outline?: string) {
   const title = outline ? cleanGeneratedChapterTitle(outline) : ''
   return title || `第${chapterNumber}章`
-}
-
-function mergeRagContexts(...groups: ContentContext[][]) {
-  const seen = new Set<string>()
-  const merged: ContentContext[] = []
-  for (const group of groups) {
-    for (const item of group) {
-      const key = `${item.contentType}:${item.chapterId ?? 'novel'}:${item.characterName || ''}:${item.content}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      merged.push(item)
-    }
-  }
-  return merged
 }
 
 function buildBatchChapterSummary(content: string) {
@@ -446,37 +432,22 @@ export default defineEventHandler(async (event) => {
             )
           )
 
-          // 每章针对本章剧情独立检索相关角色近况；缺少本章锚点时回退到整批共享检索
-          let ragContext = sharedRagContext
-          if (isEmbeddingReady()) {
-            const perChapterQuery = [
-              chapterOutline?.description,
-              data.direction
-            ]
-              .filter(Boolean)
-              .join(' ')
-            if (perChapterQuery) {
-              ragContext = await retrieveRelevant(
-                data.novelId,
-                perChapterQuery,
-                10
-              )
-              ragContext = mergeRagContexts(ragContext, sharedRagContext)
-            }
-          }
-
-          const prompt = buildGenerationPrompt({
+          // 每章针对本章剧情独立检索（query-only，廉价模型产 query）；整批 sharedRagContext 经 extraNotes 合并去重保留
+          const { messages: prompt } = await prepareChapterContext(em, {
             novel: promptNovel,
-            chapters,
+            novelId: data.novelId,
+            userId: auth.userId,
+            currentChapter,
+            outline: chapterOutline?.description,
+            direction: data.direction,
+            precedingChapters: chapters,
             characters: promptCharacters,
             plotPoints: promptPlotPoints,
             storyArcs: promptStoryArcs,
-            currentChapter,
-            currentChapterOutline: chapterOutline?.description,
-            userDirection: data.direction,
-            ragContext,
             foreshadowing: promptForeshadowing,
-            recentChapterContent
+            recentChapterContent,
+            depth: 'query-only',
+            extraNotes: sharedRagContext
           })
 
           let generatedContent = ''

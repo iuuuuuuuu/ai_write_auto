@@ -8,7 +8,8 @@ import {
   buildSuggestionPrompt,
   buildOutlineGenerationPrompt,
   buildCharacterExtractionPrompt,
-  buildStoryArcPrompt
+  buildStoryArcPrompt,
+  buildQueryPlanningPrompt
 } from '../server/utils/ai-prompts'
 
 describe('ai-prompts', () => {
@@ -233,15 +234,46 @@ describe('ai-prompts', () => {
   })
 
   describe('buildConsistencyCheckPrompt', () => {
-    it('includes characters and summaries', () => {
+    it('includes characters, summaries and prior passages', () => {
       const result = buildConsistencyCheckPrompt({
         characters: [{ name: '李四', description: '配角', traits: '狡猾' }],
         recentSummaries: [{ chapterNumber: 1, summary: '李四出场' }],
+        priorPassages: [{ chapterNumber: 1, label: '李四', content: '李四左手握剑' }],
         targetChapter: { chapterNumber: 2, content: '李四再次出现' }
       })
       expect(result[1].content).toContain('李四')
       expect(result[1].content).toContain('李四出场')
+      expect(result[1].content).toContain('李四左手握剑')
       expect(result[1].content).toContain('第2章')
+    })
+
+    it('demands grounded quote evidence', () => {
+      const result = buildConsistencyCheckPrompt({
+        characters: [],
+        recentSummaries: [],
+        priorPassages: [],
+        targetChapter: { chapterNumber: 1, content: '正文' }
+      })
+      expect(result[0].content).toContain('quote')
+      expect(result[0].content).toContain('priorQuote')
+      expect(result[0].content).toContain('confidence')
+    })
+  })
+
+  describe('buildQueryPlanningPrompt', () => {
+    it('builds a light floor and demands a JSON query array', () => {
+      const result = buildQueryPlanningPrompt({
+        intent: '续写衔接',
+        seed: '主角准备出发',
+        novel: { title: '测试小说', genre: '武侠' },
+        characterNames: ['林川', '师父'],
+        foreshadowingTitles: ['黑塔之谜'],
+        recentSummaries: ['第1章：林川下山']
+      })
+      expect(result[1].content).toContain('续写衔接')
+      expect(result[1].content).toContain('林川')
+      expect(result[1].content).toContain('黑塔之谜')
+      expect(result[0].content).toContain('JSON')
     })
   })
 

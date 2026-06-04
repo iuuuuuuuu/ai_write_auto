@@ -11,6 +11,10 @@ type ConsistencyIssueItem = {
   type: string
   severity: 'high' | 'medium' | 'low'
   description: string
+  quote?: string | null
+  priorQuote?: string | null
+  priorChapter?: number | null
+  confidence?: string | null
   createdAt: string
 }
 
@@ -72,6 +76,17 @@ defineExpose({ refresh })
         <p class="text-xs text-(--ui-text-muted) leading-relaxed">
           {{ issue.description }}
         </p>
+        <div
+          v-if="issue.quote || issue.priorQuote"
+          class="space-y-0.5 pt-0.5 border-t border-(--ui-border)/50"
+        >
+          <p v-if="issue.quote" class="text-[10px] text-(--ui-text-dimmed) leading-snug">
+            本章：「{{ issue.quote }}」
+          </p>
+          <p v-if="issue.priorQuote" class="text-[10px] text-(--ui-text-dimmed) leading-snug">
+            {{ issue.priorChapter ? `第${issue.priorChapter}章` : '早先' }}：「{{ issue.priorQuote }}」
+          </p>
+        </div>
       </div>
     </div>
     <div v-else class="text-center py-4">

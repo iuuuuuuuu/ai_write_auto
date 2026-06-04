@@ -343,12 +343,17 @@ export interface ModelCostRate {
 }
 
 export interface ConsistencyIssue {
-  [OptionalProps]?: 'id' | 'dismissed' | 'createdAt'
+  [OptionalProps]?: 'id' | 'dismissed' | 'createdAt' | 'quote' | 'priorQuote' | 'priorChapter' | 'confidence' | 'signature'
   id: number
   chapter: Chapter
   type: string
   severity: 'high' | 'medium' | 'low'
   description: string
+  quote: string | null
+  priorQuote: string | null
+  priorChapter: number | null
+  confidence: string | null
+  signature: string | null
   dismissed: boolean
   createdAt: Date
 }
@@ -1001,6 +1006,11 @@ export const ConsistencyIssueSchema = new EntitySchema<ConsistencyIssue>({
     type: { type: 'string' },
     severity: { type: 'string', default: 'medium' },
     description: { type: 'string' },
+    quote: { type: 'string', nullable: true },
+    priorQuote: { type: 'string', fieldName: 'prior_quote', nullable: true },
+    priorChapter: { type: 'number', fieldName: 'prior_chapter', nullable: true },
+    confidence: { type: 'string', nullable: true },
+    signature: { type: 'string', nullable: true },
     dismissed: { type: 'boolean', default: false },
     createdAt: {
       type: UnixTimestampType,

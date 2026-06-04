@@ -697,9 +697,10 @@ export function buildConsistencyCheckPrompt(context: {
     traits?: string | null
   }>
   recentSummaries: Array<{ chapterNumber: number; summary: string }>
+  priorPassages: Array<{ chapterNumber: number | null; label: string; content: string }>
   targetChapter: { chapterNumber: number; content: string }
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const { characters, recentSummaries, targetChapter } = context
+  const { characters, recentSummaries, priorPassages, targetChapter } = context
 
   const charInfo = characters
     .map((c) => `${c.name}: ${c.description || ''} (${c.traits || ''})`)
@@ -709,23 +710,42 @@ export function buildConsistencyCheckPrompt(context: {
     .map((c) => `第${c.chapterNumber}章: ${c.summary}`)
     .join('\n')
 
+  const priorText = priorPassages.length
+    ? priorPassages
+        .map(
+          (p) =>
+            `【${p.chapterNumber ? `第${p.chapterNumber}章` : p.label}】${p.content}`
+        )
+        .join('\n\n')
+    : '（无检索到的早先原文，若无法引用早先原文/前情请不要报告需要跨章对照的问题）'
+
   return [
     {
       role: 'system',
-      content: `你是一位专业的小说编辑。请检查以下章节内容是否存在一致性问题。
-检查项目：
-1. 角色名字是否前后一致
-2. 时间线是否有矛盾
-3. 已死亡/离开的角色是否意外出现
-4. 地点描述是否前后矛盾
-5. 角色性格是否突然改变（无合理原因）
+      content: `你是一位严谨的小说编辑。请检查当前章节是否与"早先原文/前情"存在**真正的**一致性矛盾。
 
-以 JSON 数组格式返回发现的问题：[{"type": "角色一致性|时间线|地点|性格", "severity": "high|medium|low", "description": "问题描述"}]
-如果没有发现问题，返回空数组 []。只返回 JSON。`
+检查项目：
+1. 角色名字/称呼前后不一致
+2. 时间线矛盾
+3. 已死亡/离开的角色意外出现
+4. 地点描述前后矛盾
+5. 角色性格无合理原因突变
+
+举证要求（非常重要，违反则该问题作废）：
+- 每条问题必须同时给出两段**真实存在、逐字摘录**的原文：
+  - quote：摘自"当前章节"的原文片段（20-60 字）
+  - priorQuote：摘自上方"早先相关原文/前情摘要"的原文片段（20-60 字），并在 priorChapter 标注其所属章节号
+- 给不出这两段真实原文引用的疑似问题，一律**不要输出**（宁可漏报，不要臆测）
+- 不要把叙事手法当矛盾：伏笔、有意留白、回忆/闪回、视角差异、不可靠叙述者都**不是**矛盾
+- confidence 表示你对"这是真矛盾"的把握（0-1 小数），低于 0.5 的不要输出
+
+以 JSON 数组返回：
+[{"type":"角色一致性|时间线|地点|性格","severity":"high|medium|low","description":"问题描述","quote":"本章原文","priorQuote":"早先原文","priorChapter":章节号,"confidence":0.8}]
+没有发现真矛盾时返回空数组 []。只返回 JSON。`
     },
     {
       role: 'user',
-      content: `角色档案：\n${charInfo}\n\n前情摘要：\n${summaryText}\n\n当前章节（第${targetChapter.chapterNumber}章）：\n${targetChapter.content}`
+      content: `角色档案：\n${charInfo}\n\n前情摘要：\n${summaryText}\n\n早先相关原文（priorQuote 必须摘自这里或上面的前情摘要）：\n${priorText}\n\n当前章节（第${targetChapter.chapterNumber}章，quote 必须摘自这里）：\n${targetChapter.content}`
     }
   ]
 }
@@ -907,6 +927,57 @@ export function buildCharacterEnrichPrompt(context: {
 
   return [
     { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ]
+}
+
+/**
+ * 检索 query 规划（v1 query-only 档用）：给轻量地板 + 任务意图，让模型产出一组检索查询语，
+ * 用于到"小说记忆库"按需取料。只要严格 JSON 字符串数组，解析失败时调用方回落 seed-only。
+ */
+export function buildQueryPlanningPrompt(context: {
+  intent: string
+  seed?: string
+  novel?: { title: string; genre?: string | null; description?: string | null }
+  characterNames?: string[]
+  foreshadowingTitles?: string[]
+  recentSummaries?: string[]
+}): Array<{ role: 'system' | 'user'; content: string }> {
+  const {
+    intent,
+    seed,
+    novel,
+    characterNames,
+    foreshadowingTitles,
+    recentSummaries
+  } = context
+
+  let userPrompt = ''
+  if (novel) {
+    userPrompt += `小说：${novel.title}`
+    if (novel.genre) userPrompt += `（${novel.genre}）`
+    userPrompt += '\n'
+    if (novel.description) userPrompt += `简介：${novel.description}\n`
+  }
+  userPrompt += `\n本次任务：${intent}\n`
+  if (seed?.trim()) userPrompt += `任务要点：${seed.slice(0, 400)}\n`
+  if (characterNames?.length)
+    userPrompt += `\n已知角色：${characterNames.slice(0, 30).join('、')}\n`
+  if (foreshadowingTitles?.length)
+    userPrompt += `\n待回收伏笔：${foreshadowingTitles.slice(0, 12).map((t) => t.slice(0, 30)).join('；')}\n`
+  if (recentSummaries?.length)
+    userPrompt += `\n近章摘要：\n${recentSummaries.slice(-6).join('\n')}\n`
+
+  return [
+    {
+      role: 'system',
+      content: `你是检索规划助手。为了写好接下来的内容，需要从「小说记忆库」（角色档案、角色历程、剧情线索、伏笔、世界观、章节摘要）里调取最相关的资料。
+请根据任务，列出 2-5 条**检索查询语句**，覆盖你认为写这段内容最需要确认的上下文（如：某角色的当前状态/关系、某条伏笔的埋设细节、首次提及的设定等）。
+要求：
+- 每条 query 是一句简短的中文检索语，聚焦一个具体的人/事/设定
+- 只返回严格 JSON 字符串数组，不要解释、不要 Markdown
+示例：["主角林川与师父的恩怨", "黑塔伏笔的最初描写", "女主角当前的处境与目标"]`
+    },
     { role: 'user', content: userPrompt }
   ]
 }

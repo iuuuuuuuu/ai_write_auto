@@ -2,10 +2,9 @@ import { z } from 'zod'
 import { createTrackedStreamResponse } from '../../utils/ai-stream'
 import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
-import { buildGenerationPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, NovelOutlineSchema } from '../../database/entities'
-import { isEmbeddingReady } from '../../services/embedding'
-import { retrieveRelevant, getActiveForeshadowing } from '../../services/content-rag'
+import { getActiveForeshadowing } from '../../services/content-rag'
+import { prepareChapterContext } from '../../services/chapter-context'
 import { ensureChapterOutline } from '../../services/outline-autofill'
 
 const generateSchema = z.object({
@@ -68,26 +67,20 @@ export default defineEventHandler(async (event) => {
     if (ch.content) recentChapterContent.push({ chapterNumber: ch.chapterNumber, title: ch.title, content: ch.content.slice(-4000) })
   }
 
-  let ragContext: Array<{ characterName?: string; content: string; contentType: string; chapterId: number | null }> | undefined
-  if (isEmbeddingReady()) {
-    const query = [currentChapter?.title, chapterOutline, data.direction].filter(Boolean).join(' ')
-    if (query) {
-      ragContext = await retrieveRelevant(data.novelId, query, 10)
-    }
-  }
-
-  const messages = buildGenerationPrompt({
+  const { messages } = await prepareChapterContext(em, {
     novel,
-    chapters: precedingChapters,
+    novelId: data.novelId,
+    userId: auth.userId,
+    currentChapter: currentChapter ? { title: currentChapter.title, chapterNumber: currentChapter.chapterNumber } : undefined,
+    outline: chapterOutline,
+    direction: data.direction,
+    precedingChapters,
     characters,
     plotPoints,
     storyArcs,
-    currentChapter: currentChapter ? { title: currentChapter.title, chapterNumber: currentChapter.chapterNumber } : undefined,
-    currentChapterOutline: chapterOutline,
-    userDirection: data.direction,
-    ragContext,
     foreshadowing,
-    recentChapterContent
+    recentChapterContent,
+    depth: 'query-only'
   })
 
   const task = em.create(GenerationTaskSchema, {
