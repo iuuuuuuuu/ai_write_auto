@@ -5,7 +5,7 @@ import { buildConsistencyCheckPrompt } from './ai-prompts'
 import { AiConfigSchema, ChapterSchema, CharacterSchema, ConsistencyIssueSchema } from '../database/entities'
 import { retrieveRelevant } from '../services/content-rag'
 
-interface ParsedIssue {
+export interface ParsedIssue {
   type: string
   severity: 'high' | 'medium' | 'low'
   description: string
@@ -17,7 +17,7 @@ interface ParsedIssue {
 
 const MIN_CONFIDENCE = 0.5
 
-function normalizeText(s: string): string {
+export function normalizeText(s: string): string {
   return (s || '')
     .replace(/\s+/g, '')
     .replace(/[，。！？、；：""''「」『』（）(),.!?;:~—\-…·]/g, '')
@@ -25,9 +25,62 @@ function normalizeText(s: string): string {
 }
 
 /** 签名基于 grounded quote（type + 归一化本章引用 + 早先章节号），比自由文本 description 稳定，用于跨次去重 / 保留 dismissed。 */
-function issueSignature(issue: ParsedIssue): string {
+export function issueSignature(issue: ParsedIssue): string {
   const basis = `${normalizeText(issue.type)}|${normalizeText(issue.quote)}|${issue.priorChapter ?? ''}`
   return createHash('sha1').update(basis).digest('hex').slice(0, 32)
+}
+
+/**
+ * 解析模型输出并做强制举证校验（纯函数，便于单测）：
+ * - 必须同时有 quote + priorQuote
+ * - confidence 缺省/非法按 0.6 通过，仅「明确给出且 < 0.5」丢弃
+ * - grounding：quote 必须出现在本章真实原文、priorQuote 必须出现在早先原文/前情里（归一化子串匹配）
+ */
+export function validateConsistencyIssues(
+  rawModelOutput: string,
+  targetContent: string,
+  priorText: string
+): ParsedIssue[] {
+  const targetNorm = normalizeText(targetContent)
+  const priorNorm = normalizeText(priorText)
+
+  let parsed: unknown
+  try {
+    const jsonMatch = rawModelOutput.match(/\[[\s\S]*\]/)
+    parsed = JSON.parse(jsonMatch?.[0] || rawModelOutput)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(parsed)) return []
+
+  const validated: ParsedIssue[] = []
+  for (const raw of parsed as any[]) {
+    if (!raw || typeof raw !== 'object') continue
+    const quote = typeof raw.quote === 'string' ? raw.quote.trim() : ''
+    const priorQuote = typeof raw.priorQuote === 'string' ? raw.priorQuote.trim() : ''
+    if (!quote || !priorQuote) continue
+    const rawConf = typeof raw.confidence === 'number' ? raw.confidence : parseFloat(raw.confidence)
+    const confidence = Number.isFinite(rawConf) ? rawConf : 0.6
+    if (confidence < MIN_CONFIDENCE) continue
+    const qn = normalizeText(quote)
+    const pqn = normalizeText(priorQuote)
+    if (qn.length < 4 || pqn.length < 4) continue
+    if (!targetNorm.includes(qn)) continue
+    if (priorNorm && !priorNorm.includes(pqn)) continue
+    const priorChapter = typeof raw.priorChapter === 'number' && Number.isFinite(raw.priorChapter)
+      ? raw.priorChapter
+      : (parseInt(raw.priorChapter, 10) || null)
+    validated.push({
+      type: typeof raw.type === 'string' && raw.type ? raw.type : 'unknown',
+      severity: ['high', 'medium', 'low'].includes(raw.severity) ? raw.severity : 'medium',
+      description: typeof raw.description === 'string' ? raw.description : '',
+      quote,
+      priorQuote,
+      priorChapter,
+      confidence
+    })
+  }
+  return validated
 }
 
 export async function runConsistencyCheck(
@@ -107,51 +160,12 @@ export async function runConsistencyCheck(
     if (chunk.content) result += chunk.content
   }
 
-  // 强制举证校验：quote 必须能在本章真实原文里对上，priorQuote 必须能在早先原文/前情里对上，
-  // confidence 过低或缺引用一律丢弃（降误报核心）。
-  const targetNorm = normalizeText(targetChapter.content)
-  const priorNorm = normalizeText(
-    [...priorPassages.map((p) => p.content), ...recentSummaries.map((s) => s.summary)].join(' ')
-  )
-
-  let parsed: unknown
-  try {
-    const jsonMatch = result.match(/\[[\s\S]*\]/)
-    parsed = JSON.parse(jsonMatch?.[0] || result)
-  } catch {
-    return []
-  }
-  if (!Array.isArray(parsed)) return []
-
-  const validated: ParsedIssue[] = []
-  for (const raw of parsed as any[]) {
-    if (!raw || typeof raw !== 'object') continue
-    const quote = typeof raw.quote === 'string' ? raw.quote.trim() : ''
-    const priorQuote = typeof raw.priorQuote === 'string' ? raw.priorQuote.trim() : ''
-    if (!quote || !priorQuote) continue
-    // confidence 是次级过滤：缺省/非法时按通过处理（0.6），只有「明确给出且 < 0.5」才丢弃；
-    // 主过滤是下面的 grounding（引用必须能在真实原文里对上）。
-    const rawConf = typeof raw.confidence === 'number' ? raw.confidence : parseFloat(raw.confidence)
-    const confidence = Number.isFinite(rawConf) ? rawConf : 0.6
-    if (confidence < MIN_CONFIDENCE) continue
-    const qn = normalizeText(quote)
-    const pqn = normalizeText(priorQuote)
-    if (qn.length < 4 || pqn.length < 4) continue
-    if (!targetNorm.includes(qn)) continue
-    if (priorNorm && !priorNorm.includes(pqn)) continue
-    const priorChapter = typeof raw.priorChapter === 'number' && Number.isFinite(raw.priorChapter)
-      ? raw.priorChapter
-      : (parseInt(raw.priorChapter, 10) || null)
-    validated.push({
-      type: typeof raw.type === 'string' && raw.type ? raw.type : 'unknown',
-      severity: ['high', 'medium', 'low'].includes(raw.severity) ? raw.severity : 'medium',
-      description: typeof raw.description === 'string' ? raw.description : '',
-      quote,
-      priorQuote,
-      priorChapter,
-      confidence
-    })
-  }
+  // 强制举证校验（降误报核心）：见 validateConsistencyIssues。priorQuote 可引用早先检索段落或前情摘要。
+  const priorText = [
+    ...priorPassages.map((p) => p.content),
+    ...recentSummaries.map((s) => s.summary)
+  ].join(' ')
+  const validated = validateConsistencyIssues(result, targetChapter.content, priorText)
 
   // 按签名 upsert：命中已有行则刷新内容但保留 dismissed；本轮未再出现的非 dismissed 行剪枝；
   // dismissed 行始终保留作墓碑，使被忽略的问题即便重测也不再冒出。

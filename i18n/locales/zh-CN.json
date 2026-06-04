@@ -232,7 +232,8 @@
       "generation": "内容生成",
       "extraction": "信息提取",
       "consistencyCheck": "一致性检查",
-      "styleAnalysis": "风格分析"
+      "styleAnalysis": "风格分析",
+      "planning": "检索规划"
     },
     "presets": "预设方案",
     "creative": "创意模式",

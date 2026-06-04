@@ -108,7 +108,14 @@ async function planQueries(
     recentSummaries: opts.recentSummaries
   })
   const res = await callAiWithUsage(
-    toAiOptions(cfg, { messages, temperature: 0.3, maxTokens: 256 })
+    toAiOptions(cfg, {
+      messages,
+      temperature: 0.3,
+      maxTokens: 256,
+      // query 生成是廉价结构化调用：关掉思考链，省 token、降首 token 延迟（与标题生成一致）。
+      // 不支持这些字段的供应商会忽略它们；真失败则上层回落 seed-only。
+      extraBody: { enable_thinking: false, reasoning_effort: 'low' }
+    })
   )
   usage.inputTokens += res.inputTokens
   usage.outputTokens += res.outputTokens

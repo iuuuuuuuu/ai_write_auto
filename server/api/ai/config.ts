@@ -5,7 +5,7 @@ import { AiConfigSchema, AiModelSchema } from '../../database/entities'
 const configSchema = z.object({
   id: z.number().int().positive().optional(),
   aiModelId: z.number().int().positive(),
-  purpose: z.enum(['generation', 'extraction', 'consistency_check', 'style_analysis']),
+  purpose: z.enum(['generation', 'extraction', 'consistency_check', 'style_analysis', 'planning']),
   temperature: z.string().optional(),
   isDefault: z.boolean().optional(),
   enabled: z.boolean().optional(),

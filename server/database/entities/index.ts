@@ -60,7 +60,7 @@ export interface AiConfig {
   id: number
   user: User
   aiModel: AiModel
-  purpose: 'generation' | 'extraction' | 'consistency_check' | 'style_analysis'
+  purpose: 'generation' | 'extraction' | 'consistency_check' | 'style_analysis' | 'planning'
   temperature: string | null
   isDefault: boolean
   enabled: boolean

@@ -1018,6 +1018,11 @@ export type NovelGenreGroup = NovelGenreMeta['group']
 
 export const NOVEL_GENRE_VALUES = NOVEL_GENRES.map((genre) => genre.value)
 
+/** 类型守卫：判断任意字符串是否为合法 genre（用于 zod refine 等接收 string 的校验场景） */
+export function isNovelGenreValue(value: string): value is NovelGenreValue {
+  return (NOVEL_GENRE_VALUES as readonly string[]).includes(value)
+}
+
 export const NOVEL_GENRE_GROUP_LABELS: Record<
   NovelGenreGroup,
   { zh: string; en: string }

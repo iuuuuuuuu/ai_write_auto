@@ -232,7 +232,8 @@
       "generation": "Content Generation",
       "extraction": "Info Extraction",
       "consistencyCheck": "Consistency Check",
-      "styleAnalysis": "Style Analysis"
+      "styleAnalysis": "Style Analysis",
+      "planning": "Retrieval Planning"
     },
     "presets": "Presets",
     "creative": "Creative Mode",
