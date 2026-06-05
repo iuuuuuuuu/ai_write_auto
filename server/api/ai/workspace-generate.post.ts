@@ -4,7 +4,8 @@ import { streamAi, toAiOptions } from '../../utils/ai-client'
 import {
   createRequestSignal,
   recordUsage,
-  estimateTokens
+  estimateTokens,
+  streamWithContinuation
 } from '../../utils/ai-stream'
 import {
   resolveNovelAiConfig,
@@ -450,12 +451,13 @@ export default defineEventHandler(async (event) => {
             extraNotes: sharedRagContext
           })
 
-          let generatedContent = ''
-          let inputTokens = 0
-          let outputTokens = 0
-          let chunkCount = 0
-
-          for await (const chunk of streamAi(
+          // 截断驱动续写：长章节触达 maxTokens 不在句中断；轮间检查任务是否被取消
+          const {
+            fullContent: generatedContent,
+            inputTokens,
+            outputTokens,
+            finalTruncated
+          } = await streamWithContinuation(
             toAiOptions(aiConfig, {
               temperature:
                 promptNovel.aiTemperature ?
@@ -465,36 +467,27 @@ export default defineEventHandler(async (event) => {
               messages: prompt,
               stream: true,
               signal
-            })
-          )) {
-            chunkCount++
-            if (chunkCount % 20 === 0) {
-              if ((await readTaskStatus()) === 'cancelled') {
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({ type: 'cancelled', taskId })}\n\n`
-                  )
-                )
-                return
-              }
-            }
-            if (chunk.content) {
-              generatedContent += chunk.content
+            }),
+            signal,
+            (content) =>
               controller.enqueue(
                 encoder.encode(
-                  `data: ${JSON.stringify({ type: 'chunk', taskId, chapter: chapterNum, content: chunk.content })}\n\n`
+                  `data: ${JSON.stringify({ type: 'chunk', taskId, chapter: chapterNum, content })}\n\n`
                 )
+              ),
+            { checkAbort: async () => (await readTaskStatus()) === 'cancelled' }
+          )
+
+          // 流式结束后若任务已被取消（或客户端断开）则不保存本章，直接结束
+          if (signal.aborted || (await readTaskStatus()) === 'cancelled') {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: 'cancelled', taskId })}\n\n`
               )
-            }
-            if (chunk.usage) {
-              inputTokens = chunk.usage.prompt_tokens || inputTokens
-              outputTokens = chunk.usage.completion_tokens || outputTokens
-            }
+            )
+            return
           }
 
-          if (!inputTokens && !outputTokens && generatedContent) {
-            outputTokens = estimateTokens(generatedContent)
-          }
           await recordUsage(
             {
               em,
@@ -555,7 +548,7 @@ export default defineEventHandler(async (event) => {
 
           controller.enqueue(
             encoder.encode(
-              `data: ${JSON.stringify({ type: 'chapter_done', taskId, chapter: chapterNum, title: chapterTitle, completed: chapterNum - data.fromChapter + 1, total: totalChapters })}\n\n`
+              `data: ${JSON.stringify({ type: 'chapter_done', taskId, chapter: chapterNum, title: chapterTitle, truncated: finalTruncated, completed: chapterNum - data.fromChapter + 1, total: totalChapters })}\n\n`
             )
           )
         }

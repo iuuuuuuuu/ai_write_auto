@@ -932,6 +932,52 @@ export function buildCharacterEnrichPrompt(context: {
 }
 
 /**
+ * 剧情线索 / 伏笔抽取（后处理，廉价 extraction 模型）：从本章正文里抽出长期记忆相关的线索，
+ * 供 extract_plot_threads 任务按签名 upsert 进 Foreshadowing / PlotPoint，避免 AI 自埋的伏笔悬空。
+ * 传入「已有活跃伏笔/线索」让模型优先匹配回收/推进而非重复新建。只要严格 JSON，解析失败时上层丢弃。
+ */
+export function buildPlotThreadExtractionPrompt(context: {
+  chapterNumber: number
+  chapterContent: string
+  activeForeshadowing: Array<{ content: string }>
+  activePlotPoints: Array<{ description: string }>
+}): Array<{ role: 'system' | 'user'; content: string }> {
+  const { chapterNumber, chapterContent, activeForeshadowing, activePlotPoints } =
+    context
+  const fsList = activeForeshadowing.length
+    ? activeForeshadowing.map((f, i) => `${i + 1}. ${f.content}`).join('\n')
+    : '（暂无）'
+  const ppList = activePlotPoints.length
+    ? activePlotPoints.map((p, i) => `${i + 1}. ${p.description}`).join('\n')
+    : '（暂无）'
+
+  return [
+    {
+      role: 'system',
+      content: `你是一位严谨的小说情节编辑。请从「当前章节」中抽取与长期剧情记忆相关的线索，便于后续章节呼应、避免伏笔悬空。
+
+只关注**真正承载剧情的线索**（新埋的伏笔、新开的悬念/矛盾、对已有线索的推进或回收）；忽略日常过场与纯氛围描写。
+
+每条输出一个对象，字段：
+- kind：只能是 foreshadow_setup（本章新埋下的伏笔）| foreshadow_payoff（本章回收/揭晓了某条已有伏笔）| plot_open（本章新开启的剧情线索/悬念/矛盾）| plot_advance（本章推进了某条已有线索）| plot_resolve（本章了结了某条已有线索）
+- summary：一句话概括该线索（20-50字），用作长期记忆
+- groundQuote：本章中体现它的原文片段（10-40字，必须逐字摘录）
+- relatedTo：当 kind 为 payoff/advance/resolve 时必填，填下方「已有伏笔/线索」清单里被呼应的那一条的原文摘要；setup/open 时省略
+
+举证要求（违反则该条作废）：
+- 给不出 groundQuote（本章真实原文）的条目一律不要输出
+- payoff/advance/resolve 必须能在下方清单里找到对应项，找不到就改判为 setup/open
+
+以 JSON 数组返回，不要解释、不要 Markdown。没有可抽取的线索时返回 []。`
+    },
+    {
+      role: 'user',
+      content: `## 已有待回收伏笔\n${fsList}\n\n## 已有活跃剧情线索\n${ppList}\n\n## 当前章节（第${chapterNumber}章，groundQuote 必须摘自这里）\n${chapterContent.slice(0, CONTEXT_TRUNCATE_FULL)}`
+    }
+  ]
+}
+
+/**
  * 检索 query 规划（v1 query-only 档用）：给轻量地板 + 任务意图，让模型产出一组检索查询语，
  * 用于到"小说记忆库"按需取料。只要严格 JSON 字符串数组，解析失败时调用方回落 seed-only。
  */

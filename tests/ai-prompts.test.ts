@@ -9,7 +9,8 @@ import {
   buildOutlineGenerationPrompt,
   buildCharacterExtractionPrompt,
   buildStoryArcPrompt,
-  buildQueryPlanningPrompt
+  buildQueryPlanningPrompt,
+  buildPlotThreadExtractionPrompt
 } from '../server/utils/ai-prompts'
 
 describe('ai-prompts', () => {
@@ -353,6 +354,66 @@ describe('ai-prompts', () => {
       expect(result[0].content).toContain('第1章')
       expect(result[0].content).toContain('第5章')
       expect(result[1].content).toContain('故事开始')
+    })
+  })
+
+  describe('buildPlotThreadExtractionPrompt', () => {
+    it('demands a strict JSON array and documents the kind/summary/groundQuote contract', () => {
+      const result = buildPlotThreadExtractionPrompt({
+        chapterNumber: 3,
+        chapterContent: '正文',
+        activeForeshadowing: [],
+        activePlotPoints: []
+      })
+      expect(result).toHaveLength(2)
+      expect(result[0].role).toBe('system')
+      expect(result[1].role).toBe('user')
+      const sys = result[0].content
+      expect(sys).toContain('JSON')
+      expect(sys).toContain('kind')
+      expect(sys).toContain('summary')
+      expect(sys).toContain('groundQuote')
+      expect(sys).toContain('relatedTo')
+      // 五种线索类型都要写进契约，模型才能正确归类回收/推进/了结
+      expect(sys).toContain('foreshadow_setup')
+      expect(sys).toContain('foreshadow_payoff')
+      expect(sys).toContain('plot_open')
+      expect(sys).toContain('plot_advance')
+      expect(sys).toContain('plot_resolve')
+    })
+
+    it('anchors to the chapter number and embeds the chapter content as grounding source', () => {
+      const result = buildPlotThreadExtractionPrompt({
+        chapterNumber: 7,
+        chapterContent: '林川在井底发现一枚旧铜钥匙',
+        activeForeshadowing: [],
+        activePlotPoints: []
+      })
+      expect(result[1].content).toContain('第7章')
+      expect(result[1].content).toContain('林川在井底发现一枚旧铜钥匙')
+    })
+
+    it('lists active foreshadowing and plot points so the model matches instead of re-creating', () => {
+      const result = buildPlotThreadExtractionPrompt({
+        chapterNumber: 5,
+        chapterContent: '正文',
+        activeForeshadowing: [{ content: '墙上的猎枪' }],
+        activePlotPoints: [{ description: '主角与师门的恩怨未了' }]
+      })
+      expect(result[1].content).toContain('已有待回收伏笔')
+      expect(result[1].content).toContain('墙上的猎枪')
+      expect(result[1].content).toContain('已有活跃剧情线索')
+      expect(result[1].content).toContain('主角与师门的恩怨未了')
+    })
+
+    it('shows a placeholder when there is nothing active to match against', () => {
+      const result = buildPlotThreadExtractionPrompt({
+        chapterNumber: 1,
+        chapterContent: '正文',
+        activeForeshadowing: [],
+        activePlotPoints: []
+      })
+      expect(result[1].content).toContain('（暂无）')
     })
   })
 })

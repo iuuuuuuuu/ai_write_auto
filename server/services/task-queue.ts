@@ -1,6 +1,7 @@
 import { getOrm } from '../database'
 import { streamAi, toAiOptions } from '../utils/ai-client'
 import { runConsistencyCheck } from '../utils/consistency-check'
+import { runPlotThreadExtraction } from '../utils/plot-threads'
 import { recordUsage, type StreamContext } from '../utils/ai-stream'
 import {
   buildSummaryPrompt,
@@ -43,7 +44,7 @@ async function callAiStreaming(options: Parameters<typeof streamAi>[0]) {
 
 const MAX_RETRIES = 3
 const STALE_TASK_TIMEOUT_MS = 10 * 60 * 1000
-const POST_PROCESSING_TYPES = ['extract_summary', 'extract_characters', 'consistency_check']
+const POST_PROCESSING_TYPES = ['extract_summary', 'extract_characters', 'consistency_check', 'extract_plot_threads']
 let isProcessing = false
 
 async function resolveConfigForPurpose(em: any, purpose: string, userId?: number): Promise<ResolvedAiConfig | null> {
@@ -367,6 +368,18 @@ async function processTask(task: GenerationTask): Promise<void> {
         const issues = await runConsistencyCheck(em, userId, novelId, chapterId)
         result = `Found ${issues.length} consistency issues`
       }
+    }
+
+    if (task.type === 'extract_plot_threads' && task.chapter && userId) {
+      const r = await runPlotThreadExtraction(
+        em,
+        userId,
+        novelId,
+        getEntityId(task.chapter)
+      )
+      totalInputTokens += r.inputTokens
+      totalOutputTokens += r.outputTokens
+      result = `Plot threads: +${r.created} new, ${r.resolved} resolved`
     }
 
     if (task.type === 'generate_arc') {

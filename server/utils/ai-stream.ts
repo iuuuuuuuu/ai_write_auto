@@ -107,6 +107,108 @@ async function collectStream(
   return { fullContent, inputTokens, outputTokens, truncated }
 }
 
+/** 去空白可见字数（中文长度的稳定度量，避免 token 估算误差）。 */
+function visibleLength(text: string): number {
+  return text.replace(/\s/g, '').length
+}
+
+/**
+ * 截断恢复用：把末尾「不完整的半句」剪掉，只保留到最后一个句末标点/换行处，
+ * 避免续写轮次用尽后仍把半句正文落库。整段无任何句末标记时原样返回。
+ */
+export function trimToCompleteEnding(text: string): string {
+  const enders = '。！？!?…”』」\n'
+  for (let i = text.length - 1; i >= 0; i--) {
+    if (enders.includes(text[i]!)) {
+      return i < text.length - 1 ? text.slice(0, i + 1) : text
+    }
+  }
+  return text
+}
+
+const CONTINUATION_PROMPT =
+  '请从上文断点处自然续写，不要重复已有内容，不要添加任何标题或分隔符，写到一个完整的段落结尾处停止。'
+
+export interface ContinuationOptions {
+  /** 最多续写轮数（不含首轮），默认 3 */
+  maxRounds?: number
+  /** 目标正文字数（可选）：未达 90% 也会触发续写。P0 默认不传，仅靠截断信号驱动。 */
+  targetWords?: number
+  /** 轮间中止检查（如批量的「任务已取消」）。返回 true 则停止续写。 */
+  checkAbort?: () => Promise<boolean>
+}
+
+export interface ContinuationResult {
+  fullContent: string
+  inputTokens: number
+  outputTokens: number
+  /** 末轮是否仍被模型按长度截断 */
+  finalTruncated: boolean
+  /** 实际续写轮数 */
+  rounds: number
+}
+
+/**
+ * 截断驱动的续写核心：首轮生成后，只要模型因长度被截断（或设了 targetWords 且未达标），
+ * 就以「assistant=已写 + user=从断点续写」追加生成，最多 maxRounds 轮。
+ * 单章 / 重生 / 批量共用，保证长章节不在句中被切断。任一轮失败/中止即停，返回已得内容。
+ */
+export async function streamWithContinuation(
+  options: AiRequestOptions,
+  signal: AbortSignal,
+  onChunk: (content: string) => void,
+  opts: ContinuationOptions = {}
+): Promise<ContinuationResult> {
+  const maxRounds = opts.maxRounds ?? 3
+  const { targetWords, checkAbort } = opts
+
+  const first = await collectStream(options, signal, onChunk)
+  let fullContent = first.fullContent
+  let inputTokens = first.inputTokens
+  let outputTokens = first.outputTokens
+  let truncated = first.truncated
+  let rounds = 0
+
+  const needMore = () =>
+    truncated ||
+    (targetWords ? visibleLength(fullContent) < targetWords * 0.9 : false)
+
+  while (needMore() && rounds < maxRounds && !signal.aborted && fullContent) {
+    if (checkAbort && (await checkAbort())) break
+    rounds++
+
+    const extendMessages = [
+      ...options.messages,
+      { role: 'assistant' as const, content: fullContent },
+      { role: 'user' as const, content: CONTINUATION_PROMPT }
+    ]
+    const next = await collectStream(
+      { ...options, messages: extendMessages },
+      signal,
+      onChunk
+    )
+    inputTokens += next.inputTokens
+    outputTokens += next.outputTokens
+    fullContent += next.fullContent
+    truncated = next.truncated
+    // 续写返回空内容 → 模型已无更多可写，停止（避免空轮空转；短的完句仍会被拼上）
+    if (visibleLength(next.fullContent) === 0) break
+  }
+
+  // 轮数用尽仍被截断：剪掉末尾半句，避免半句落库
+  if (truncated && rounds >= maxRounds) {
+    fullContent = trimToCompleteEnding(fullContent)
+  }
+
+  return {
+    fullContent,
+    inputTokens,
+    outputTokens,
+    finalTruncated: truncated,
+    rounds
+  }
+}
+
 export function createStreamResponse(
   event: H3Event,
   options: AiRequestOptions,
@@ -210,10 +312,6 @@ export interface TrackedStreamOptions {
   autoExtend?: boolean
 }
 
-function estimateTargetChars(maxTokens: number): number {
-  return Math.round(maxTokens * 0.55)
-}
-
 export function createTrackedStreamResponse(
   event: H3Event,
   options: AiRequestOptions,
@@ -231,77 +329,18 @@ export function createTrackedStreamResponse(
 
       controller.enqueue(encoder.encode(': connected\n\n'))
       try {
-        let fullContent = ''
-        let totalInputTokens = 0
-        let totalOutputTokens = 0
-
+        const maxRounds = tracked.autoExtend === false ? 0 : 3
         const {
-          fullContent: firstContent,
-          inputTokens,
-          outputTokens
-        } = await collectStream(options, signal, (content) =>
-          send({ content, done: false })
+          fullContent,
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          finalTruncated
+        } = await streamWithContinuation(
+          options,
+          signal,
+          (content) => send({ content, done: false }),
+          { maxRounds }
         )
-
-        fullContent = firstContent
-        totalInputTokens += inputTokens
-        totalOutputTokens += outputTokens
-
-        // Auto-extend: if content is far below target, continue generating
-        if (tracked.autoExtend !== false && fullContent && options.maxTokens) {
-          const targetChars = estimateTargetChars(options.maxTokens)
-          const currentChars = fullContent.replace(/\s/g, '').length
-          const MAX_EXTEND_ROUNDS = 3
-
-          for (let round = 0; round < MAX_EXTEND_ROUNDS; round++) {
-            if (signal.aborted) break
-            const remaining =
-              targetChars -
-              currentChars -
-              fullContent.replace(/\s/g, '').length +
-              currentChars
-            const actualRemaining =
-              targetChars - fullContent.replace(/\s/g, '').length
-            if (actualRemaining < targetChars * 0.3) break
-
-            const remainingTokens = Math.min(
-              options.maxTokens,
-              Math.round(actualRemaining / 0.55) + 200
-            )
-
-            const extendMessages = [
-              ...options.messages,
-              {
-                role: 'assistant' as const,
-                content: fullContent
-              },
-              {
-                role: 'user' as const,
-                content: `请从上文断点处自然续写，不要重复已有内容，不要加任何标题或分隔符。剩余约${actualRemaining}字需要补充，写到合适的段落结尾处停止。`
-              }
-            ]
-
-            const {
-              fullContent: extContent,
-              inputTokens: extIn,
-              outputTokens: extOut
-            } = await collectStream(
-              {
-                ...options,
-                messages: extendMessages,
-                maxTokens: remainingTokens
-              },
-              signal,
-              (content) => send({ content, done: false })
-            )
-
-            if (!extContent || extContent.replace(/\s/g, '').length < 50) break
-
-            fullContent += extContent
-            totalInputTokens += extIn
-            totalOutputTokens += extOut
-          }
-        }
 
         if (!fullContent) {
           await ctx.em.nativeUpdate(
@@ -335,7 +374,7 @@ export function createTrackedStreamResponse(
         if (tracked.onComplete && fullContent)
           await tracked.onComplete(fullContent)
 
-        send({ content: '', done: true, taskId: tracked.taskId })
+        send({ content: '', done: true, taskId: tracked.taskId, truncated: finalTruncated })
         controller.close()
       } catch (err: any) {
         await ctx.em.nativeUpdate(
