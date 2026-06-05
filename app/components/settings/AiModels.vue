@@ -43,6 +43,7 @@ type AiPurpose =
   | 'extraction'
   | 'consistency_check'
   | 'style_analysis'
+  | 'planning'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -458,14 +459,16 @@ const purposeOptions = computed(() => [
   { label: t('ai.purpose.generation'), value: 'generation' },
   { label: t('ai.purpose.extraction'), value: 'extraction' },
   { label: t('ai.purpose.consistencyCheck'), value: 'consistency_check' },
-  { label: t('ai.purpose.styleAnalysis'), value: 'style_analysis' }
+  { label: t('ai.purpose.styleAnalysis'), value: 'style_analysis' },
+  { label: t('ai.purpose.planning'), value: 'planning' }
 ])
 
 const purposeIcons: Record<string, string> = {
   generation: 'lucide:wand-sparkles',
   extraction: 'lucide:scan-text',
   consistency_check: 'lucide:shield-check',
-  style_analysis: 'lucide:palette'
+  style_analysis: 'lucide:palette',
+  planning: 'lucide:list-search'
 }
 
 const { data: configs, refresh: refreshConfigs } = await useFetch<

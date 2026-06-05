@@ -61,7 +61,8 @@ const purposeLabels: Record<string, string> = {
   generation: '内容生成',
   extraction: '信息提取',
   consistency_check: '一致性检查',
-  style_analysis: '风格分析'
+  style_analysis: '风格分析',
+  planning: '检索规划'
 }
 
 async function toggleEnabled(config: AdminAiConfig) {
