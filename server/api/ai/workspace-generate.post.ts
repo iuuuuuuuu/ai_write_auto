@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { EntityManager } from '@mikro-orm/core'
-import { streamAi, toAiOptions } from '../../utils/ai-client'
+import { streamAi, toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import {
   createRequestSignal,
   recordUsage,
@@ -464,6 +464,7 @@ export default defineEventHandler(async (event) => {
                   parseFloat(promptNovel.aiTemperature)
                 : parseFloat(aiConfig.temperature ?? '0.7'),
               maxTokens: aiConfig.maxTokens || MAX_TOKENS_WORKSPACE,
+              extraBody: PROSE_SAMPLING,
               messages: prompt,
               stream: true,
               signal

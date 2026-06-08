@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
-import { toAiOptions } from '../../utils/ai-client'
+import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 
 const schema = z.object({
@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
       messages,
       temperature: parseFloat(aiConfig.temperature || '0.7'),
       maxTokens: aiConfig.maxTokens || 4096,
+      extraBody: PROSE_SAMPLING,
     }),
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

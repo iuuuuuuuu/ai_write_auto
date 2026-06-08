@@ -17,6 +17,18 @@ export interface AiRequestOptions {
   modelId?: number
 }
 
+/**
+ * 正文（prose）生成的反「AI 腔」采样参数，经 extraBody 注入请求体。
+ * - frequency_penalty 压 token 级重复（口头禅、雷同句式、排比）——降 AI 味的主杠杆；
+ * - presence_penalty 保守取小，避免抑制小说里必然高频复现的人名/地名/专有名词。
+ * 仅用于正文 prose；结构化调用（大纲/角色/摘要等 JSON 或定长输出）不要用，会损坏格式或精度。
+ * 不支持这些字段的端点会忽略它们（与 chapter-context 的 extraBody 同理，失败也只是被忽略）。
+ */
+export const PROSE_SAMPLING = {
+  frequency_penalty: 0.3,
+  presence_penalty: 0.2
+} as const
+
 export function toAiOptions(
   config: Pick<ResolvedAiConfig, 'apiUrl' | 'apiKey' | 'model' | 'modelId'>,
   overrides: Omit<AiRequestOptions, 'apiUrl' | 'apiKey' | 'model' | 'modelId'> = {} as any

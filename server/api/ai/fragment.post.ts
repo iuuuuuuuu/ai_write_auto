@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
-import { toAiOptions } from '../../utils/ai-client'
+import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { MAX_TOKENS_FRAGMENT, CONTEXT_TRUNCATE_FRAGMENT } from '../../utils/ai-constants'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
@@ -82,6 +82,7 @@ ${context}
       messages,
       temperature: parseFloat(aiConfig.temperature || '0.75'),
       maxTokens: MAX_TOKENS_FRAGMENT,
+      extraBody: PROSE_SAMPLING,
     }),
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })
