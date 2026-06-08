@@ -342,6 +342,12 @@ describe('ai-prompts', () => {
       expect(result[1].content).toBe('张三走进了房间')
       expect(result[0].content).toContain('JSON')
     })
+
+    it('提示用本名而非场景专属称呼作为 name（防「美人」泛化）', () => {
+      const sys = buildCharacterExtractionPrompt('内容')[0].content
+      expect(sys).toContain('本名')
+      expect(sys).toContain('跨章节必须用同一个 name')
+    })
   })
 
   describe('buildStoryArcPrompt', () => {

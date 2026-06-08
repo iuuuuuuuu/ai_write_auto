@@ -482,7 +482,7 @@ export function buildCharacterExtractionPrompt(
       content: `你是一位文学分析师。请从以下章节中提取出现的角色信息，只返回严格 JSON 数组，不要 Markdown，不要解释。
 
 每个角色对象必须包含：
-- name: 角色名，尽量使用正文中的稳定称呼
+- name: 角色的本名 / 全书固定的通用称谓。注意：「美人」「公子」「那女人」这类**某个场景或某个人物专属的称呼、爱称、敬称、绰号**不是角色名，不要用作 name——优先用真实姓名；确无姓名时用中性指称（如「黑衣青年」），并把这类专属称呼写进 description。同一角色跨章节必须用同一个 name。
 - description: 简短描述，没有则为 null
 - traits: 性格特征，没有则为 null
 - currentState: 当前状态、处境、情绪或位置，没有则为 null
