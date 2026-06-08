@@ -6,6 +6,7 @@ vi.mock('../server/utils/ai-client', () => ({ streamAi: mockStreamAi }))
 
 import {
   estimateTokens,
+  dynamicMaxTokens,
   trimToCompleteEnding,
   streamWithContinuation
 } from '../server/utils/ai-stream'
@@ -39,6 +40,24 @@ describe('ai-stream', () => {
 
     it('returns 0 for empty string', () => {
       expect(estimateTokens('')).toBe(0)
+    })
+  })
+
+  describe('dynamicMaxTokens', () => {
+    it('区间内取 ceil(估值)', () => {
+      expect(dynamicMaxTokens(3000.2, { floor: 1000, cap: 8000 })).toBe(3001)
+    })
+
+    it('低于 floor 抬到 floor', () => {
+      expect(dynamicMaxTokens(200, { floor: 1000, cap: 8000 })).toBe(1000)
+    })
+
+    it('高于 cap 压到 cap', () => {
+      expect(dynamicMaxTokens(99999, { floor: 1000, cap: 8000 })).toBe(8000)
+    })
+
+    it('非有限值回落到 floor', () => {
+      expect(dynamicMaxTokens(NaN, { floor: 2000, cap: 6000 })).toBe(2000)
     })
   })
 

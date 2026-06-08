@@ -11,7 +11,8 @@
  */
 import type { EntityManager } from '@mikro-orm/core'
 import { streamAi, toAiOptions } from '../utils/ai-client'
-import { recordUsage, estimateTokens } from '../utils/ai-stream'
+import { recordUsage, estimateTokens, dynamicMaxTokens } from '../utils/ai-stream'
+import { parsePartialJsonArray } from '../utils/json-salvage'
 import { buildOutlineGenerationPrompt } from '../utils/ai-prompts'
 import { NovelOutlineSchema } from '../database/entities'
 import type { ResolvedAiConfig } from '../utils/ai-configs'
@@ -34,36 +35,16 @@ interface AutofillBase {
   userId: number
 }
 
-const cleanJson = (s: string) => s.replace(/^```(?:json)?\s*\n?|\n?```\s*$/g, '').trim()
-
-/** 容错解析 AI 返回的大纲 JSON 数组（贪婪 → 惰性 → 对象包装字段）。 */
+/** 容错解析 AI 返回的大纲 JSON 数组（贪婪 → 对象包装字段 → 截断 salvage），结构非法条目丢弃。 */
 function parseOutlineArray(raw: string): Array<{ chapterNumber: number; description: string }> {
-  const cleaned = cleanJson(raw)
-  let arr: unknown = null
-
-  const arrMatch = cleaned.match(/\[[\s\S]*\]/)
-  if (arrMatch) {
-    try {
-      arr = JSON.parse(arrMatch[0])
-    } catch {
-      const lazy = cleaned.match(/\[[\s\S]*?\]/)
-      if (lazy) {
-        try { arr = JSON.parse(lazy[0]) } catch { /* ignore */ }
+  return parsePartialJsonArray(raw)
+    .map((o) => {
+      const item = (o && typeof o === 'object' ? o : {}) as Record<string, unknown>
+      return {
+        chapterNumber: Number(item.chapterNumber),
+        description: String(item.description ?? '').trim()
       }
-    }
-  }
-  if (!Array.isArray(arr)) {
-    try {
-      const obj = JSON.parse(cleaned) as Record<string, unknown>
-      for (const key of ['outlines', 'chapters', 'items', 'data', 'results']) {
-        if (Array.isArray(obj?.[key])) { arr = obj[key]; break }
-      }
-    } catch { /* ignore */ }
-  }
-  if (!Array.isArray(arr)) return []
-
-  return (arr as Array<Record<string, unknown>>)
-    .map((o) => ({ chapterNumber: Number(o?.chapterNumber), description: String(o?.description ?? '').trim() }))
+    })
     .filter((o) => Number.isFinite(o.chapterNumber) && o.chapterNumber > 0 && o.description.length > 0)
 }
 
@@ -88,7 +69,8 @@ async function generateOutlineItems(
   for await (const chunk of streamAi(toAiOptions(base.aiConfig, {
     messages,
     temperature: 0.7,
-    maxTokens: Math.min(300 * chapterCount + 200, 4000)
+    // 按段内章数动态给上限（每章大纲约 ~200 tokens），大段补全不被固定上限截断
+    maxTokens: dynamicMaxTokens(chapterCount * 240 + 400, { floor: 1000, cap: 8000 })
   }))) {
     if (chunk.content) content += chunk.content
     if (chunk.usage) {

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createStreamResponse } from '../../utils/ai-stream'
+import { createStreamResponse, dynamicMaxTokens } from '../../utils/ai-stream'
 import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildOutlineGenerationPrompt } from '../../utils/ai-prompts'
@@ -45,7 +45,8 @@ export default defineEventHandler(async (event) => {
     ...toAiOptions(aiConfig, {
       messages,
       temperature: 0.8,
-      maxTokens: 4000
+      // 按章数动态给上限（每章大纲 JSON 约 ~120 tokens），避免大 chapterCount 被固定 4000 截断
+      maxTokens: dynamicMaxTokens(data.chapterCount * 120 + 300, { floor: 1000, cap: 8000 })
     }),
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, { parseJsonResult: true })
 })

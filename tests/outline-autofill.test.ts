@@ -7,7 +7,9 @@ vi.mock('../server/utils/ai-client', () => ({
 }))
 vi.mock('../server/utils/ai-stream', () => ({
   recordUsage: vi.fn(async () => {}),
-  estimateTokens: (s: string) => (s ? s.length : 0)
+  estimateTokens: (s: string) => (s ? s.length : 0),
+  dynamicMaxTokens: (n: number, opts: { floor: number; cap: number }) =>
+    Math.max(opts.floor, Math.min(Math.ceil(n), opts.cap))
 }))
 
 import { ensureChapterOutline, ensureOutlinesForRange } from '../server/services/outline-autofill'
@@ -112,6 +114,20 @@ describe('outline-autofill', () => {
       expect(em.created[0].data).toMatchObject({ chapterNumber: 2, description: '补2', sortOrder: 2 })
       // 新条目被 push 进数组，供后续章节作为前序参考
       expect(existingOutlines.find(o => o.chapterNumber === 2)?.description).toBe('补2')
+    })
+
+    it('AI 返回被截断时 salvage 出已写完的前 N 章（旧实现会整体丢空）', async () => {
+      const em = makeEm()
+      // 第三章写到一半、没有收尾的 ] —— 截断 salvage 应救回前两章
+      mockedStreamAi.mockImplementation(() => streamYielding(
+        '[{"chapterNumber":1,"description":"补1"},{"chapterNumber":2,"description":"补2"},{"chapterNumber":3,"description":"第三章还没写'
+      ) as any)
+      const res = await ensureOutlinesForRange({
+        em: em as any, novel, novelId: 1, fromChapter: 1, toChapter: 3, characters,
+        existingOutlines: [], aiConfig, userId: 1
+      })
+      expect(res.filled).toEqual([1, 2])
+      expect(em.create).toHaveBeenCalledTimes(2)
     })
 
     it('整段已有则不调用 AI', async () => {

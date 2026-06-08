@@ -7,6 +7,7 @@ import {
   GenerationTaskSchema
 } from '../database/entities'
 import { recordAiGeneration } from './writing-stats'
+import { parsePartialJsonArray } from './json-salvage'
 
 export function createRequestSignal(event: H3Event): AbortSignal {
   const controller = new AbortController()
@@ -25,6 +26,21 @@ export function estimateTokens(text: string): number {
   const chineseChars = (text.match(/[一-鿿㐀-䶿]/g) || []).length
   const nonChinese = text.length - chineseChars
   return Math.ceil(chineseChars * 1.8 + nonChinese * 0.4)
+}
+
+/**
+ * 按预估输出规模动态给 maxTokens，clamp 到 [floor, cap]。
+ * 用于输出长度随输入规模增长的结构化生成（大纲随章数、角色随正文长度），
+ * 避免固定上限把长输出截断成无法解析的半截 JSON。非有限值回落到 floor。
+ */
+export function dynamicMaxTokens(
+  estimatedOutputTokens: number,
+  { floor, cap }: { floor: number; cap: number }
+): number {
+  const n = Number.isFinite(estimatedOutputTokens)
+    ? Math.ceil(estimatedOutputTokens)
+    : floor
+  return Math.max(floor, Math.min(n, cap))
 }
 
 export async function recordUsage(
@@ -250,12 +266,10 @@ export function createStreamResponse(
           }
         }
         if (responseOpts?.parseJsonResult) {
-          try {
-            const jsonMatch =
-              fullContent.match(/\[[\s\S]*\]/) ||
-              fullContent.match(/\{[\s\S]*\}/)
-            if (jsonMatch) donePayload.parsedJson = JSON.parse(jsonMatch[0])
-          } catch {}
+          // 容错解析 + 截断 salvage：长大纲/长建议被按长度截断时，
+          // 也能取出已写完的前 N 条，而非整体丢失（旧实现 JSON.parse 抛错被吞 → 前端拿空）。
+          const arr = parsePartialJsonArray(fullContent)
+          if (arr.length) donePayload.parsedJson = arr
         }
 
         send(donePayload)

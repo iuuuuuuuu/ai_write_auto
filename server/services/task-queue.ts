@@ -2,7 +2,8 @@ import { getOrm } from '../database'
 import { streamAi, toAiOptions } from '../utils/ai-client'
 import { runConsistencyCheck } from '../utils/consistency-check'
 import { runPlotThreadExtraction } from '../utils/plot-threads'
-import { recordUsage, type StreamContext } from '../utils/ai-stream'
+import { parseExtractedCharacters } from '../utils/character-extraction'
+import { recordUsage, estimateTokens, dynamicMaxTokens, type StreamContext } from '../utils/ai-stream'
 import {
   buildSummaryPrompt,
   buildCharacterExtractionPrompt,
@@ -70,86 +71,12 @@ async function resolveConfigForPurpose(em: any, purpose: string, userId?: number
   }
 }
 
-type ExtractedCharacterRole = 'main' | 'supporting' | 'mentioned'
-
-type ExtractedAppearance = {
-  snippet: string | null
-  positionStart: number | null
-  positionEnd: number | null
-  background: string | null
-}
-
-type ExtractedCharacter = {
-  name: string
-  description: string | null
-  traits: string | null
-  currentState: string | null
-  role: ExtractedCharacterRole
-  appearances: ExtractedAppearance[]
-}
-
 function getEntityId(entity: unknown): number {
   if (typeof entity === 'number') return entity
   if (entity && typeof entity === 'object' && 'id' in entity) {
     return Number((entity as { id: unknown }).id)
   }
   return Number(entity)
-}
-
-function normalizeRole(value: unknown): ExtractedCharacterRole {
-  return value === 'main' || value === 'mentioned' ? value : 'supporting'
-}
-
-function normalizeNullableString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
-}
-
-function normalizeNullableNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function parseExtractedCharacters(result: string): ExtractedCharacter[] {
-  const parsed: unknown = JSON.parse(result)
-  if (!Array.isArray(parsed)) {
-    throw new Error('Character extraction result must be a JSON array')
-  }
-
-  return parsed
-    .map((item): ExtractedCharacter | null => {
-      if (!item || typeof item !== 'object') return null
-      const source = item as Record<string, unknown>
-      const name = normalizeNullableString(source.name)
-      if (!name) return null
-
-      const rawAppearances =
-        Array.isArray(source.appearances) ? source.appearances : []
-      const appearances = rawAppearances
-        .map((appearance): ExtractedAppearance | null => {
-          if (!appearance || typeof appearance !== 'object') return null
-          const appearanceSource = appearance as Record<string, unknown>
-          return {
-            snippet: normalizeNullableString(appearanceSource.snippet),
-            positionStart: normalizeNullableNumber(
-              appearanceSource.positionStart
-            ),
-            positionEnd: normalizeNullableNumber(appearanceSource.positionEnd),
-            background: normalizeNullableString(appearanceSource.background)
-          }
-        })
-        .filter((appearance): appearance is ExtractedAppearance =>
-          Boolean(appearance)
-        )
-
-      return {
-        name,
-        description: normalizeNullableString(source.description),
-        traits: normalizeNullableString(source.traits),
-        currentState: normalizeNullableString(source.currentState),
-        role: normalizeRole(source.role),
-        appearances
-      }
-    })
-    .filter((item): item is ExtractedCharacter => Boolean(item))
 }
 
 async function processTask(task: GenerationTask): Promise<void> {
@@ -210,7 +137,8 @@ async function processTask(task: GenerationTask): Promise<void> {
           const aiResult = await callAiStreaming(toAiOptions(aiConfig, {
             messages,
             temperature: 0.2,
-            maxTokens: 2000
+            // 按正文长度动态给上限（角色清单随正文增长），避免长章节角色多被固定 2000 截断
+            maxTokens: dynamicMaxTokens(estimateTokens(chapter.content) * 0.5, { floor: 2000, cap: 6000 })
           }))
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
