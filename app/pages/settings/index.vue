@@ -24,7 +24,8 @@ const { t } = useI18n()
 
     <section class="card-glass p-3 sm:p-4">
       <NTabs
-        type="segment"
+        type="line"
+        placement="left"
         animated
       >
         <NTabPane

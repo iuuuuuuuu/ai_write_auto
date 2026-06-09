@@ -38,3 +38,25 @@ export function formatAiTitleUsage(usage: AiTitleUsage | null) {
   const total = usage.inputTokens + usage.outputTokens
   return `本次消耗 ${total} tokens（输入 ${usage.inputTokens} / 输出 ${usage.outputTokens}）`
 }
+
+/** 去掉标题里冗余的「第N章」前缀，取出真正的标题文字（可能为空）。 */
+export function stripChapterNumberPrefix(title: string | null | undefined): string {
+  return (title || '')
+    .replace(/^\s*第[\d一二三四五六七八九十百千万]+章\s*[:：、.\-]?\s*/u, '')
+    .trim()
+}
+
+/**
+ * 章节目录显示名：序号按「当前位置」动态生成（删章后自动顺延，不会乱），
+ * 真实标题（若有，已去掉冗余「第N章」前缀）附在序号之后。
+ * @param title 存储的标题
+ * @param position 1-based 位置序号（在已排序章节列表中的位置）
+ */
+export function displayChapterTitle(
+  title: string | null | undefined,
+  position: number
+): string {
+  const real = stripChapterNumberPrefix(title)
+  return real ? `第${position}章 ${real}` : `第${position}章`
+}
+

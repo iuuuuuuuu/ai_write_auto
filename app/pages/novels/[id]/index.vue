@@ -2,6 +2,7 @@
 import {
   cleanAiChapterTitle,
   formatAiTitleUsage,
+  stripChapterNumberPrefix,
   type AiTitleUsage
 } from '../../../utils/chapter-title'
 import { getNovelGenreColor } from '~~/shared/novel-catalog'
@@ -244,7 +245,7 @@ async function aiGenerateChapterTitle() {
     )
     const cleaned = cleanAiChapterTitle(result.title)
     if (cleaned) {
-      suggestedChapterTitle.value = `第${nextNum}章 ${cleaned}`
+      suggestedChapterTitle.value = cleaned
       titleSuggestionUsage.value = result.usage || null
     } else {
       message.warning('AI 未能生成有效标题')
@@ -548,10 +549,6 @@ async function saveChapterOrder() {
 }
 
 async function createNewChapter() {
-  if (!newChapterTitle.value.trim()) {
-    message.warning('请输入章节标题')
-    return
-  }
   creatingChapter.value = true
   try {
     const nextNumber = (chapters.value?.length || 0) + 1
@@ -572,8 +569,7 @@ async function createNewChapter() {
 }
 
 function openNewChapterDialog() {
-  const nextNumber = (chapters.value?.length || 0) + 1
-  newChapterTitle.value = `第${nextNumber}章`
+  newChapterTitle.value = ''
   suggestedChapterTitle.value = ''
   titleSuggestionUsage.value = null
   showNewChapterDialog.value = true
@@ -2068,7 +2064,7 @@ async function savePlotPoint() {
                     <p
                       class="min-w-0 truncate text-sm font-medium text-(--ui-text-highlighted)"
                     >
-                      {{ chapter.title }}
+                      {{ stripChapterNumberPrefix(chapter.title) || '未命名' }}
                     </p>
                   </div>
                 </div>
@@ -2080,14 +2076,14 @@ async function savePlotPoint() {
                   <div
                     class="flex size-9 items-center justify-center rounded-lg bg-primary-400/10 text-xs font-semibold font-mono text-primary-500 shrink-0"
                   >
-                    {{ chapter.chapterNumber }}
+                    {{ index + 1 }}
                   </div>
                   <div class="min-w-0 flex-1">
                     <div class="flex flex-wrap items-center gap-2">
                       <p
                         class="min-w-0 truncate text-sm font-medium text-(--ui-text-highlighted)"
                       >
-                        {{ chapter.title }}
+                        {{ stripChapterNumberPrefix(chapter.title) || '未命名' }}
                       </p>
                       <NTag
                         size="tiny"
@@ -2486,7 +2482,7 @@ async function savePlotPoint() {
         <div class="space-y-3">
           <NInput
             v-model:value="newChapterTitle"
-            placeholder="请输入章节标题"
+            placeholder="章节标题（可留空，目录按顺序自动编号）"
             @keydown.enter="createNewChapter"
           />
           <div

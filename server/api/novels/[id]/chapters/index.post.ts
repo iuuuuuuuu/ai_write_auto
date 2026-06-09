@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { NovelSchema, ChapterSchema } from '../../../../database/entities'
 
 const createChapterSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.string().max(200).optional(),
   content: z.string().optional(),
   chapterNumber: z.number().int().positive().optional(),
 })
@@ -28,7 +28,7 @@ export default defineEventHandler(async (event) => {
   const chapter = em.create(ChapterSchema, {
     novel: novelId,
     chapterNumber,
-    title: data.title,
+    title: data.title?.trim() || '',
     content: data.content || null,
     status: 'draft',
     wordCount,

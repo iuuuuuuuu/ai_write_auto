@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { stripChapterNumberPrefix } from '../utils/chapter-title'
+
 definePageMeta({ layout: 'default' })
 
 const { t } = useI18n()
@@ -33,7 +35,7 @@ interface TrashResponse {
 
 const activeTab = ref('novels')
 const page = ref(1)
-const pageSize = ref(12)
+const pageSize = ref(20)
 const loading = ref(false)
 const novels = ref<TrashNovel[]>([])
 const chapters = ref<TrashChapter[]>([])
@@ -50,6 +52,53 @@ const previewLoading = ref(false)
 const previewData = ref<any>(null)
 const previewType = ref<'novel' | 'chapter'>('chapter')
 
+/* ─── 批量选择 ─── */
+const selectedNovels = ref<number[]>([])
+const selectedChapters = ref<number[]>([])
+
+function toggleNovel(id: number, checked: boolean) {
+  const i = selectedNovels.value.indexOf(id)
+  if (checked && i < 0) selectedNovels.value.push(id)
+  else if (!checked && i >= 0) selectedNovels.value.splice(i, 1)
+}
+function toggleChapter(id: number, checked: boolean) {
+  const i = selectedChapters.value.indexOf(id)
+  if (checked && i < 0) selectedChapters.value.push(id)
+  else if (!checked && i >= 0) selectedChapters.value.splice(i, 1)
+}
+
+const allNovelsSelected = computed(
+  () => novels.value.length > 0 && selectedNovels.value.length === novels.value.length
+)
+const allChaptersSelected = computed(
+  () => chapters.value.length > 0 && selectedChapters.value.length === chapters.value.length
+)
+function toggleAllNovels(checked: boolean) {
+  selectedNovels.value = checked ? novels.value.map((n) => n.id) : []
+}
+function toggleAllChapters(checked: boolean) {
+  selectedChapters.value = checked ? chapters.value.map((c) => c.id) : []
+}
+
+/** 删除的章节按所属小说分组 */
+const chaptersByNovel = computed(() => {
+  const groups = new Map<
+    number,
+    { novelId: number; novelTitle: string; items: TrashChapter[] }
+  >()
+  for (const ch of chapters.value) {
+    const nid = ch.novel?.id ?? 0
+    const g = groups.get(nid) || {
+      novelId: nid,
+      novelTitle: ch.novel?.title || '未知小说',
+      items: []
+    }
+    g.items.push(ch)
+    groups.set(nid, g)
+  }
+  return Array.from(groups.values())
+})
+
 async function fetchTrash() {
   loading.value = true
   try {
@@ -62,6 +111,8 @@ async function fetchTrash() {
     chapters.value = data.chapters.items
     chaptersTotal.value = data.chapters.total
     chaptersTotalPages.value = data.chapters.totalPages
+    selectedNovels.value = []
+    selectedChapters.value = []
   } catch {
   } finally {
     loading.value = false
@@ -129,7 +180,7 @@ async function restore(type: 'novel' | 'chapter', id: number) {
 function confirmDelete(type: 'novel' | 'chapter', item: TrashNovel | TrashChapter) {
   dialog.warning({
     title: '永久删除',
-    content: `确定要永久删除「${item.title}」吗？此操作不可撤销，关联数据也将被清除。`,
+    content: `确定要永久删除「${item.title || '未命名'}」吗？此操作不可撤销，关联数据也将被清除。`,
     positiveText: '永久删除',
     negativeText: '取消',
     positiveButtonProps: { type: 'error' },
@@ -141,6 +192,42 @@ function confirmDelete(type: 'novel' | 'chapter', item: TrashNovel | TrashChapte
         })
         await fetchTrash()
       } catch {}
+    }
+  })
+}
+
+/* ─── 批量操作 ─── */
+async function batchRestore(type: 'novel' | 'chapter') {
+  const ids = type === 'novel' ? selectedNovels.value : selectedChapters.value
+  if (!ids.length) return
+  await Promise.all(
+    ids.map((id) =>
+      post('/api/novels/trash', { type, id }, { silent: true }).catch(() => {})
+    )
+  )
+  message.success(`已恢复 ${ids.length} 项`)
+  await fetchTrash()
+}
+
+function confirmBatchDelete(type: 'novel' | 'chapter') {
+  const ids = type === 'novel' ? selectedNovels.value : selectedChapters.value
+  if (!ids.length) return
+  dialog.warning({
+    title: '批量永久删除',
+    content: `确定要永久删除选中的 ${ids.length} 项吗？此操作不可撤销，关联数据也将被清除。`,
+    positiveText: '永久删除',
+    negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: async () => {
+      await Promise.all(
+        ids.map((id) =>
+          apiDel('/api/novels/trash', { body: { type, id }, silent: true }).catch(
+            () => {}
+          )
+        )
+      )
+      message.success(`已永久删除 ${ids.length} 项`)
+      await fetchTrash()
     }
   })
 }
@@ -184,107 +271,145 @@ function getStatusLabel(status: string) {
 
     <section class="card-glass p-3 sm:p-4">
       <NTabs v-model:value="activeTab" type="segment" animated @update:value="page = 1; fetchTrash()">
+        <!-- 小说 -->
         <NTabPane name="novels" tab="小说">
           <div v-if="loading && !novels.length" class="py-12 flex justify-center">
             <NSpin size="medium" />
           </div>
           <NEmpty v-else-if="!novels.length" description="没有已删除的小说" class="py-12" />
-          <TransitionGroup v-else name="list" tag="div" class="relative mt-4 grid gap-3">
-            <article
-              v-for="novel in novels"
-              :key="novel.id"
-              class="liquid-panel flex items-start justify-between gap-4 p-4"
-            >
-              <div class="min-w-0 flex-1">
-                <div class="mb-1.5 flex items-center gap-2">
-                  <h3 class="truncate text-sm font-semibold text-(--ui-text-highlighted)">
-                    {{ novel.title }}
-                  </h3>
-                  <span class="shrink-0 rounded-full bg-(--ui-bg-muted) px-2 py-0.5 text-[10px] text-(--ui-text-muted) ring-1 ring-(--ui-border)">
-                    {{ getStatusLabel(novel.status) }}
-                  </span>
-                </div>
-                <p v-if="novel.description" class="mb-2 line-clamp-1 text-xs text-(--ui-text-muted)">
-                  {{ novel.description }}
-                </p>
-                <div class="flex flex-wrap items-center gap-3 text-[11px] text-(--ui-text-dimmed)">
-                  <span class="flex items-center gap-1">
-                    <Icon icon="lucide:clock" class="size-3" />
-                    {{ formatDeletedAt(novel.deletedAt) }}删除
-                  </span>
-                  <span v-if="novel.wordCount" class="flex items-center gap-1">
-                    <Icon icon="lucide:type" class="size-3" />
-                    {{ novel.wordCount.toLocaleString() }} 字
-                  </span>
-                  <span v-if="novel.genre" class="flex items-center gap-1">
-                    <Icon icon="lucide:tag" class="size-3" />
-                    {{ novel.genre }}
-                  </span>
-                </div>
-              </div>
-              <div class="shrink-0 flex items-center gap-2">
-                <NButton size="small" round quaternary @click="previewItem('novel', novel.id)">
-                  <template #icon><Icon icon="lucide:eye" class="size-3.5" /></template>
+          <div v-else class="mt-3 space-y-3">
+            <!-- 批量工具条 -->
+            <div class="flex items-center gap-3 px-1">
+              <NCheckbox
+                :checked="allNovelsSelected"
+                :indeterminate="selectedNovels.length > 0 && !allNovelsSelected"
+                @update:checked="toggleAllNovels"
+              >全选</NCheckbox>
+              <span class="text-xs text-(--ui-text-dimmed)">已选 {{ selectedNovels.length }} / {{ novels.length }}</span>
+              <div class="ml-auto flex gap-2">
+                <NButton size="tiny" :disabled="!selectedNovels.length" @click="batchRestore('novel')">
+                  <template #icon><Icon icon="lucide:rotate-ccw" /></template>
+                  批量恢复
                 </NButton>
-                <NButton size="small" round @click="restore('novel', novel.id)">
-                  <template #icon><Icon icon="lucide:rotate-ccw" class="size-3.5" /></template>
-                  恢复
-                </NButton>
-                <NButton size="small" type="error" ghost circle @click="confirmDelete('novel', novel)">
-                  <template #icon><Icon icon="lucide:trash-2" class="size-3.5" /></template>
+                <NButton size="tiny" type="error" :disabled="!selectedNovels.length" @click="confirmBatchDelete('novel')">
+                  <template #icon><Icon icon="lucide:trash-2" /></template>
+                  批量永久删除
                 </NButton>
               </div>
-            </article>
-          </TransitionGroup>
+            </div>
+            <!-- 表格 -->
+            <div class="card-glass overflow-hidden">
+              <table class="w-full text-sm">
+                <thead class="bg-(--ui-bg-muted)">
+                  <tr>
+                    <th class="w-10 px-3 py-2"></th>
+                    <th class="px-3 py-2 text-left text-[11px] font-semibold text-(--ui-text-dimmed)">标题</th>
+                    <th class="px-3 py-2 text-left text-[11px] font-semibold text-(--ui-text-dimmed)">状态</th>
+                    <th class="px-3 py-2 text-right text-[11px] font-semibold text-(--ui-text-dimmed)">字数</th>
+                    <th class="px-3 py-2 text-left text-[11px] font-semibold text-(--ui-text-dimmed)">删除时间</th>
+                    <th class="px-3 py-2 text-right text-[11px] font-semibold text-(--ui-text-dimmed)">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-(--ui-border)">
+                  <tr v-for="novel in novels" :key="novel.id" class="hover:bg-(--ui-bg-muted) transition-colors">
+                    <td class="px-3 py-2">
+                      <NCheckbox
+                        :checked="selectedNovels.includes(novel.id)"
+                        @update:checked="(c) => toggleNovel(novel.id, c)"
+                      />
+                    </td>
+                    <td class="px-3 py-2">
+                      <span class="font-medium text-(--ui-text-highlighted)">{{ novel.title || '未命名' }}</span>
+                    </td>
+                    <td class="px-3 py-2 text-(--ui-text-muted) text-xs">{{ getStatusLabel(novel.status) }}</td>
+                    <td class="px-3 py-2 text-right font-mono text-xs text-(--ui-text-muted)">{{ (novel.wordCount || 0).toLocaleString() }}</td>
+                    <td class="px-3 py-2 text-xs text-(--ui-text-dimmed)">{{ formatDeletedAt(novel.deletedAt) }}</td>
+                    <td class="px-3 py-2">
+                      <div class="flex justify-end gap-1">
+                        <NButton size="tiny" quaternary @click="previewItem('novel', novel.id)">
+                          <template #icon><Icon icon="lucide:eye" /></template>
+                        </NButton>
+                        <NButton size="tiny" quaternary @click="restore('novel', novel.id)">
+                          <template #icon><Icon icon="lucide:rotate-ccw" /></template>
+                        </NButton>
+                        <NButton size="tiny" quaternary type="error" @click="confirmDelete('novel', novel)">
+                          <template #icon><Icon icon="lucide:trash-2" /></template>
+                        </NButton>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </NTabPane>
 
+        <!-- 章节（按小说分组） -->
         <NTabPane name="chapters" tab="章节">
           <div v-if="loading && !chapters.length" class="py-12 flex justify-center">
             <NSpin size="medium" />
           </div>
           <NEmpty v-else-if="!chapters.length" description="没有已删除的章节" class="py-12" />
-          <TransitionGroup v-else name="list" tag="div" class="relative mt-4 grid gap-3">
-            <article
-              v-for="chapter in chapters"
-              :key="chapter.id"
-              class="liquid-panel flex items-start justify-between gap-4 p-4"
-            >
-              <div class="min-w-0 flex-1">
-                <div class="mb-1.5 flex items-center gap-2">
-                  <span class="shrink-0 text-xs text-(--ui-text-dimmed)">第{{ chapter.chapterNumber }}章</span>
-                  <h3 class="truncate text-sm font-semibold text-(--ui-text-highlighted)">
-                    {{ chapter.title }}
-                  </h3>
-                </div>
-                <div class="flex flex-wrap items-center gap-3 text-[11px] text-(--ui-text-dimmed)">
-                  <span class="flex items-center gap-1">
-                    <Icon icon="lucide:book-open" class="size-3" />
-                    {{ chapter.novel.title }}
-                  </span>
-                  <span class="flex items-center gap-1">
-                    <Icon icon="lucide:clock" class="size-3" />
-                    {{ formatDeletedAt(chapter.deletedAt) }}删除
-                  </span>
-                  <span v-if="chapter.wordCount" class="flex items-center gap-1">
-                    <Icon icon="lucide:type" class="size-3" />
-                    {{ chapter.wordCount.toLocaleString() }} 字
-                  </span>
-                </div>
-              </div>
-              <div class="shrink-0 flex items-center gap-2">
-                <NButton size="small" round quaternary @click="previewItem('chapter', chapter.id)">
-                  <template #icon><Icon icon="lucide:eye" class="size-3.5" /></template>
+          <div v-else class="mt-3 space-y-4">
+            <!-- 批量工具条 -->
+            <div class="flex items-center gap-3 px-1">
+              <NCheckbox
+                :checked="allChaptersSelected"
+                :indeterminate="selectedChapters.length > 0 && !allChaptersSelected"
+                @update:checked="toggleAllChapters"
+              >全选</NCheckbox>
+              <span class="text-xs text-(--ui-text-dimmed)">已选 {{ selectedChapters.length }} / {{ chapters.length }}</span>
+              <div class="ml-auto flex gap-2">
+                <NButton size="tiny" :disabled="!selectedChapters.length" @click="batchRestore('chapter')">
+                  <template #icon><Icon icon="lucide:rotate-ccw" /></template>
+                  批量恢复
                 </NButton>
-                <NButton size="small" round @click="restore('chapter', chapter.id)">
-                  <template #icon><Icon icon="lucide:rotate-ccw" class="size-3.5" /></template>
-                  恢复
-                </NButton>
-                <NButton size="small" type="error" ghost circle @click="confirmDelete('chapter', chapter)">
-                  <template #icon><Icon icon="lucide:trash-2" class="size-3.5" /></template>
+                <NButton size="tiny" type="error" :disabled="!selectedChapters.length" @click="confirmBatchDelete('chapter')">
+                  <template #icon><Icon icon="lucide:trash-2" /></template>
+                  批量永久删除
                 </NButton>
               </div>
-            </article>
-          </TransitionGroup>
+            </div>
+            <!-- 每个小说一组 -->
+            <div v-for="group in chaptersByNovel" :key="group.novelId" class="card-glass overflow-hidden">
+              <div class="flex items-center gap-2 bg-(--ui-bg-muted) px-3 py-2">
+                <Icon icon="lucide:book-open" class="size-3.5 text-(--ui-text-dimmed)" />
+                <span class="text-xs font-semibold text-(--ui-text-highlighted)">{{ group.novelTitle }}</span>
+                <span class="text-[11px] text-(--ui-text-dimmed)">（{{ group.items.length }} 章）</span>
+              </div>
+              <table class="w-full text-sm">
+                <tbody class="divide-y divide-(--ui-border)">
+                  <tr v-for="ch in group.items" :key="ch.id" class="hover:bg-(--ui-bg-muted) transition-colors">
+                    <td class="w-10 px-3 py-2">
+                      <NCheckbox
+                        :checked="selectedChapters.includes(ch.id)"
+                        @update:checked="(c) => toggleChapter(ch.id, c)"
+                      />
+                    </td>
+                    <td class="w-16 px-3 py-2 text-xs text-(--ui-text-dimmed) font-mono">第{{ ch.chapterNumber }}章</td>
+                    <td class="px-3 py-2">
+                      <span class="font-medium text-(--ui-text-highlighted)">{{ stripChapterNumberPrefix(ch.title) || '未命名' }}</span>
+                    </td>
+                    <td class="px-3 py-2 text-right font-mono text-xs text-(--ui-text-muted)">{{ (ch.wordCount || 0).toLocaleString() }} 字</td>
+                    <td class="px-3 py-2 text-xs text-(--ui-text-dimmed)">{{ formatDeletedAt(ch.deletedAt) }}</td>
+                    <td class="px-3 py-2">
+                      <div class="flex justify-end gap-1">
+                        <NButton size="tiny" quaternary @click="previewItem('chapter', ch.id)">
+                          <template #icon><Icon icon="lucide:eye" /></template>
+                        </NButton>
+                        <NButton size="tiny" quaternary @click="restore('chapter', ch.id)">
+                          <template #icon><Icon icon="lucide:rotate-ccw" /></template>
+                        </NButton>
+                        <NButton size="tiny" quaternary type="error" @click="confirmDelete('chapter', ch)">
+                          <template #icon><Icon icon="lucide:trash-2" /></template>
+                        </NButton>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </NTabPane>
       </NTabs>
     </section>
@@ -296,7 +421,7 @@ function getStatusLabel(status: string) {
         :page-size="pageSize"
         :item-count="currentTotal"
         show-size-picker
-        :page-sizes="[12, 24, 48]"
+        :page-sizes="[20, 50, 100]"
         @update:page="goToPage"
         @update:page-size="(s) => { pageSize = s; page = 1; fetchTrash() }"
       />
@@ -318,7 +443,7 @@ function getStatusLabel(status: string) {
             <p class="text-xs font-medium text-(--ui-text-muted) mb-2">包含章节（{{ previewData.chapters.length }}）：</p>
             <div class="space-y-1 max-h-60 overflow-y-auto">
               <div v-for="ch in previewData.chapters" :key="ch.id" class="text-xs text-(--ui-text-dimmed) px-2 py-1 rounded bg-(--ui-bg-muted)">
-                第{{ ch.chapterNumber }}章 {{ ch.title }} <span v-if="ch.wordCount" class="ml-2 opacity-60">{{ ch.wordCount }}字</span>
+                第{{ ch.chapterNumber }}章 {{ stripChapterNumberPrefix(ch.title) }} <span v-if="ch.wordCount" class="ml-2 opacity-60">{{ ch.wordCount }}字</span>
               </div>
             </div>
           </div>

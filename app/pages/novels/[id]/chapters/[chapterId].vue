@@ -11,6 +11,7 @@ import { computeLineDiff, type DiffLine } from '../../../../utils/diff'
 import {
   cleanAiChapterTitle,
   formatAiTitleUsage,
+  stripChapterNumberPrefix,
   type AiTitleUsage
 } from '../../../../utils/chapter-title'
 import type { DraftRecoveryType } from '../../../../composables/useDraftRecovery'
@@ -191,8 +192,7 @@ const suggestedNewChapterTitle = ref('')
 const newTitleSuggestionUsage = ref<AiTitleUsage | null>(null)
 
 function openNewChapterDialog() {
-  const nextNum = (allChapters.value?.length || 0) + 1
-  newChapterTitle.value = `第${nextNum}章`
+  newChapterTitle.value = ''
   suggestedNewChapterTitle.value = ''
   newTitleSuggestionUsage.value = null
   showNewChapterDialog.value = true
@@ -220,7 +220,7 @@ async function aiGenerateNewTitle() {
     )
     const cleaned = cleanAiChapterTitle(result.title)
     if (cleaned) {
-      suggestedNewChapterTitle.value = `第${nextNum}章 ${cleaned}`
+      suggestedNewChapterTitle.value = cleaned
       newTitleSuggestionUsage.value = result.usage || null
     } else {
       message.warning('AI 未能生成有效标题')
@@ -458,7 +458,6 @@ const deletedChapterColumns = computed(() => [
 ])
 
 async function createNewChapter() {
-  if (!newChapterTitle.value.trim()) return
   if (creatingChapter.value) return
   creatingChapter.value = true
   try {
@@ -570,7 +569,10 @@ watch(
   ([ch, novel]) => {
     if (ch) {
       const prefix = novel?.title ? `${novel.title} · ` : ''
-      updateActiveTabTitle(`${prefix}Ch.${ch.chapterNumber} ${ch.title}`)
+      const t = stripChapterNumberPrefix(ch.title)
+      updateActiveTabTitle(
+        `${prefix}Ch.${ch.chapterNumber}${t ? ` ${t}` : ''}`
+      )
     }
     if (ch && novel) {
       recordReading({
@@ -2747,7 +2749,7 @@ onBeforeUnmount(() => {
               class="flex-1 overflow-y-auto px-2 pb-2 space-y-1"
             >
               <div
-                v-for="ch in filteredChapters"
+                v-for="(ch, index) in filteredChapters"
                 :key="ch.id"
                 :ref="(el) => setChapterButtonRef(ch.id, el)"
                 class="w-full flex items-center rounded-md px-2.5 py-2 text-xs transition-colors group"
@@ -2769,10 +2771,10 @@ onBeforeUnmount(() => {
                           'text-(--ui-primary-500)'
                         : 'text-(--ui-text-dimmed)'
                       "
-                      >Ch.{{ ch.chapterNumber }}</span
+                      >Ch.{{ index + 1 }}</span
                     >
                     <span class="truncate flex-1 font-medium">{{
-                      ch.title
+                      stripChapterNumberPrefix(ch.title) || '未命名'
                     }}</span>
                   </div>
                   <div class="flex items-center gap-2 mt-0.5 pl-[2.2rem]">
@@ -3951,7 +3953,7 @@ onBeforeUnmount(() => {
       <div class="space-y-3">
         <NInput
           v-model:value="newChapterTitle"
-          placeholder="请输入章节标题"
+          placeholder="章节标题（可留空，目录按顺序自动编号）"
           autofocus
           @keydown.enter="createNewChapter"
         />
