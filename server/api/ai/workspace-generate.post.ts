@@ -34,7 +34,7 @@ import {
   MAX_TOKENS_WORKSPACE
 } from '../../utils/ai-constants'
 import { ensureOutlinesForRange } from '../../services/outline-autofill'
-import { parseEnabledSkillIds } from '../../utils/writing-skills'
+import { resolveSkillIdsForNovel } from '../../utils/writing-skills'
 
 const workspaceSchema = z.object({
   novelId: z.number().int().positive(),
@@ -172,9 +172,12 @@ export default defineEventHandler(async (event) => {
   })
   if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
 
-  // 本批生成统一的写作技能包：本次显式勾选优先，否则用小说默认启用。
-  const resolvedSkillIds =
-    data.skillIds ?? parseEnabledSkillIds(novel.enabledSkillIds)
+  // 本批生成统一的写作技能包：显式勾选 → 本书默认 → 按题材自动（通用+同题材系统包）。
+  const resolvedSkillIds = await resolveSkillIdsForNovel(em, {
+    requestSkillIds: data.skillIds,
+    novelEnabledRaw: novel.enabledSkillIds,
+    genre: novel.genre
+  })
 
   const aiConfig = await resolveNovelAiConfig(
     em,

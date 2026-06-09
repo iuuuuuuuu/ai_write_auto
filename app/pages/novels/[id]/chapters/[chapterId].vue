@@ -253,7 +253,9 @@ function deleteCurrentChapter() {
           `/api/novels/${novelId.value}/chapters/${chapterId.value}`,
           { method: 'DELETE' }
         )
+        // 先按旧列表算出相邻章节，再刷新侧边栏列表（去掉已删章节），最后跳转
         const adjacent = nextChapter.value || prevChapter.value
+        await refreshAllChapters()
         if (adjacent) {
           navigateTo(`/novels/${novelId.value}/chapters/${adjacent.id}`)
         } else {
@@ -281,6 +283,7 @@ function confirmDeleteChapter(ch: { id: number; title: string }) {
         // 删的若是当前正在阅读的章节，右侧阅读区会残留已删内容 → 跳到相邻章节，没有则回小说页
         if (ch.id === chapterId.value) {
           const adjacent = nextChapter.value || prevChapter.value
+          await refreshAllChapters()
           if (adjacent) {
             await navigateTo(`/novels/${novelId.value}/chapters/${adjacent.id}`)
           } else {
@@ -784,12 +787,20 @@ async function fetchWritingSkills() {
   try {
     const data = await $fetch<WritingSkill[]>('/api/ai/skills')
     writingSkills.value = data
-    // 初始化勾选：本书默认启用的技能包（仅保留仍存在的）
     if (!selectedSkillIds.value.length) {
       const enabled = parseIdList(novelInfo.value?.enabledSkillIds)
-      selectedSkillIds.value = enabled.filter((id) =>
-        data.some((s) => s.id === id)
-      )
+      if (enabled.length) {
+        // 已设本书默认：保留仍存在的
+        selectedSkillIds.value = enabled.filter((id) =>
+          data.some((s) => s.id === id)
+        )
+      } else {
+        // 需求5：未设默认时，按小说题材自动勾选「通用 + 同题材」系统包，跟随小说类型
+        const genre = novelInfo.value?.genre || null
+        selectedSkillIds.value = data
+          .filter((s) => s.isSystem && (!s.genre || s.genre === genre))
+          .map((s) => s.id)
+      }
     }
   } catch {}
 }

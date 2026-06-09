@@ -20,34 +20,45 @@ async function upsertSkillSeedVersion(em: EntityManager) {
 }
 
 /**
- * 按名字补种缺失的系统技能包（不覆盖已存在的，用户改名/删除不会被强行还原）。
+ * 同步系统技能包（isSystem=true）：按名字匹配——存在则更新内容、缺失则创建。
+ * 系统包在 UI 中只读（用户无法编辑），故直接覆盖其内容是安全的；用户自建包（isSystem=false）一律不动。
  * fewShots / checklist / appliesTo 以 JSON 字符串落库。
  */
-export async function createMissingWritingSkillSeeds(em: EntityManager) {
+export async function upsertWritingSkillSeeds(em: EntityManager) {
   const existing = await em.find(WritingSkillSchema, { isSystem: true })
-  const existingNames = new Set(existing.map((s) => s.name))
+  const byName = new Map(existing.map((s) => [s.name, s]))
   let created = 0
+  let updated = 0
 
   for (const seed of WRITING_SKILL_SEEDS) {
-    if (existingNames.has(seed.name)) continue
-    em.create(WritingSkillSchema, {
-      user: null,
-      name: seed.name,
-      description: seed.description,
-      genre: seed.genre,
-      systemAddon: seed.systemAddon,
-      fewShots: JSON.stringify(seed.fewShots),
-      checklist: JSON.stringify(seed.checklist),
-      appliesTo: JSON.stringify(seed.appliesTo),
-      isSystem: true,
-      enabled: true
-    })
-    existingNames.add(seed.name)
-    created += 1
+    const row = byName.get(seed.name)
+    if (row) {
+      row.description = seed.description
+      row.genre = seed.genre
+      row.systemAddon = seed.systemAddon
+      row.fewShots = JSON.stringify(seed.fewShots)
+      row.checklist = JSON.stringify(seed.checklist)
+      row.appliesTo = JSON.stringify(seed.appliesTo)
+      updated += 1
+    } else {
+      em.create(WritingSkillSchema, {
+        user: null,
+        name: seed.name,
+        description: seed.description,
+        genre: seed.genre,
+        systemAddon: seed.systemAddon,
+        fewShots: JSON.stringify(seed.fewShots),
+        checklist: JSON.stringify(seed.checklist),
+        appliesTo: JSON.stringify(seed.appliesTo),
+        isSystem: true,
+        enabled: true
+      })
+      created += 1
+    }
   }
 
   await upsertSkillSeedVersion(em)
-  return created
+  return { created, updated }
 }
 
 export async function syncWritingSkillSeeds(orm: MikroORM) {
@@ -56,11 +67,16 @@ export async function syncWritingSkillSeeds(orm: MikroORM) {
     key: 'writing_skill_seed_version'
   })
   if (seedVersion?.value === WRITING_SKILL_SEED_VERSION) {
-    return { created: 0, version: WRITING_SKILL_SEED_VERSION, skipped: true }
+    return {
+      created: 0,
+      updated: 0,
+      version: WRITING_SKILL_SEED_VERSION,
+      skipped: true
+    }
   }
 
-  const created = await createMissingWritingSkillSeeds(em)
+  const { created, updated } = await upsertWritingSkillSeeds(em)
   await em.flush()
 
-  return { created, version: WRITING_SKILL_SEED_VERSION, skipped: false }
+  return { created, updated, version: WRITING_SKILL_SEED_VERSION, skipped: false }
 }

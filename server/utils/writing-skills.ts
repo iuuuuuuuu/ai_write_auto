@@ -53,6 +53,35 @@ export function parseEnabledSkillIds(raw: string | null | undefined): number[] {
 }
 
 /**
+ * 解析本次生成最终启用的技能包 id 列表（需求5：按小说题材自动跟随）。
+ * 优先级：① 请求显式指定（含空数组，尊重「本次不用」）→ ② 小说默认启用 → ③ 按题材自动（系统通用包 + 同题材系统包）。
+ * 异常静默返回 []，不阻断生成。
+ */
+export async function resolveSkillIdsForNovel(
+  em: EntityManager,
+  opts: {
+    requestSkillIds?: number[]
+    novelEnabledRaw: string | null | undefined
+    genre: string | null | undefined
+  }
+): Promise<number[]> {
+  if (opts.requestSkillIds !== undefined) return opts.requestSkillIds
+  const enabled = parseEnabledSkillIds(opts.novelEnabledRaw)
+  if (enabled.length) return enabled
+  try {
+    const orConds: Array<Record<string, unknown>> = [{ genre: null }]
+    if (opts.genre) orConds.push({ genre: opts.genre })
+    const sys = await em.find(WritingSkillSchema, {
+      isSystem: true,
+      $or: orConds
+    })
+    return sys.map((s) => s.id)
+  } catch {
+    return []
+  }
+}
+
+/**
  * 收集本次生成应注入的技能包，转为注入形态（PromptWritingSkill）。
  * - 仅取「系统包 或 属于该用户」的，避免越权读他人技能包。
  * - 按 appliesTo 过滤动作（空 appliesTo 视为全适用）。

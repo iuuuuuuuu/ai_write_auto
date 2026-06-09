@@ -286,8 +286,13 @@ const viewing = ref<WritingSkill | null>(null)
           />
         </NFormItem>
         <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-sm">范文 few-shot（可选）</span>
+          <div>
+            <span class="text-sm">范文 few-shot（可选，建议粘贴真人写的片段）</span>
+            <p class="mt-0.5 text-xs text-(--ui-text-dimmed)">
+              范文用来让 AI 学习「真实优秀写作」的手法与质感。请粘贴你欣赏的、同题材的真人作品片段；不要用 AI 生成的文本（那会强化 AI 腔）。
+            </p>
+          </div>
+          <div class="flex justify-end">
             <NButton
               size="tiny"
               quaternary
