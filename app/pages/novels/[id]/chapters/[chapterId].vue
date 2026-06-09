@@ -278,7 +278,17 @@ function confirmDeleteChapter(ch: { id: number; title: string }) {
         await $fetch(`/api/novels/${novelId.value}/chapters/${ch.id}`, {
           method: 'DELETE'
         })
-        await refreshAllChapters()
+        // 删的若是当前正在阅读的章节，右侧阅读区会残留已删内容 → 跳到相邻章节，没有则回小说页
+        if (ch.id === chapterId.value) {
+          const adjacent = nextChapter.value || prevChapter.value
+          if (adjacent) {
+            await navigateTo(`/novels/${novelId.value}/chapters/${adjacent.id}`)
+          } else {
+            await navigateTo(`/novels/${novelId.value}`)
+          }
+        } else {
+          await refreshAllChapters()
+        }
       } catch {}
     }
   })
