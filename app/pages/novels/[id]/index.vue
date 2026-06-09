@@ -218,10 +218,24 @@ const { confirmDelete } = useConfirmDialog()
 const showCharacterDialog = ref(false)
 const showNewChapterDialog = ref(false)
 const newChapterTitle = ref('')
+const newChapterPosition = ref<'end' | 'before' | 'after'>('end')
+const newChapterRefId = ref<number | null>(null)
 const creatingChapter = ref(false)
 const generatingChapterTitle = ref(false)
 const suggestedChapterTitle = ref('')
 const titleSuggestionUsage = ref<AiTitleUsage | null>(null)
+
+const chapterPositionOptions = [
+  { label: '添加到末尾', value: 'end' },
+  { label: '插入到指定章节之前', value: 'before' },
+  { label: '插入到指定章节之后', value: 'after' }
+]
+const chapterRefOptions = computed(() =>
+  (chapters.value || []).map((c, i) => ({
+    label: `第${i + 1}章 ${stripChapterNumberPrefix(c.title) || '未命名'}`,
+    value: c.id
+  }))
+)
 
 async function aiGenerateChapterTitle() {
   if (generatingChapterTitle.value) return
@@ -504,6 +518,59 @@ const chapterReorderMode = ref(false)
 const draggingChapterIndex = ref<number | null>(null)
 const savingChapterOrder = ref(false)
 
+// Chapter 批量选择删除
+const dialog = useDialog()
+const chapterSelectMode = ref(false)
+const selectedChapterIds = ref<number[]>([])
+
+function toggleChapterSelectMode() {
+  chapterSelectMode.value = !chapterSelectMode.value
+  selectedChapterIds.value = []
+  if (chapterSelectMode.value) chapterReorderMode.value = false
+}
+
+function toggleChapterSelection(id: number) {
+  const i = selectedChapterIds.value.indexOf(id)
+  if (i >= 0) selectedChapterIds.value.splice(i, 1)
+  else selectedChapterIds.value.push(id)
+}
+
+const allChaptersSelected = computed(
+  () =>
+    filteredChapters.value.length > 0 &&
+    selectedChapterIds.value.length === filteredChapters.value.length
+)
+
+function toggleSelectAllChapters() {
+  selectedChapterIds.value =
+    allChaptersSelected.value ? [] : filteredChapters.value.map((c) => c.id)
+}
+
+function confirmBatchDeleteChapters() {
+  if (!selectedChapterIds.value.length) return
+  dialog.warning({
+    title: '批量删除章节',
+    content: `确定要删除选中的 ${selectedChapterIds.value.length} 个章节吗？删除后可在回收站恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: async () => {
+      const ids = [...selectedChapterIds.value]
+      await Promise.all(
+        ids.map((id) =>
+          apiDel(`/api/novels/${novelId.value}/chapters/${id}`, {
+            silent: true
+          }).catch(() => {})
+        )
+      )
+      message.success(`已删除 ${ids.length} 个章节`)
+      chapterSelectMode.value = false
+      selectedChapterIds.value = []
+      await refreshChapters()
+    }
+  })
+}
+
 function handleChapterDragStart(index: number) {
   draggingChapterIndex.value = index
 }
@@ -551,13 +618,16 @@ async function saveChapterOrder() {
 async function createNewChapter() {
   creatingChapter.value = true
   try {
-    const nextNumber = (chapters.value?.length || 0) + 1
+    const body: Record<string, unknown> = {
+      title: newChapterTitle.value.trim()
+    }
+    if (newChapterPosition.value !== 'end' && newChapterRefId.value) {
+      body.position = newChapterPosition.value
+      body.refChapterId = newChapterRefId.value
+    }
     const result = await post<{ id: number }>(
       `/api/novels/${novelId.value}/chapters`,
-      {
-        title: newChapterTitle.value.trim(),
-        chapterNumber: nextNumber
-      }
+      body
     )
     showNewChapterDialog.value = false
     navigateTo(`/novels/${novelId.value}/chapters/${result.id}`)
@@ -570,6 +640,11 @@ async function createNewChapter() {
 
 function openNewChapterDialog() {
   newChapterTitle.value = ''
+  newChapterPosition.value = 'end'
+  newChapterRefId.value =
+    chapters.value?.length ?
+      chapters.value[chapters.value.length - 1]!.id
+    : null
   suggestedChapterTitle.value = ''
   titleSuggestionUsage.value = null
   showNewChapterDialog.value = true
@@ -1953,25 +2028,68 @@ async function savePlotPoint() {
                 >
                   取消
                 </NButton>
-                <NButton
-                  v-if="!chapterReorderMode && chapters && chapters.length > 1"
-                  size="tiny"
-                  quaternary
-                  @click="chapterReorderMode = true"
-                >
-                  <template #icon
-                    ><Icon icon="lucide:arrow-up-down"
-                  /></template>
-                  排序
-                </NButton>
-                <NButton
-                  size="tiny"
-                  type="primary"
-                  @click="openNewChapterDialog"
-                >
-                  <template #icon><Icon icon="lucide:plus" /></template>
-                  新建章节
-                </NButton>
+
+                <template v-if="chapterSelectMode">
+                  <NCheckbox
+                    :checked="allChaptersSelected"
+                    :indeterminate="
+                      selectedChapterIds.length > 0 && !allChaptersSelected
+                    "
+                    @update:checked="toggleSelectAllChapters"
+                  >
+                    全选
+                  </NCheckbox>
+                  <span class="text-xs text-(--ui-text-dimmed)"
+                    >已选 {{ selectedChapterIds.length }}</span
+                  >
+                  <NButton
+                    size="tiny"
+                    type="error"
+                    :disabled="!selectedChapterIds.length"
+                    @click="confirmBatchDeleteChapters"
+                  >
+                    <template #icon><Icon icon="lucide:trash-2" /></template>
+                    批量删除
+                  </NButton>
+                  <NButton
+                    size="tiny"
+                    quaternary
+                    @click="toggleChapterSelectMode"
+                  >
+                    退出
+                  </NButton>
+                </template>
+
+                <template v-if="!chapterReorderMode && !chapterSelectMode">
+                  <NButton
+                    v-if="chapters && chapters.length > 1"
+                    size="tiny"
+                    quaternary
+                    @click="chapterReorderMode = true"
+                  >
+                    <template #icon
+                      ><Icon icon="lucide:arrow-up-down"
+                    /></template>
+                    排序
+                  </NButton>
+                  <NButton
+                    v-if="chapters && chapters.length"
+                    size="tiny"
+                    quaternary
+                    @click="toggleChapterSelectMode"
+                  >
+                    <template #icon><Icon icon="lucide:list-checks" /></template>
+                    批量
+                  </NButton>
+                  <NButton
+                    size="tiny"
+                    type="primary"
+                    @click="openNewChapterDialog"
+                  >
+                    <template #icon><Icon icon="lucide:plus" /></template>
+                    新建章节
+                  </NButton>
+                </template>
               </div>
             </div>
 
@@ -2066,6 +2184,38 @@ async function savePlotPoint() {
                     >
                       {{ stripChapterNumberPrefix(chapter.title) || '未命名' }}
                     </p>
+                  </div>
+                </div>
+                <div
+                  v-else-if="chapterSelectMode"
+                  class="group grid cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-3 rounded-lg p-3 ring-1 transition-colors"
+                  :class="
+                    selectedChapterIds.includes(chapter.id) ?
+                      'bg-primary-500/5 ring-primary-500/40'
+                    : 'ring-(--ui-border) bg-(--ui-bg-muted) hover:bg-(--ui-bg-elevated)/60'
+                  "
+                  @click="toggleChapterSelection(chapter.id)"
+                >
+                  <NCheckbox
+                    :checked="selectedChapterIds.includes(chapter.id)"
+                    @click.stop="toggleChapterSelection(chapter.id)"
+                  />
+                  <div
+                    class="flex size-9 items-center justify-center rounded-lg bg-primary-400/10 text-xs font-semibold font-mono text-primary-500 shrink-0"
+                  >
+                    {{ index + 1 }}
+                  </div>
+                  <div class="min-w-0 flex-1">
+                    <p
+                      class="min-w-0 truncate text-sm font-medium text-(--ui-text-highlighted)"
+                    >
+                      {{ stripChapterNumberPrefix(chapter.title) || '未命名' }}
+                    </p>
+                    <div
+                      class="mt-1 flex items-center gap-2 text-xs text-(--ui-text-dimmed)"
+                    >
+                      <span>{{ chapter.wordCount || 0 }} 字</span>
+                    </div>
                   </div>
                 </div>
                 <NuxtLink
@@ -2485,6 +2635,24 @@ async function savePlotPoint() {
             placeholder="章节标题（可留空，目录按顺序自动编号）"
             @keydown.enter="createNewChapter"
           />
+          <div
+            v-if="chapters && chapters.length"
+            class="space-y-2"
+          >
+            <NSelect
+              v-model:value="newChapterPosition"
+              size="small"
+              :options="chapterPositionOptions"
+            />
+            <NSelect
+              v-if="newChapterPosition !== 'end'"
+              v-model:value="newChapterRefId"
+              size="small"
+              filterable
+              placeholder="选择参考章节"
+              :options="chapterRefOptions"
+            />
+          </div>
           <div
             v-if="generatingChapterTitle || suggestedChapterTitle"
             class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-3 text-sm"

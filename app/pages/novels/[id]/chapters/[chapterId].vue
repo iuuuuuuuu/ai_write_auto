@@ -187,12 +187,31 @@ function locateCurrentChapter() {
 const creatingChapter = ref(false)
 const showNewChapterDialog = ref(false)
 const newChapterTitle = ref('')
+const newChapterPosition = ref<'end' | 'before' | 'after'>('end')
+const newChapterRefId = ref<number | null>(null)
 const generatingTitle = ref(false)
 const suggestedNewChapterTitle = ref('')
 const newTitleSuggestionUsage = ref<AiTitleUsage | null>(null)
 
+const chapterPositionOptions = [
+  { label: '添加到末尾', value: 'end' },
+  { label: '插入到指定章节之前', value: 'before' },
+  { label: '插入到指定章节之后', value: 'after' }
+]
+const chapterRefOptions = computed(() =>
+  (allChapters.value || []).map((c, i) => ({
+    label: `第${i + 1}章 ${stripChapterNumberPrefix(c.title) || '未命名'}`,
+    value: c.id
+  }))
+)
+
 function openNewChapterDialog() {
   newChapterTitle.value = ''
+  newChapterPosition.value = 'end'
+  newChapterRefId.value =
+    allChapters.value?.length ?
+      allChapters.value[allChapters.value.length - 1]!.id
+    : null
   suggestedNewChapterTitle.value = ''
   newTitleSuggestionUsage.value = null
   showNewChapterDialog.value = true
@@ -461,12 +480,18 @@ async function createNewChapter() {
   if (creatingChapter.value) return
   creatingChapter.value = true
   try {
-    const nextNum = (allChapters.value?.length || 0) + 1
+    const body: Record<string, unknown> = {
+      title: newChapterTitle.value.trim()
+    }
+    if (newChapterPosition.value !== 'end' && newChapterRefId.value) {
+      body.position = newChapterPosition.value
+      body.refChapterId = newChapterRefId.value
+    }
     const result = await $fetch<{ id: number }>(
       `/api/novels/${novelId.value}/chapters`,
       {
         method: 'POST',
-        body: { title: newChapterTitle.value.trim(), chapterNumber: nextNum }
+        body
       }
     )
     showNewChapterDialog.value = false
@@ -3957,6 +3982,24 @@ onBeforeUnmount(() => {
           autofocus
           @keydown.enter="createNewChapter"
         />
+        <div
+          v-if="allChapters && allChapters.length"
+          class="space-y-2"
+        >
+          <NSelect
+            v-model:value="newChapterPosition"
+            size="small"
+            :options="chapterPositionOptions"
+          />
+          <NSelect
+            v-if="newChapterPosition !== 'end'"
+            v-model:value="newChapterRefId"
+            size="small"
+            filterable
+            placeholder="选择参考章节"
+            :options="chapterRefOptions"
+          />
+        </div>
         <div
           v-if="generatingTitle || suggestedNewChapterTitle"
           class="rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) p-3 text-sm"

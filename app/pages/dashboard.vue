@@ -11,8 +11,10 @@ const { user } = useAuth()
 const { createNovel } = useNovels()
 const router = useRouter()
 const message = useMessage()
-const { post, put } = useApi()
+const dialog = useDialog()
+const { post, put, del: apiDel } = useApi()
 const fileInput = ref<HTMLInputElement | null>(null)
+const NuxtLinkComponent = resolveComponent('NuxtLink')
 
 interface NovelItem {
   id: number
@@ -56,6 +58,51 @@ const {
   goToPage,
   refresh: refreshNovels
 } = usePagination<NovelItem>({ url: '/api/novels', pageSize: 12 })
+
+/* ─────────────── 批量删除小说 ─────────────── */
+const selectionMode = ref(false)
+const selectedNovelIds = ref<number[]>([])
+
+function toggleNovelSelectionMode() {
+  selectionMode.value = !selectionMode.value
+  selectedNovelIds.value = []
+}
+function toggleNovelSelection(id: number) {
+  const i = selectedNovelIds.value.indexOf(id)
+  if (i >= 0) selectedNovelIds.value.splice(i, 1)
+  else selectedNovelIds.value.push(id)
+}
+const allNovelsSelected = computed(
+  () =>
+    novels.value.length > 0 &&
+    selectedNovelIds.value.length === novels.value.length
+)
+function toggleSelectAllNovels() {
+  selectedNovelIds.value =
+    allNovelsSelected.value ? [] : novels.value.map((n) => n.id)
+}
+function confirmBatchDeleteNovels() {
+  if (!selectedNovelIds.value.length) return
+  dialog.warning({
+    title: '批量删除小说',
+    content: `确定要删除选中的 ${selectedNovelIds.value.length} 部小说吗？删除后可在回收站恢复。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    positiveButtonProps: { type: 'error' },
+    onPositiveClick: async () => {
+      const ids = [...selectedNovelIds.value]
+      await Promise.all(
+        ids.map((id) =>
+          apiDel(`/api/novels/${id}`, { silent: true }).catch(() => {})
+        )
+      )
+      message.success(`已删除 ${ids.length} 部小说`)
+      selectionMode.value = false
+      selectedNovelIds.value = []
+      await refreshNovels()
+    }
+  })
+}
 
 const showCreateModal = shallowRef(false)
 const creatingSampleNovel = shallowRef(false)
@@ -582,17 +629,61 @@ function resetImport() {
 
     <!-- Novels Grid -->
     <section>
-      <div class="mb-3 flex items-center justify-between">
-        <h2
-          class="text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)"
+      <div class="mb-3 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <h2
+            class="text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)"
+          >
+            我的作品
+          </h2>
+          <span
+            v-if="total"
+            class="text-[11px] text-(--ui-text-dimmed)"
+            >{{ total }} 部</span
+          >
+        </div>
+        <div
+          v-if="novels.length"
+          class="flex items-center gap-2"
         >
-          我的作品
-        </h2>
-        <span
-          v-if="total"
-          class="text-[11px] text-(--ui-text-dimmed)"
-          >{{ total }} 部</span
-        >
+          <template v-if="selectionMode">
+            <NCheckbox
+              :checked="allNovelsSelected"
+              :indeterminate="selectedNovelIds.length > 0 && !allNovelsSelected"
+              @update:checked="toggleSelectAllNovels"
+            >
+              全选
+            </NCheckbox>
+            <span class="text-[11px] text-(--ui-text-dimmed)"
+              >已选 {{ selectedNovelIds.length }}</span
+            >
+            <NButton
+              size="tiny"
+              type="error"
+              :disabled="!selectedNovelIds.length"
+              @click="confirmBatchDeleteNovels"
+            >
+              <template #icon><Icon icon="lucide:trash-2" /></template>
+              批量删除
+            </NButton>
+            <NButton
+              size="tiny"
+              quaternary
+              @click="toggleNovelSelectionMode"
+            >
+              退出
+            </NButton>
+          </template>
+          <NButton
+            v-else
+            size="tiny"
+            quaternary
+            @click="toggleNovelSelectionMode"
+          >
+            <template #icon><Icon icon="lucide:list-checks" /></template>
+            批量管理
+          </NButton>
+        </div>
       </div>
 
       <Transition
@@ -620,12 +711,28 @@ function resetImport() {
             tag="div"
             class="relative grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
           >
-            <NuxtLink
+            <component
+              :is="selectionMode ? 'div' : NuxtLinkComponent"
               v-for="novel in novels"
               :key="novel.id"
-              :to="`/novels/${novel.id}`"
+              :to="selectionMode ? undefined : `/novels/${novel.id}`"
               class="group relative flex flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) transition-all duration-200 hover:border-(--ui-border-accented) hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:-translate-y-0.5"
+              :class="[
+                selectionMode ? 'cursor-pointer' : '',
+                selectionMode && selectedNovelIds.includes(novel.id) ?
+                  'ring-2 ring-primary-500 border-primary-500'
+                : ''
+              ]"
+              @click="selectionMode ? toggleNovelSelection(novel.id) : undefined"
             >
+              <!-- Selection checkbox -->
+              <div
+                v-if="selectionMode"
+                class="absolute right-2 top-2 z-10 rounded-md bg-(--ui-bg-elevated)/90 p-0.5 shadow-sm ring-1 ring-(--ui-border)"
+                @click.stop="toggleNovelSelection(novel.id)"
+              >
+                <NCheckbox :checked="selectedNovelIds.includes(novel.id)" />
+              </div>
               <!-- Top color bar -->
               <div
                 class="h-1.5 w-full"
@@ -681,7 +788,7 @@ function resetImport() {
                   <span>{{ formatRelativeTime(novel.updatedAt) }}</span>
                 </div>
               </div>
-            </NuxtLink>
+            </component>
           </TransitionGroup>
           <div
             v-if="totalPages > 1"
