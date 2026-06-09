@@ -6,6 +6,7 @@ import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcS
 import { getActiveForeshadowing } from '../../services/content-rag'
 import { prepareChapterContext } from '../../services/chapter-context'
 import { ensureChapterOutline } from '../../services/outline-autofill'
+import { parseEnabledSkillIds } from '../../utils/writing-skills'
 
 const generateSchema = z.object({
   novelId: z.number().int().positive(),
@@ -14,7 +15,8 @@ const generateSchema = z.object({
   chapterOutline: z.string().optional(),
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().int().min(256).max(128000).optional(),
-  aiConfigId: z.number().int().positive().optional()
+  aiConfigId: z.number().int().positive().optional(),
+  skillIds: z.array(z.number().int().positive()).optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -80,7 +82,8 @@ export default defineEventHandler(async (event) => {
     storyArcs,
     foreshadowing,
     recentChapterContent,
-    depth: 'query-only'
+    depth: 'query-only',
+    skillIds: data.skillIds ?? parseEnabledSkillIds(novel.enabledSkillIds)
   })
 
   const task = em.create(GenerationTaskSchema, {

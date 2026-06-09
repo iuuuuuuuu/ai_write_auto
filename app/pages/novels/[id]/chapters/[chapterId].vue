@@ -520,10 +520,14 @@ function syncCurrentChapterListItem(
   chapters[index] = { ...current, ...updated }
 }
 
-const { data: novelInfo } = await useFetch<{ title: string }>(
-  `/api/novels/${novelId.value}`,
-  { pick: ['title'] }
-)
+const { data: novelInfo } = await useFetch<{
+  title: string
+  genre?: string | null
+  enabledSkillIds?: string | null
+  defaultPromptTemplateId?: number | null
+}>(`/api/novels/${novelId.value}`, {
+  pick: ['title', 'genre', 'enabledSkillIds', 'defaultPromptTemplateId']
+})
 const { data: aiConfigs } = await useFetch<
   Array<{
     id: number
@@ -656,46 +660,62 @@ interface PromptTemplate {
 const promptTemplates = ref<PromptTemplate[]>([])
 const selectedTemplateId = ref<number | null>(null)
 
+const directionDirty = ref(false)
+let applyingTemplate = false
+
 async function fetchPromptTemplates() {
   try {
     const data = await $fetch<PromptTemplate[]>('/api/ai/templates')
     promptTemplates.value = data.filter(
       (t) => t.category === 'generation' || t.category === 'custom'
     )
-    // Restore last selected template
+    // 需求2 自动选模板：本章已选 → 小说默认 → 首章「开篇引入」→ 上次使用
     if (!selectedTemplateId.value && promptTemplates.value.length) {
+      const has = (id: number | null | undefined) =>
+        id != null && promptTemplates.value.some((t) => t.id === id)
+      const novelDefault = novelInfo.value?.defaultPromptTemplateId
       const hasNoChapters = !allChapters.value?.length
-      if (hasNoChapters) {
-        // First chapter: default to "开篇引入" system template
+      const saved = Number(
+        localStorage.getItem('chapter_last_prompt_template_id') || 0
+      )
+      let pick: number | null = null
+      if (has(novelDefault)) pick = novelDefault!
+      else if (hasNoChapters) {
         const opening = promptTemplates.value.find(
           (t) => t.isSystem && t.name === '开篇引入'
         )
-        if (opening) {
-          selectedTemplateId.value = opening.id
-          applyTemplate(opening.id)
-        }
-      } else {
-        const saved = localStorage.getItem('chapter_last_prompt_template_id')
-        if (saved) {
-          const id = Number(saved)
-          if (promptTemplates.value.some((t) => t.id === id)) {
-            selectedTemplateId.value = id
-            applyTemplate(id)
-          }
-        }
+        if (opening) pick = opening.id
+      }
+      if (pick == null && has(saved)) pick = saved
+      if (pick != null) {
+        selectedTemplateId.value = pick
+        applyTemplate(pick, true)
       }
     }
   } catch {}
 }
 
-function applyTemplate(id: number | null) {
+// auto=true 为自动套用：仅在方向框为空、且用户未手动编辑过时填充，避免覆盖你已写的方向。
+function applyTemplate(id: number | null, auto = false) {
   if (!id) return
   const tpl = promptTemplates.value.find((t) => t.id === id)
-  if (tpl) generateDirection.value = tpl.content
+  if (!tpl) return
+  if (auto && (directionDirty.value || generateDirection.value.trim())) return
+  applyingTemplate = true
+  generateDirection.value = tpl.content
+  directionDirty.value = false
+  nextTick(() => {
+    applyingTemplate = false
+  })
 }
 
 watch(selectedTemplateId, (id) => {
   if (id) localStorage.setItem('chapter_last_prompt_template_id', String(id))
+})
+
+// 用户手动编辑方向框 → 标记 dirty，之后自动套用不再覆盖
+watch(generateDirection, () => {
+  if (!applyingTemplate) directionDirty.value = true
 })
 
 const showSaveTemplateInput = ref(false)
@@ -724,6 +744,84 @@ async function deleteTemplate(id: number) {
     await fetchPromptTemplates()
     if (selectedTemplateId.value === id) selectedTemplateId.value = null
   } catch {}
+}
+
+/* ─────────────── 写作技能包（Skill） ─────────────── */
+interface WritingSkill {
+  id: number
+  name: string
+  description: string | null
+  genre: string | null
+  systemAddon: string | null
+  fewShots: Array<{ scene: string; content: string }>
+  checklist: string[]
+  appliesTo: string[]
+  isSystem: boolean
+  enabled: boolean
+}
+const writingSkills = ref<WritingSkill[]>([])
+const selectedSkillIds = ref<number[]>([])
+const savingNovelDefault = ref(false)
+
+function parseIdList(raw: string | null | undefined): number[] {
+  if (!raw) return []
+  try {
+    const v = JSON.parse(raw)
+    return Array.isArray(v) ? v.filter((n) => typeof n === 'number') : []
+  } catch {
+    return []
+  }
+}
+
+const skillOptions = computed(() =>
+  writingSkills.value.map((s) => ({
+    label: s.genre ? s.name : `${s.name}（通用）`,
+    value: s.id
+  }))
+)
+
+async function fetchWritingSkills() {
+  try {
+    const data = await $fetch<WritingSkill[]>('/api/ai/skills')
+    writingSkills.value = data
+    // 初始化勾选：本书默认启用的技能包（仅保留仍存在的）
+    if (!selectedSkillIds.value.length) {
+      const enabled = parseIdList(novelInfo.value?.enabledSkillIds)
+      selectedSkillIds.value = enabled.filter((id) =>
+        data.some((s) => s.id === id)
+      )
+    }
+  } catch {}
+}
+
+// 设为本书默认：把当前勾选的技能包写入小说，之后每章自动启用，免再勾选。
+async function saveSkillsAsNovelDefault() {
+  savingNovelDefault.value = true
+  try {
+    await $fetch(`/api/novels/${novelId.value}`, {
+      method: 'PUT',
+      body: { enabledSkillIds: selectedSkillIds.value }
+    })
+    message.success('已设为本书默认技能包')
+  } catch {
+    message.error('保存失败')
+  } finally {
+    savingNovelDefault.value = false
+  }
+}
+
+// 设为本书默认生成模板（需求2）：之后新章自动套用此模板。
+async function saveTemplateAsNovelDefault() {
+  if (!selectedTemplateId.value) return
+  try {
+    await $fetch(`/api/novels/${novelId.value}`, {
+      method: 'PUT',
+      body: { defaultPromptTemplateId: selectedTemplateId.value }
+    })
+    message.success('已设为本书默认模板')
+  } catch {
+    message.error('保存失败')
+  }
 }
 
 /* ─────────────── 中断草稿恢复 ─────────────── */
@@ -976,6 +1074,7 @@ onMounted(async () => {
   await createEditor(content.value)
   loadDraftRecovery()
   fetchPromptTemplates()
+  fetchWritingSkills()
   loadUserPresets()
 })
 
@@ -1652,7 +1751,8 @@ async function generateChapter() {
         direction: generateDirection.value || undefined,
         aiConfigId: selectedAiConfigId.value,
         temperature: generateTemperature.value,
-        maxTokens: generateMaxTokens.value
+        maxTokens: generateMaxTokens.value,
+        skillIds: selectedSkillIds.value
       }),
       signal: controller.signal
     })
@@ -3588,6 +3688,41 @@ onBeforeUnmount(() => {
                 "
               >
                 <template #icon><Icon icon="lucide:trash-2" /></template>
+              </NButton>
+            </div>
+            <div class="flex justify-end">
+              <NButton
+                size="tiny"
+                quaternary
+                :disabled="!selectedTemplateId"
+                @click="saveTemplateAsNovelDefault"
+              >
+                设为本书默认
+              </NButton>
+            </div>
+          </div>
+        </NFormItem>
+        <NFormItem label="写作技能">
+          <div class="w-full space-y-2">
+            <NSelect
+              v-model:value="selectedSkillIds"
+              :options="skillOptions"
+              multiple
+              clearable
+              placeholder="选择写作技能包（可多选，注入写作手法与范文）"
+              max-tag-count="responsive"
+            />
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-gray-400">
+                生成时注入所选技能包的写作手法与范文
+              </span>
+              <NButton
+                size="tiny"
+                quaternary
+                :loading="savingNovelDefault"
+                @click="saveSkillsAsNovelDefault"
+              >
+                设为本书默认
               </NButton>
             </div>
           </div>

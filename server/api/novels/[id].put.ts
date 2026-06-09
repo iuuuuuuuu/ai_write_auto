@@ -15,7 +15,9 @@ const updateNovelSchema = z.object({
   worldSetting: z.string().max(20000, '世界观设定不能超过20000字').optional(),
   aiTemperature: z.string().optional(),
   aiExtraPrompt: z.string().max(5000, 'AI提示词不能超过5000字').optional(),
-  aiConfigId: z.number().int().nullable().optional()
+  aiConfigId: z.number().int().nullable().optional(),
+  enabledSkillIds: z.array(z.number().int().positive()).max(50).optional(),
+  defaultPromptTemplateId: z.number().int().positive().nullable().optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -45,7 +47,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const { aiConfigId, ...rest } = data
+  const { aiConfigId, enabledSkillIds, ...rest } = data
 
   if (aiConfigId !== undefined) {
     if (aiConfigId === null) {
@@ -59,6 +61,11 @@ export default defineEventHandler(async (event) => {
         throw createError({ statusCode: 400, message: 'AI config not found' })
       ;(novel as any).aiConfig = aiConfigId
     }
+  }
+
+  // enabledSkillIds 以 JSON 字符串存储（列为 TEXT）
+  if (enabledSkillIds !== undefined) {
+    ;(novel as any).enabledSkillIds = JSON.stringify(enabledSkillIds)
   }
 
   wrap(novel).assign({ ...rest, updatedAt: new Date() })

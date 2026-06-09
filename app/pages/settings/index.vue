@@ -52,6 +52,14 @@ const { t } = useI18n()
           </div>
         </NTabPane>
         <NTabPane
+          name="skills"
+          tab="写作技能"
+        >
+          <div class="mt-4">
+            <SettingsWritingSkills />
+          </div>
+        </NTabPane>
+        <NTabPane
           name="usage"
           tab="用量"
         >

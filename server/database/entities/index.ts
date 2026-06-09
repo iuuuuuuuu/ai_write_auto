@@ -79,6 +79,8 @@ export interface Novel {
     | 'worldSetting'
     | 'aiTemperature'
     | 'aiExtraPrompt'
+    | 'enabledSkillIds'
+    | 'defaultPromptTemplateId'
     | 'aiConfig'
     | 'deletedAt'
     | 'createdAt'
@@ -93,6 +95,10 @@ export interface Novel {
   worldSetting: string | null
   aiTemperature: string | null
   aiExtraPrompt: string | null
+  /** JSON 序列化：number[] 本书默认启用的写作技能包 id */
+  enabledSkillIds: string | null
+  /** 章节生成默认 prompt 模板 id（需求2 自动选模板） */
+  defaultPromptTemplateId: number | null
   aiConfig: AiConfig | null
   deletedAt: Date | null
   createdAt: Date
@@ -287,6 +293,39 @@ export interface PromptTemplate {
     | 'character_generation'
     | 'custom'
   isSystem: boolean | null
+  createdAt: Date
+}
+
+export interface WritingSkill {
+  [OptionalProps]?:
+    | 'id'
+    | 'user'
+    | 'description'
+    | 'genre'
+    | 'systemAddon'
+    | 'fewShots'
+    | 'checklist'
+    | 'appliesTo'
+    | 'isSystem'
+    | 'enabled'
+    | 'createdAt'
+  id: number
+  user: User | null
+  name: string
+  description: string | null
+  /** 适用题材；null = 通用 */
+  genre: string | null
+  /** 注入 system prompt 的写作指令 */
+  systemAddon: string | null
+  /** JSON 序列化：[{ scene: string; content: string }] 范文 few-shot */
+  fewShots: string | null
+  /** JSON 序列化：string[] 生成后自检清单 */
+  checklist: string | null
+  /** JSON 序列化：string[] 适用动作，如 ['generation','rewrite']；null/空 视为全适用 */
+  appliesTo: string | null
+  isSystem: boolean | null
+  /** 用户自建技能包是否默认启用 */
+  enabled: boolean | null
   createdAt: Date
 }
 
@@ -509,6 +548,16 @@ export const NovelSchema = new EntitySchema<Novel>({
       type: 'string',
       nullable: true,
       fieldName: 'ai_extra_prompt'
+    },
+    enabledSkillIds: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'enabled_skill_ids'
+    },
+    defaultPromptTemplateId: {
+      type: 'number',
+      nullable: true,
+      fieldName: 'default_prompt_template_id'
     },
     aiConfig: {
       kind: 'm:1',
@@ -880,6 +929,46 @@ export const PromptTemplateSchema = new EntitySchema<PromptTemplate>({
   }
 })
 
+export const WritingSkillSchema = new EntitySchema<WritingSkill>({
+  name: 'WritingSkill',
+  tableName: 'writing_skills',
+  indexes: [
+    { properties: ['user', 'isSystem'], name: 'idx_writing_skills_user_system' }
+  ],
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: {
+      kind: 'm:1',
+      entity: () => 'User',
+      fieldName: 'user_id',
+      nullable: true
+    },
+    name: { type: 'string' },
+    description: { type: 'string', nullable: true },
+    genre: { type: 'string', nullable: true },
+    systemAddon: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'system_addon'
+    },
+    fewShots: { type: 'string', nullable: true, fieldName: 'few_shots' },
+    checklist: { type: 'string', nullable: true },
+    appliesTo: { type: 'string', nullable: true, fieldName: 'applies_to' },
+    isSystem: {
+      type: 'boolean',
+      fieldName: 'is_system',
+      nullable: true,
+      default: false
+    },
+    enabled: { type: 'boolean', nullable: true, default: true },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    }
+  }
+})
+
 export const WritingStatSchema = new EntitySchema<WritingStat>({
   name: 'WritingStat',
   tableName: 'writing_stats',
@@ -1059,6 +1148,7 @@ export const allEntities = [
   GenerationTaskSchema,
   TokenUsageSchema,
   PromptTemplateSchema,
+  WritingSkillSchema,
   WritingStatSchema,
   UserPreferenceSchema,
   SchemaMigrationSchema,

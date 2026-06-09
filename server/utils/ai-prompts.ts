@@ -50,6 +50,15 @@ export interface PromptForeshadowing {
   chapterNumber: number | null
 }
 
+/** 写作技能包注入形态（systemAddon 注入 system，fewShots 作范文示范）。 */
+export interface PromptWritingSkill {
+  name: string
+  systemAddon: string
+  fewShots: Array<{ scene: string; content: string }>
+  checklist: string[]
+  genre: string | null
+}
+
 export interface RagContextItem {
   content: string
   contentType: string
@@ -139,6 +148,7 @@ export function buildGenerationPrompt(context: {
     title: string
     content: string
   }>
+  skills?: PromptWritingSkill[]
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const {
     novel,
@@ -174,6 +184,45 @@ export function buildGenerationPrompt(context: {
 
   if (novel.styleGuide) {
     systemPrompt += `\n\n## 风格指南\n${novel.styleGuide}`
+  }
+
+  // 写作技能包注入：systemAddon 接在风格之后；few-shot 范文与自检清单择要附上。
+  // few-shot 已由加载层按「同题材优先」排序，这里只学手法、不照抄。
+  const skills = context.skills || []
+  if (skills.length) {
+    const addons = skills
+      .map((s) => s.systemAddon?.trim())
+      .filter((x): x is string => Boolean(x))
+    if (addons.length) {
+      systemPrompt += `\n\n## 写作技能\n${addons.join('\n\n')}`
+    }
+    const shots: Array<{ scene: string; content: string }> = []
+    for (const s of skills) {
+      for (const fs of s.fewShots || []) {
+        if (fs?.content?.trim()) shots.push(fs)
+        if (shots.length >= 2) break
+      }
+      if (shots.length >= 2) break
+    }
+    if (shots.length) {
+      systemPrompt += `\n\n## 优秀范例（仅学习其手法、节奏与质感，切勿照抄其情节、人名或设定）`
+      for (const fs of shots) {
+        systemPrompt += `\n\n【${fs.scene}】\n${fs.content.trim()}`
+      }
+    }
+    const checks = Array.from(
+      new Set(
+        skills
+          .flatMap((s) => s.checklist || [])
+          .map((c) => c.trim())
+          .filter(Boolean)
+      )
+    ).slice(0, 6)
+    if (checks.length) {
+      systemPrompt += `\n\n## 完成后自查（通读一遍，确保满足）\n${checks
+        .map((c) => `- ${c}`)
+        .join('\n')}`
+    }
   }
 
   let userPrompt = ''

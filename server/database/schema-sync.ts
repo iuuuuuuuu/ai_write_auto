@@ -5,8 +5,9 @@ import {
   AiProviderSchema
 } from './entities'
 import { syncNovelTemplateSeeds } from '../services/novel-template-seeds'
+import { syncWritingSkillSeeds } from '../services/writing-skill-seeds'
 
-export const DATABASE_SCHEMA_VERSION = '2026.06.04.001'
+export const DATABASE_SCHEMA_VERSION = '2026.06.09.001'
 
 export interface DatabaseSchemaSyncResult {
   version: string
@@ -186,6 +187,7 @@ export async function syncDatabaseSchema(
   if (source !== 'setup') {
     await syncNovelTemplateSeeds(orm)
   }
+  await syncWritingSkillSeeds(orm)
 
   await recordSchemaMigration(orm, DATABASE_SCHEMA_VERSION, source)
   await upsertSiteConfig(orm, 'schema_version', DATABASE_SCHEMA_VERSION)

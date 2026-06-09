@@ -15,6 +15,7 @@ import {
   type PromptStoryArc,
   type PromptForeshadowing
 } from '../utils/ai-prompts'
+import { loadSkillsForGeneration } from '../utils/writing-skills'
 import { retrieveRelevant, type ContentContext } from './content-rag'
 import { isEmbeddingReady } from './embedding'
 
@@ -196,6 +197,8 @@ export interface PrepareChapterOptions {
   depth: RetrievalDepth
   /** 批量的整批 sharedRagContext，合并进本章 notes */
   extraNotes?: RagContextItem[]
+  /** 本次生成应注入的写作技能包 id（小说默认启用 + 本次勾选），加载失败静默跳过 */
+  skillIds?: number[]
 }
 
 export interface PrepareChapterResult {
@@ -238,6 +241,13 @@ export async function prepareChapterContext(
     extraNotes: opts.extraNotes
   })
 
+  const skills = await loadSkillsForGeneration(em, {
+    userId: opts.userId,
+    ids: opts.skillIds || [],
+    action: 'generation',
+    genre: opts.novel.genre
+  })
+
   const messages = buildGenerationPrompt({
     novel: opts.novel,
     chapters: opts.precedingChapters,
@@ -249,7 +259,8 @@ export async function prepareChapterContext(
     userDirection: opts.direction,
     ragContext: gathered.retrievedNotes,
     foreshadowing: opts.foreshadowing,
-    recentChapterContent: opts.recentChapterContent
+    recentChapterContent: opts.recentChapterContent,
+    skills
   })
 
   return {

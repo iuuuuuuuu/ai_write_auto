@@ -34,13 +34,15 @@ import {
   MAX_TOKENS_WORKSPACE
 } from '../../utils/ai-constants'
 import { ensureOutlinesForRange } from '../../services/outline-autofill'
+import { parseEnabledSkillIds } from '../../utils/writing-skills'
 
 const workspaceSchema = z.object({
   novelId: z.number().int().positive(),
   fromChapter: z.number().int().positive(),
   toChapter: z.number().int().positive(),
   direction: z.string().optional(),
-  aiConfigId: z.number().int().positive().optional()
+  aiConfigId: z.number().int().positive().optional(),
+  skillIds: z.array(z.number().int().positive()).optional()
 })
 
 function isPlaceholderChapterTitle(
@@ -169,6 +171,10 @@ export default defineEventHandler(async (event) => {
     user: auth.userId
   })
   if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
+
+  // 本批生成统一的写作技能包：本次显式勾选优先，否则用小说默认启用。
+  const resolvedSkillIds =
+    data.skillIds ?? parseEnabledSkillIds(novel.enabledSkillIds)
 
   const aiConfig = await resolveNovelAiConfig(
     em,
@@ -448,7 +454,8 @@ export default defineEventHandler(async (event) => {
             foreshadowing: promptForeshadowing,
             recentChapterContent,
             depth: 'query-only',
-            extraNotes: sharedRagContext
+            extraNotes: sharedRagContext,
+            skillIds: resolvedSkillIds
           })
 
           // 截断驱动续写：长章节触达 maxTokens 不在句中断；轮间检查任务是否被取消
