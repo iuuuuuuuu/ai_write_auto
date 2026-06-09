@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
-import { toAiOptions } from '../../utils/ai-client'
+import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { MAX_TOKENS_ACTION, CONTEXT_TRUNCATE_INLINE } from '../../utils/ai-constants'
 import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
@@ -85,6 +85,7 @@ export default defineEventHandler(async (event) => {
       messages,
       temperature: parseFloat(aiConfig.temperature || '0.7'),
       maxTokens: MAX_TOKENS_ACTION,
+      extraBody: PROSE_SAMPLING,
     }),
   }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
 })

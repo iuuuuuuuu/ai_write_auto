@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { createTrackedStreamResponse } from '../../utils/ai-stream'
-import { toAiOptions } from '../../utils/ai-client'
+import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { NovelSchema, ChapterSchema, CharacterSchema, PlotPointSchema, StoryArcSchema, GenerationTaskSchema, NovelOutlineSchema } from '../../database/entities'
 import { getActiveForeshadowing } from '../../services/content-rag'
@@ -97,7 +97,7 @@ export default defineEventHandler(async (event) => {
     : parseFloat(aiConfig.temperature ?? '0.7')
 
   return createTrackedStreamResponse(event, {
-    ...toAiOptions(aiConfig, { messages, temperature, maxTokens: data.maxTokens || aiConfig.maxTokens || 4096 }),
+    ...toAiOptions(aiConfig, { messages, temperature, maxTokens: data.maxTokens || aiConfig.maxTokens || 4096, extraBody: PROSE_SAMPLING }),
   }, {
     em,
     userId: auth.userId,

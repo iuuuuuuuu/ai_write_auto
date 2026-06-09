@@ -29,6 +29,20 @@ describe('ai-prompts', () => {
       expect(result[1].content).toContain('玄幻')
     })
 
+    it('系统提示含反「AI 腔」负向约束，且不含被移除的「生动的描写」反向指令', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [],
+        characters: [],
+        plotPoints: []
+      })
+      const sys = result[0].content
+      expect(sys).toContain('避免「AI 腔」')
+      expect(sys).toContain('潜台词')
+      expect(sys).toContain('升华式')
+      expect(sys).not.toContain('使用生动的描写和自然的对话')
+    })
+
     it('includes character info when provided', () => {
       const result = buildGenerationPrompt({
         novel: { title: '测试' },
@@ -213,6 +227,19 @@ describe('ai-prompts', () => {
       })
       expect(result[1].content).toContain('之前生成的内容')
       expect(result[1].content).toContain('需要更多对话')
+    })
+
+    it('系统提示含反「AI 腔」负向约束', () => {
+      const result = buildRegenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [],
+        characters: [],
+        plotPoints: [],
+        previousResult: 'x',
+        feedback: 'y'
+      })
+      expect(result[0].content).toContain('避免「AI 腔」')
+      expect(result[0].content).toContain('潜台词')
     })
   })
 
