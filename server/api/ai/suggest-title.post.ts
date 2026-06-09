@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { streamAi, toAiOptions } from '../../utils/ai-client'
+import { callAiWithUsage, toAiOptions } from '../../utils/ai-client'
 import { recordUsage } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import {
@@ -82,25 +82,20 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  let title = ''
-  let inputTokens = 0
-  let outputTokens = 0
-  for await (const chunk of streamAi(toAiOptions(aiConfig, {
-    messages,
-    temperature: 0.8,
-    maxTokens: 1024,
-    stream: true,
-    extraBody: {
-      enable_thinking: false,
-      reasoning_effort: 'low',
-    }
-  }))) {
-    if (chunk.content) title += chunk.content
-    if (chunk.usage) {
-      inputTokens = chunk.usage.prompt_tokens || inputTokens
-      outputTokens = chunk.usage.completion_tokens || outputTokens
-    }
-  }
+  // 标题是「服务端消费完再返回 JSON」的短任务，不需要流式；改用非流式 callAiWithUsage
+  // 才能可靠拿到 usage——流式下多数 OpenAI 兼容端点不回 usage 块（未传 stream_options），
+  // 导致前端「本次消耗」恒为 0。
+  const { content: title, inputTokens, outputTokens } = await callAiWithUsage(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.8,
+      maxTokens: 1024,
+      extraBody: {
+        enable_thinking: false,
+        reasoning_effort: 'low'
+      }
+    })
+  )
 
   await recordUsage(
     {
