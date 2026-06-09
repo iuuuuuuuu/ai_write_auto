@@ -15,15 +15,28 @@ const message = useMessage()
 const { put, del: apiDel } = useApi()
 
 const days = ref(30)
+const granularity = ref<'day' | 'hour'>('day')
 const { data: usage, refresh } = await useFetch('/api/stats/token-usage', {
-  query: { days }
+  query: { days, granularity }
 })
 
 const totalInput = computed(() => (usage.value as any)?.totalInput || 0)
 const totalOutput = computed(() => (usage.value as any)?.totalOutput || 0)
 const totalTokens = computed(() => (usage.value as any)?.totalTokens || 0)
+const totalCalls = computed(() => (usage.value as any)?.totalCalls || 0)
 const totalEstimatedCost = computed(() => (usage.value as any)?.totalEstimatedCost || null)
-const records = computed(() => (usage.value as any)?.usage || [])
+const records = computed<any[]>(() => (usage.value as any)?.usage || [])
+
+// 聚合桶标签：天→MM/DD，小时→DD HH:00
+function bucketLabel(bucket: string) {
+  if (!bucket) return ''
+  if (granularity.value === 'hour') {
+    const m = bucket.match(/(\d{2})-(\d{2}) (\d{2})/)
+    return m ? `${m[2]} ${m[3]}:00` : bucket
+  }
+  const parts = bucket.split('-')
+  return parts.length === 3 ? `${parts[1]}/${parts[2]}` : bucket
+}
 
 /* ─── Cost Rates ─── */
 const { data: costRates, refresh: refreshCostRates } = await useFetch<any[]>('/api/settings/cost-rates', { default: () => [] })
@@ -63,7 +76,7 @@ async function deleteCostRate(id: number) {
 }
 
 const chartOption = computed(() => {
-  const data = [...records.value].reverse()
+  const data = records.value
   return {
     tooltip: {
       trigger: 'axis',
@@ -82,10 +95,7 @@ const chartOption = computed(() => {
     grid: { top: 10, right: 16, bottom: 36, left: 50 },
     xAxis: {
       type: 'category',
-      data: data.map((r: any) => {
-        const d = new Date(r.createdAt)
-        return `${d.getMonth() + 1}/${d.getDate()}`
-      }),
+      data: data.map((r: any) => bucketLabel(r.bucket)),
       axisLine: { lineStyle: { color: '#e5e7eb' } },
       axisLabel: { fontSize: 10, color: '#999' },
     },
@@ -130,35 +140,53 @@ function formatNumber(n: number) {
   return n.toString()
 }
 
-watch(days, () => refresh())
+watch([days, granularity], () => refresh())
 </script>
 
 <template>
   <div class="space-y-4">
     <div class="flex items-center justify-between">
       <p class="text-sm text-(--ui-text-muted)">{{ t('ai.tokenUsage') }}</p>
-      <div class="flex gap-1">
-        <NButton
-          size="tiny"
-          :type="days === 7 ? 'primary' : 'default'"
-          :quaternary="days !== 7"
-          @click="days = 7"
-          >7天</NButton
-        >
-        <NButton
-          size="tiny"
-          :type="days === 30 ? 'primary' : 'default'"
-          :quaternary="days !== 30"
-          @click="days = 30"
-          >30天</NButton
-        >
-        <NButton
-          size="tiny"
-          :type="days === 90 ? 'primary' : 'default'"
-          :quaternary="days !== 90"
-          @click="days = 90"
-          >90天</NButton
-        >
+      <div class="flex items-center gap-2">
+        <div class="flex gap-1">
+          <NButton
+            size="tiny"
+            :type="granularity === 'day' ? 'primary' : 'default'"
+            :quaternary="granularity !== 'day'"
+            @click="granularity = 'day'"
+            >按天</NButton
+          >
+          <NButton
+            size="tiny"
+            :type="granularity === 'hour' ? 'primary' : 'default'"
+            :quaternary="granularity !== 'hour'"
+            @click="granularity = 'hour'"
+            >按小时</NButton
+          >
+        </div>
+        <div class="flex gap-1">
+          <NButton
+            size="tiny"
+            :type="days === 7 ? 'primary' : 'default'"
+            :quaternary="days !== 7"
+            @click="days = 7"
+            >7天</NButton
+          >
+          <NButton
+            size="tiny"
+            :type="days === 30 ? 'primary' : 'default'"
+            :quaternary="days !== 30"
+            @click="days = 30"
+            >30天</NButton
+          >
+          <NButton
+            size="tiny"
+            :type="days === 90 ? 'primary' : 'default'"
+            :quaternary="days !== 90"
+            @click="days = 90"
+            >90天</NButton
+          >
+        </div>
       </div>
     </div>
 
@@ -205,7 +233,7 @@ watch(days, () => refresh())
             <th
               class="px-3 py-2 text-left text-[11px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider"
             >
-              日期
+              时段
             </th>
             <th
               class="px-3 py-2 text-right text-[11px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider"
@@ -220,18 +248,23 @@ watch(days, () => refresh())
             <th
               class="px-3 py-2 text-right text-[11px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider"
             >
+              调用
+            </th>
+            <th
+              class="px-3 py-2 text-right text-[11px] font-semibold text-(--ui-text-dimmed) uppercase tracking-wider"
+            >
               {{ t('ai.estimatedCost') }}
             </th>
           </tr>
         </thead>
         <tbody class="divide-y divide-(--ui-border)">
           <tr
-            v-for="record in records"
-            :key="record.id"
+            v-for="record in [...records].reverse()"
+            :key="record.bucket"
             class="hover:bg-(--ui-bg-muted) transition-colors"
           >
             <td class="px-3 py-2 text-(--ui-text) text-[12px]">
-              {{ new Date(record.createdAt).toLocaleDateString() }}
+              {{ bucketLabel(record.bucket) }}
             </td>
             <td
               class="px-3 py-2 text-right font-mono text-(--ui-text-muted) text-[12px]"
@@ -246,7 +279,12 @@ watch(days, () => refresh())
             <td
               class="px-3 py-2 text-right font-mono text-(--ui-text-muted) text-[12px]"
             >
-              ${{ record.estimatedCost?.toFixed(4) || '0.0000' }}
+              {{ record.calls }}
+            </td>
+            <td
+              class="px-3 py-2 text-right font-mono text-(--ui-text-muted) text-[12px]"
+            >
+              ${{ record.cost ? record.cost.toFixed(4) : '0.0000' }}
             </td>
           </tr>
         </tbody>

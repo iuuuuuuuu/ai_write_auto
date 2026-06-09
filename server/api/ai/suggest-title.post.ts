@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
     {
       role: 'system' as const,
       content:
-        '你是章节标题生成器。根据小说信息和章节内容生成一个简短的章节标题。规则：1. 只输出标题文字，4-10个中文字 2. 不要序号、引号、标点或任何解释 3. 标题要概括章节核心事件或氛围'
+        '你是章节标题生成器。只输出一个 4-10 个中文字的章节标题本身，然后立即结束。\n严禁输出：思考过程、解释说明、序号（如「第3章」）、书名号/引号/标点、多个候选、或「标题：」之类前缀。\n标题应概括本章核心事件或氛围。现在直接输出标题，不要任何多余文字。'
     },
     {
       role: 'user' as const,
@@ -89,7 +89,7 @@ export default defineEventHandler(async (event) => {
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.8,
-      maxTokens: 1024,
+      maxTokens: 48,
       extraBody: {
         enable_thinking: false,
         reasoning_effort: 'low'
@@ -108,12 +108,20 @@ export default defineEventHandler(async (event) => {
     outputTokens
   )
 
-  const cleaned = title
-    .replace(/<think>[\s\S]*?<\/think>/g, '')
-    .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
-    .replace(/["""''《》【】\n\r]/g, '')
-    .trim()
-    .slice(0, 20)
+  // 取首个非空行 + 去掉「第N章」序号、「标题：」前缀、引号标点；防模型啰嗦或带序号导致标题异常
+  const firstLine =
+    title
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<\|?think\|?>[\s\S]*?<\/?\|?think\|?>/gi, '')
+      .split(/[\n\r]+/)
+      .map((s) => s.trim())
+      .find((s) => s.length > 0) || ''
+  const cleaned = firstLine
+    .replace(/^第\s*\d+\s*章[：:、.\s]*/g, '')
+    .replace(/^(章节标题|标题|title)\s*[：:]\s*/gi, '')
+    .replace(/["""''《》【】「」\s]/g, '')
+    .replace(/^[，,。.！!？?；;、]+|[，,。.！!？?；;、]+$/g, '')
+    .slice(0, 16)
 
   if (!cleaned) {
     throw createError({
