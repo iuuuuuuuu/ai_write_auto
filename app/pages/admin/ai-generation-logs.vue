@@ -80,6 +80,20 @@ interface AdminUsersResponse {
   items?: AdminUserOptionItem[]
 }
 
+function getFetchStatusCode(error: unknown) {
+  if (!error || typeof error !== 'object') return null
+  const payload = error as {
+    status?: unknown
+    statusCode?: unknown
+    data?: { statusCode?: unknown }
+  }
+  if (typeof payload.status === 'number') return payload.status
+  if (typeof payload.statusCode === 'number') return payload.statusCode
+  if (typeof payload.data?.statusCode === 'number')
+    return payload.data.statusCode
+  return null
+}
+
 const emptySummary: AiGenerationSummary = {
   totalCalls: 0,
   successCalls: 0,
@@ -171,16 +185,32 @@ const {
   params: queryParams
 })
 
-watch(
-  [logs, queryParams],
-  async () => {
+async function fetchSummary() {
+  try {
     const data = await $fetch<LogsResponse>('/api/admin/ai-generation-logs', {
-      params: { ...queryParams.value, page: '1', pageSize: '1' }
+      params: { ...queryParams.value, page: '1', pageSize: '1' },
+      headers: import.meta.server ? useRequestHeaders(['cookie']) : undefined
     })
     summary.value = data.summary || { ...emptySummary }
     byUser.value = data.aggregates?.byUser || []
     byModel.value = data.aggregates?.byModel || []
     byScenario.value = data.aggregates?.byScenario || []
+  } catch (error) {
+    const statusCode = getFetchStatusCode(error)
+    if (statusCode !== 401 && statusCode !== 403) {
+      console.warn('[admin-ai-generation-logs] summary fetch failed:', error)
+    }
+    summary.value = { ...emptySummary }
+    byUser.value = []
+    byModel.value = []
+    byScenario.value = []
+  }
+}
+
+watch(
+  queryParams,
+  async () => {
+    await fetchSummary()
   },
   { immediate: true }
 )
@@ -457,7 +487,16 @@ const aggregateColumns = [
         placeholder="筛选场景"
         style="width: 180px"
       />
-      <NCheckbox v-model:checked="includeEmbeddings">包含 Embedding</NCheckbox>
+      <label
+        class="flex cursor-pointer items-center gap-2 text-sm text-(--ui-text-muted)"
+      >
+        <input
+          v-model="includeEmbeddings"
+          type="checkbox"
+          class="size-4 accent-primary-500"
+        />
+        <span>包含 Embedding</span>
+      </label>
     </div>
 
     <div class="card-glass flex min-h-0 flex-1 flex-col overflow-hidden">

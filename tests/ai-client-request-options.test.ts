@@ -130,6 +130,42 @@ describe('ai-client request options', () => {
     expect(mockFailLog).not.toHaveBeenCalled()
   })
 
+  it('records plain non-streaming token usage when provider returns usage', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'pong' } }],
+          usage: { prompt_tokens: 5, completion_tokens: 2 }
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await callAi({
+      apiUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'secret',
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: 'ping' }],
+      tracking: {
+        userId: 7,
+        purpose: 'planning',
+        scenario: 'model_connectivity_check',
+        source: 'api_route',
+        endpoint: '/api/ai/status'
+      }
+    })
+
+    expect(result).toBe('pong')
+    expect(mockFinishLog).toHaveBeenCalledWith(logHandle, {
+      tokensInput: 5,
+      tokensOutput: 2,
+      inputChars: 4,
+      outputChars: 4
+    })
+    expect(mockFailLog).not.toHaveBeenCalled()
+  })
+
   it('records non-streaming failures and rethrows the original error', async () => {
     vi.stubGlobal(
       'fetch',

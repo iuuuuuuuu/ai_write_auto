@@ -415,7 +415,7 @@ export async function queryAiGenerationLogStats(
         em,
         where,
         'COALESCE(l.user_id, 0)',
-        'COALESCE(u.username, "未知用户")',
+        "COALESCE(u.username, '未知用户')",
         ', l.user_id as user_id, u.username as username',
         'LEFT JOIN users u ON u.id = l.user_id',
         50

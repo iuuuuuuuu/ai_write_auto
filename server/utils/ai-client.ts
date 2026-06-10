@@ -146,7 +146,8 @@ function buildTrackingOptions(
     scenario: options.tracking?.scenario ?? 'unclassified_ai_call',
     source: options.tracking?.source ?? 'unclassified',
     streamed: options.tracking?.streamed ?? streamed,
-    inputChars: options.tracking?.inputChars ?? countMessageChars(options.messages)
+    inputChars:
+      options.tracking?.inputChars ?? countMessageChars(options.messages)
   }
 }
 
@@ -250,8 +251,12 @@ export async function callAi(options: AiRequestOptions): Promise<string> {
     const data = await response.json()
     const content = data.choices[0]?.message?.content || ''
     const cleaned = stripThinking(content)
+    const inputTokens = data.usage?.prompt_tokens || 0
+    const outputTokens = data.usage?.completion_tokens || 0
 
     await finishAiGenerationLog(logHandle, {
+      tokensInput: inputTokens,
+      tokensOutput: outputTokens,
       inputChars: countMessageChars(options.messages),
       outputChars: cleaned.length
     })

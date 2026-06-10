@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAiGenerationLogSqlWhere,
-  normalizeAiGenerationLogSummaryRow
+  normalizeAiGenerationLogSummaryRow,
+  queryAiGenerationLogStats
 } from '../server/utils/ai-generation-log-stats'
 
 describe('ai-generation-log-stats', () => {
@@ -60,5 +61,29 @@ describe('ai-generation-log-stats', () => {
       p95FirstTokenLatencyMs: null,
       p95DurationMs: null
     })
+  })
+
+  it('uses SQL string literals for unknown user aggregate fallback', async () => {
+    const executedSql: string[] = []
+    const em = {
+      find: async () => [],
+      count: async () => 0,
+      getConnection: () => ({
+        execute: async (sql: string) => {
+          executedSql.push(sql)
+          return []
+        }
+      })
+    }
+
+    await queryAiGenerationLogStats(
+      em as Parameters<typeof queryAiGenerationLogStats>[0],
+      { since: new Date('2026-06-10T00:00:00.000Z'), userId: 1 },
+      { page: 1, pageSize: 20, limit: 20, offset: 0 }
+    )
+
+    const aggregateSql = executedSql.find((sql) => sql.includes('users u'))
+    expect(aggregateSql).toContain("COALESCE(u.username, '未知用户')")
+    expect(aggregateSql).not.toContain('COALESCE(u.username, "未知用户")')
   })
 })
