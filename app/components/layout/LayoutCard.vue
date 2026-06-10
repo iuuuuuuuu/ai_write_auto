@@ -166,8 +166,9 @@ function toggleSidebar() {
         </nav>
 
         <!-- Settings -->
-        <div v-if="settingsItem" class="px-2 pb-1 space-y-1">
+        <div class="px-2 pb-1 space-y-1">
           <NTooltip
+            v-if="settingsItem"
             placement="right"
             :disabled="settings.sidebarExpanded"
             :show-arrow="false"

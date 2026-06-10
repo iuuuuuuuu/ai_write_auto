@@ -165,8 +165,9 @@ function toggleSidebar() {
           </nav>
 
           <!-- Settings Button -->
-          <div v-if="settingsItem" class="px-2 pb-1">
+          <div class="px-2 pb-1">
             <NTooltip
+              v-if="settingsItem"
               placement="right"
               :disabled="settings.sidebarExpanded"
               :show-arrow="false"
@@ -196,8 +197,8 @@ function toggleSidebar() {
               {{ settingsItem.label }}
             </NTooltip>
             <button
-              class="flex items-center justify-center w-full h-8 rounded-[10px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/70 transition-colors"
               :class="!settings.sidebarExpanded && 'px-0'"
+              class="flex items-center justify-center w-full h-8 rounded-[10px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted)/70 transition-colors"
               @click="settingsDrawerOpen = true"
             >
               <Icon
