@@ -33,11 +33,16 @@ interface NovelDetail {
   styleGuide: string | null
   worldSetting: string | null
   aiTemperature: string | null
+  aiTopP: string | null
+  aiThinkingEnabled: boolean | null
+  aiReasoningEffort: 'low' | 'medium' | 'high' | null
   aiExtraPrompt: string | null
   createdAt: string
   updatedAt: string
   aiConfigId: number | null
   aiConfigName: string | null
+  aiConfigModel: string | null
+  aiConfigOperational: boolean
 }
 
 interface ChapterItem {
@@ -138,15 +143,20 @@ const { data: aiConfigs } = await useFetch<
     id: number
     purpose: string
     enabled: boolean
-    aiModel: { id: number; name: string; model: string; enabled: boolean }
+    operational: boolean
+    aiModel: {
+      id: number
+      name: string
+      model: string
+      enabled: boolean
+      supportsThinking: boolean
+    }
   }>
 >('/api/ai/config', { default: () => [] })
 
 const aiConfigOptions = computed(() => {
   return aiConfigs.value
-    .filter(
-      (c) => c.purpose === 'generation' && c.enabled && c.aiModel?.enabled
-    )
+    .filter((c) => c.purpose === 'generation' && c.enabled && c.operational)
     .map((c) => ({
       label: `${c.aiModel.name} (${c.aiModel.model})`,
       value: c.id
@@ -158,14 +168,32 @@ const savingAiSettings = shallowRef(false)
 const aiSettingsForm = reactive({
   aiConfigId: null as number | null,
   aiTemperature: '',
+  aiTopP: '',
+  aiThinkingEnabled: null as boolean | null,
+  aiReasoningEffort: null as 'low' | 'medium' | 'high' | null,
   aiExtraPrompt: '',
   worldSetting: '',
   styleGuide: ''
 })
 
+const selectedNovelAiConfig = computed(
+  () =>
+    aiConfigs.value.find((config) => config.id === aiSettingsForm.aiConfigId) ||
+    null
+)
+
+const reasoningOptions = [
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' }
+] as const
+
 function openAiSettings() {
   aiSettingsForm.aiConfigId = novel.value?.aiConfigId ?? null
   aiSettingsForm.aiTemperature = novel.value?.aiTemperature || ''
+  aiSettingsForm.aiTopP = novel.value?.aiTopP || ''
+  aiSettingsForm.aiThinkingEnabled = novel.value?.aiThinkingEnabled ?? null
+  aiSettingsForm.aiReasoningEffort = novel.value?.aiReasoningEffort ?? null
   aiSettingsForm.aiExtraPrompt = novel.value?.aiExtraPrompt || ''
   aiSettingsForm.worldSetting = novel.value?.worldSetting || ''
   aiSettingsForm.styleGuide = novel.value?.styleGuide || ''
@@ -180,6 +208,9 @@ async function saveAiSettings() {
       {
         aiConfigId: aiSettingsForm.aiConfigId,
         aiTemperature: aiSettingsForm.aiTemperature || undefined,
+        aiTopP: aiSettingsForm.aiTopP || undefined,
+        aiThinkingEnabled: aiSettingsForm.aiThinkingEnabled,
+        aiReasoningEffort: aiSettingsForm.aiReasoningEffort,
         aiExtraPrompt: aiSettingsForm.aiExtraPrompt || undefined,
         worldSetting: aiSettingsForm.worldSetting || undefined,
         styleGuide: aiSettingsForm.styleGuide || undefined
@@ -3600,76 +3631,93 @@ async function savePlotPoint() {
           生成参数。这些设定会作为章节生成、续写、审核等所有写作操作的上下文。
         </p>
         <div class="space-y-4">
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium text-(--ui-text)"
-              >世界观设定</label
-            >
+          <NFormItem label="世界观设定">
             <NInput
               v-model:value="aiSettingsForm.worldSetting"
               type="textarea"
               :autosize="{ minRows: 3, maxRows: 8 }"
               placeholder="描述故事发生的世界背景、时代、规则、地理等"
             />
-            <p class="text-xs text-(--ui-text-dimmed)">
+            <template #feedback>
               故事的世界背景设定，会作为生成、角色、大纲等 AI 操作的重要上下文。
-            </p>
-          </div>
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium text-(--ui-text)">风格指南</label>
+            </template>
+          </NFormItem>
+          <NFormItem label="风格指南">
             <NInput
               v-model:value="aiSettingsForm.styleGuide"
               type="textarea"
               :autosize="{ minRows: 2, maxRows: 6 }"
               placeholder="例如：叙事节奏明快，多用短句，对白生动"
             />
-            <p class="text-xs text-(--ui-text-dimmed)">
+            <template #feedback>
               整体写作风格约定，用于审核与生成时保持风格一致。
-            </p>
-          </div>
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium text-(--ui-text)"
-              >内容生成模型</label
-            >
+            </template>
+          </NFormItem>
+          <NFormItem label="内容生成模型">
             <NSelect
               v-model:value="aiSettingsForm.aiConfigId"
               :options="aiConfigOptions"
               placeholder="不指定，使用系统默认模型"
               clearable
             />
-            <p class="text-xs text-(--ui-text-dimmed)">
+            <template #feedback>
               为本小说指定专用的内容生成模型。未指定时将使用设置中标记为默认的生成模型。可在「设置
               → AI 模型」中管理模型列表。
-            </p>
+            </template>
+          </NFormItem>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <NFormItem label="Temperature">
+              <NInput
+                v-model:value="aiSettingsForm.aiTemperature"
+                placeholder="留空继承"
+              />
+              <template #feedback>控制随机性，范围随模型能力变化。</template>
+            </NFormItem>
+            <NFormItem label="top_p">
+              <NInput
+                v-model:value="aiSettingsForm.aiTopP"
+                placeholder="留空继承"
+              />
+              <template #feedback>控制候选词采样范围，通常为 0.01~1。</template>
+            </NFormItem>
           </div>
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium text-(--ui-text)"
-              >Temperature</label
-            >
-            <NInput
-              v-model:value="aiSettingsForm.aiTemperature"
-              placeholder="留空使用模型配置中的值"
-            />
-            <p class="text-xs text-(--ui-text-dimmed)">
-              控制生成内容的随机性，范围
-              0~2。值越高文风越多变有创意，越低则越稳定可控。推荐小说创作使用
-              0.7~0.9。
-            </p>
+          <div
+            v-if="selectedNovelAiConfig?.aiModel.supportsThinking"
+            class="grid gap-4 sm:grid-cols-2"
+          >
+            <NFormItem label="思考模式">
+              <NCheckbox
+                :checked="aiSettingsForm.aiThinkingEnabled === true"
+                @update:checked="
+                  (checked) => {
+                    aiSettingsForm.aiThinkingEnabled = checked ? true : false
+                  }
+                "
+              >
+                启用思考
+              </NCheckbox>
+            </NFormItem>
+            <NFormItem label="思考强度">
+              <NSelect
+                v-model:value="aiSettingsForm.aiReasoningEffort"
+                :options="reasoningOptions"
+                clearable
+                placeholder="留空继承"
+              />
+            </NFormItem>
           </div>
-          <div class="space-y-1.5">
-            <label class="text-sm font-medium text-(--ui-text)"
-              >额外提示词</label
-            >
+          <NFormItem label="额外提示词">
             <NInput
               v-model:value="aiSettingsForm.aiExtraPrompt"
               type="textarea"
               :autosize="{ minRows: 3, maxRows: 6 }"
               placeholder="例如：请使用第一人称叙述，语言风格偏向轻松幽默"
             />
-            <p class="text-xs text-(--ui-text-dimmed)">
+            <template #feedback>
               会附加到每次 AI
               生成请求中，用于统一本小说的写作风格或添加特殊要求。
-            </p>
-          </div>
+            </template>
+          </NFormItem>
         </div>
         <template #footer>
           <div class="flex justify-end gap-2">

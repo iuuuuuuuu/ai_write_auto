@@ -22,6 +22,9 @@ const regenerateSchema = z.object({
   feedback: z.string().min(1).max(2000),
   aiConfigId: z.number().int().positive().optional(),
   temperature: z.number().min(0).max(2).optional(),
+  topP: z.number().min(0.01).max(1).optional(),
+  thinkingEnabled: z.boolean().optional(),
+  reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
   maxTokens: z.number().int().min(256).max(128000).optional()
 })
 
@@ -114,17 +117,15 @@ export default defineEventHandler(async (event) => {
   })
   await em.flush()
 
-  const temperature =
-    data.temperature ? parseFloat(String(data.temperature))
-    : novel.aiTemperature ? parseFloat(novel.aiTemperature)
-    : parseFloat(aiConfig.temperature ?? '0.7')
-
   return createTrackedStreamResponse(
     event,
     {
       ...toAiOptions(aiConfig, {
         messages,
-        temperature,
+        temperature: data.temperature,
+        topP: data.topP,
+        thinkingEnabled: data.thinkingEnabled,
+        reasoningEffort: data.reasoningEffort,
         maxTokens: data.maxTokens || aiConfig.maxTokens || 4096,
         extraBody: PROSE_SAMPLING
       })

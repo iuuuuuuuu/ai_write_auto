@@ -15,7 +15,19 @@
  * - 全局分析类操作 → resolveUserAiConfig（不依赖小说级别配置）
  */
 import type { EntityManager } from '@mikro-orm/core'
-import { AiConfigSchema, NovelSchema, type AiConfig, type AiModel, type AiProvider } from '../database/entities'
+import {
+  AiConfigSchema,
+  NovelSchema,
+  type AiConfig,
+  type AiModel,
+  type AiProvider
+} from '../database/entities'
+import {
+  isModelOperational,
+  resolveAiRequestParameters,
+  type AiModelCapabilities,
+  type AiParameterLayer
+} from './ai-model-capabilities'
 
 export type AiConfigPurpose =
   | 'generation'
@@ -32,10 +44,32 @@ export interface ResolvedAiConfig {
   apiKey: string
   model: string
   temperature: string | null
+  topP: string | null
+  thinkingEnabled: boolean | null
+  reasoningEffort: string | null
   maxTokens: number
+  capabilities: AiModelCapabilities
 }
 
-function toResolved(config: AiConfig): ResolvedAiConfig {
+function modelCapabilities(aiModel: AiModel): AiModelCapabilities {
+  return {
+    supportsThinking: aiModel.supportsThinking,
+    thinkingEnabled: aiModel.thinkingEnabled,
+    reasoningEffort: aiModel.reasoningEffort,
+    temperatureDefault: aiModel.temperatureDefault,
+    temperatureMin: aiModel.temperatureMin,
+    temperatureMax: aiModel.temperatureMax,
+    topPDefault: aiModel.topPDefault,
+    topPMin: aiModel.topPMin,
+    topPMax: aiModel.topPMax,
+    samplingLockedWhenThinking: aiModel.samplingLockedWhenThinking
+  }
+}
+
+function toResolved(
+  config: AiConfig,
+  override?: AiParameterLayer | null
+): ResolvedAiConfig {
   const aiModel = config.aiModel as AiModel
   if (!aiModel.enabled) {
     throw createError({
@@ -50,6 +84,30 @@ function toResolved(config: AiConfig): ResolvedAiConfig {
       message: `供应商「${provider.name}」已被禁用，请在模型库中启用或更换供应商`
     })
   }
+  if (
+    !isModelOperational({
+      enabled: aiModel.enabled,
+      lastCheckAvailable: aiModel.lastCheckAvailable,
+      provider: { enabled: provider.enabled }
+    })
+  ) {
+    throw createError({
+      statusCode: 400,
+      message: `模型「${aiModel.name}」最近一次连通性检测不可用，请重新检测或更换模型`
+    })
+  }
+  const capabilities = modelCapabilities(aiModel)
+  const params = resolveAiRequestParameters({
+    model: aiModel.model,
+    modelCapabilities: capabilities,
+    config: {
+      temperature: config.temperature,
+      topP: config.topP,
+      thinkingEnabled: config.thinkingEnabled,
+      reasoningEffort: config.reasoningEffort
+    },
+    novel: override
+  })
   return {
     id: config.id,
     configId: config.id,
@@ -57,8 +115,12 @@ function toResolved(config: AiConfig): ResolvedAiConfig {
     apiUrl: provider.apiUrl,
     apiKey: provider.apiKey,
     model: aiModel.model,
-    temperature: config.temperature,
-    maxTokens: aiModel.maxTokens
+    temperature: String(params.temperature),
+    topP: String(params.topP),
+    thinkingEnabled: params.thinkingEnabled,
+    reasoningEffort: params.reasoningEffort,
+    maxTokens: aiModel.maxTokens,
+    capabilities
   }
 }
 
@@ -68,15 +130,20 @@ export async function resolveUserAiConfig(
   purpose: AiConfigPurpose,
   aiConfigId?: number
 ): Promise<ResolvedAiConfig> {
-  const configs = await em.find(AiConfigSchema, {
-    user: userId,
-    purpose,
-  }, { populate: ['aiModel', 'aiModel.provider'] })
+  const configs = await em.find(
+    AiConfigSchema,
+    {
+      user: userId,
+      purpose
+    },
+    { populate: ['aiModel', 'aiModel.provider'] }
+  )
 
-  const enabledConfigs = configs.filter(c => c.enabled !== false)
-  const config = aiConfigId
-    ? enabledConfigs.find(item => item.id === aiConfigId)
-    : enabledConfigs.find(item => item.isDefault) || enabledConfigs[0]
+  const enabledConfigs = configs.filter((c) => c.enabled !== false)
+  const config =
+    aiConfigId ?
+      enabledConfigs.find((item) => item.id === aiConfigId)
+    : enabledConfigs.find((item) => item.isDefault) || enabledConfigs[0]
 
   if (!config) {
     throw createError({
@@ -95,17 +162,49 @@ export async function resolveNovelAiConfig(
   purpose: AiConfigPurpose,
   requestAiConfigId?: number
 ): Promise<ResolvedAiConfig> {
-  if (requestAiConfigId) {
-    return resolveUserAiConfig(em, userId, purpose, requestAiConfigId)
-  }
+  const novel = await em.findOne(
+    NovelSchema,
+    { id: novelId, user: userId },
+    { populate: ['aiConfig'] }
+  )
+  const novelOverride: AiParameterLayer | null =
+    novel ?
+      {
+        temperature: novel.aiTemperature,
+        topP: novel.aiTopP,
+        thinkingEnabled: novel.aiThinkingEnabled,
+        reasoningEffort: novel.aiReasoningEffort
+      }
+    : null
 
-  const novel = await em.findOne(NovelSchema, { id: novelId }, { populate: ['aiConfig'] })
+  if (requestAiConfigId) {
+    const config = await em.findOne(
+      AiConfigSchema,
+      {
+        id: requestAiConfigId,
+        user: userId,
+        purpose
+      },
+      { populate: ['aiModel', 'aiModel.provider'] }
+    )
+    if (!config || config.enabled === false) {
+      throw createError({
+        statusCode: 400,
+        message: `未找到「${purpose}」用途的 AI 配置，请先在设置中添加`
+      })
+    }
+    return toResolved(config, novelOverride)
+  }
   if (novel?.aiConfig && (novel.aiConfig as any).id) {
-    const novelConfig = await em.findOne(AiConfigSchema, {
-      id: (novel.aiConfig as any).id
-    }, { populate: ['aiModel', 'aiModel.provider'] })
+    const novelConfig = await em.findOne(
+      AiConfigSchema,
+      {
+        id: (novel.aiConfig as any).id
+      },
+      { populate: ['aiModel', 'aiModel.provider'] }
+    )
     if (novelConfig && novelConfig.enabled) {
-      return toResolved(novelConfig)
+      return toResolved(novelConfig, novelOverride)
     }
   }
 

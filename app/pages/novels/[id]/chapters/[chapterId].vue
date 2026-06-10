@@ -580,14 +580,19 @@ const { data: aiConfigs } = await useFetch<
     id: number
     purpose: string
     temperature?: string | null
+    topP?: string | null
+    thinkingEnabled?: boolean | null
+    reasoningEffort?: 'low' | 'medium' | 'high' | null
     isDefault: boolean
     enabled: boolean
+    operational: boolean
     aiModel: {
       id: number
       name: string
       model: string
       maxTokens?: number | null
       enabled: boolean
+      supportsThinking: boolean
     }
   }>
 >('/api/ai/config', { default: () => [] })
@@ -645,6 +650,9 @@ const showGenerateDialog = ref(false)
 const generateDirection = ref('')
 const selectedAiConfigId = ref<number | undefined>()
 const generateTemperature = ref<number>(0.7)
+const generateTopP = ref<number>(0.95)
+const generateThinkingEnabled = ref<boolean | null>(null)
+const generateReasoningEffort = ref<'low' | 'medium' | 'high' | null>(null)
 const generateMaxTokens = ref<number>(4096)
 const generateWizardStep = ref(1)
 const generationContextPreviewRef = ref<{
@@ -1410,9 +1418,7 @@ const generationModelOptions = computed(() =>
   aiConfigs.value
     .filter(
       (config) =>
-        config.purpose === 'generation' &&
-        config.enabled &&
-        config.aiModel?.enabled
+        config.purpose === 'generation' && config.enabled && config.operational
     )
     .map((config) => ({
       label:
@@ -1429,6 +1435,12 @@ const selectedGenerationConfig = computed(() => {
     (config) => config.id === selectedAiConfigId.value
   )
 })
+
+const reasoningOptions = [
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' }
+] as const
 
 const plainTextContent = computed(() =>
   content.value.replace(/[#>*_`\-[\]()]/g, '').trim()
@@ -1484,6 +1496,9 @@ watch(
 watch(selectedGenerationConfig, (config) => {
   if (config) {
     generateTemperature.value = parseFloat(config.temperature ?? '0.7')
+    generateTopP.value = parseFloat(config.topP ?? '0.95')
+    generateThinkingEnabled.value = config.thinkingEnabled ?? null
+    generateReasoningEffort.value = config.reasoningEffort ?? null
     generateMaxTokens.value = config.aiModel?.maxTokens || 4096
   }
 })
@@ -2320,6 +2335,9 @@ async function generateChapter() {
         direction: finalDirection || undefined,
         aiConfigId: selectedAiConfigId.value,
         temperature: generateTemperature.value,
+        topP: generateTopP.value,
+        thinkingEnabled: generateThinkingEnabled.value ?? undefined,
+        reasoningEffort: generateReasoningEffort.value ?? undefined,
         maxTokens: generateMaxTokens.value,
         skillIds: selectedSkillIds.value,
         contextSelection: generationContextSelection.value || undefined
@@ -2425,6 +2443,9 @@ async function regenerateWithFeedback() {
         feedback: feedbackText.value,
         aiConfigId: selectedAiConfigId.value,
         temperature: generateTemperature.value,
+        topP: generateTopP.value,
+        thinkingEnabled: generateThinkingEnabled.value ?? undefined,
+        reasoningEffort: generateReasoningEffort.value ?? undefined,
         maxTokens: generateMaxTokens.value
       }),
       signal: controller.signal
@@ -4683,6 +4704,46 @@ onBeforeUnmount(() => {
               </div>
             </div>
           </NFormItem>
+          <NFormItem label="top_p">
+            <div class="w-full space-y-1">
+              <NSlider
+                v-model:value="generateTopP"
+                :min="0.01"
+                :max="1"
+                :step="0.01"
+                :tooltip="true"
+              />
+              <div class="flex justify-between text-xs text-gray-400">
+                <span>控制候选词采样范围</span>
+                <span>{{ generateTopP }}</span>
+              </div>
+            </div>
+          </NFormItem>
+          <div
+            v-if="selectedGenerationConfig?.aiModel.supportsThinking"
+            class="grid gap-3 sm:grid-cols-2"
+          >
+            <NFormItem label="思考模式">
+              <NCheckbox
+                :checked="generateThinkingEnabled === true"
+                @update:checked="
+                  (checked) => {
+                    generateThinkingEnabled = checked ? true : false
+                  }
+                "
+              >
+                启用思考
+              </NCheckbox>
+            </NFormItem>
+            <NFormItem label="思考强度">
+              <NSelect
+                v-model:value="generateReasoningEffort"
+                :options="reasoningOptions"
+                clearable
+                placeholder="继承模型配置"
+              />
+            </NFormItem>
+          </div>
           <NFormItem :label="t('chapter.generateDialog.maxTokens')">
             <NInputNumber
               v-model:value="generateMaxTokens"

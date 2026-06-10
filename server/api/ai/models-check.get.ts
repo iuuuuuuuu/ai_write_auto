@@ -12,7 +12,11 @@ export default defineEventHandler(async (event) => {
   const query = getQuery(event)
   const { id } = schema.parse(query)
 
-  const model = await em.findOne(AiModelSchema, { id, user: auth.userId }, { populate: ['provider'] })
+  const model = await em.findOne(
+    AiModelSchema,
+    { id, user: auth.userId },
+    { populate: ['provider'] }
+  )
   if (!model) {
     throw createError({ statusCode: 404, message: '模型不存在' })
   }
@@ -38,7 +42,15 @@ export default defineEventHandler(async (event) => {
   model.lastCheckAt = new Date()
   model.lastCheckAvailable = available
   model.lastCheckReason = reason
+  provider.lastCheckAt = model.lastCheckAt
+  provider.lastCheckAvailable = available
+  provider.lastCheckReason = reason
   await em.flush()
 
-  return { available, modelId: id, checkedAt: model.lastCheckAt.toISOString(), reason }
+  return {
+    available,
+    modelId: id,
+    checkedAt: model.lastCheckAt.toISOString(),
+    reason
+  }
 })

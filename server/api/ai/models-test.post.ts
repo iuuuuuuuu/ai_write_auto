@@ -21,15 +21,23 @@ export default defineEventHandler(async (event) => {
 
   // Resolve from provider if providerId given
   if (data.providerId && (!apiUrl || !apiKey)) {
-    const provider = await em.findOne(AiProviderSchema, { id: data.providerId, user: auth.userId })
-    if (!provider) throw createError({ statusCode: 404, message: '供应商不存在' })
+    const provider = await em.findOne(AiProviderSchema, {
+      id: data.providerId,
+      user: auth.userId
+    })
+    if (!provider)
+      throw createError({ statusCode: 404, message: '供应商不存在' })
     apiUrl = apiUrl || provider.apiUrl
     apiKey = apiKey || provider.apiKey
   }
 
   // Resolve from existing model's provider
   if (data.existingModelId && (!apiUrl || !apiKey)) {
-    const existing = await em.findOne(AiModelSchema, { id: data.existingModelId, user: auth.userId }, { populate: ['provider'] })
+    const existing = await em.findOne(
+      AiModelSchema,
+      { id: data.existingModelId, user: auth.userId },
+      { populate: ['provider'] }
+    )
     if (!existing) throw createError({ statusCode: 404, message: '模型不存在' })
     const prov = existing.provider as any
     apiUrl = apiUrl || prov.apiUrl
@@ -59,11 +67,21 @@ export default defineEventHandler(async (event) => {
 
   // Persist check result on existing model
   if (data.existingModelId) {
-    const model = await em.findOne(AiModelSchema, { id: data.existingModelId, user: auth.userId })
+    const model = await em.findOne(
+      AiModelSchema,
+      { id: data.existingModelId, user: auth.userId },
+      { populate: ['provider'] }
+    )
     if (model) {
       model.lastCheckAt = new Date()
       model.lastCheckAvailable = available
       model.lastCheckReason = reason
+      const provider = model.provider as any
+      if (provider) {
+        provider.lastCheckAt = model.lastCheckAt
+        provider.lastCheckAvailable = available
+        provider.lastCheckReason = reason
+      }
       await em.flush()
     }
   }

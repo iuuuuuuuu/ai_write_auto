@@ -43,6 +43,16 @@ export interface AiModel {
   [OptionalProps]?:
     | 'id'
     | 'enabled'
+    | 'supportsThinking'
+    | 'thinkingEnabled'
+    | 'reasoningEffort'
+    | 'temperatureDefault'
+    | 'temperatureMin'
+    | 'temperatureMax'
+    | 'topPDefault'
+    | 'topPMin'
+    | 'topPMax'
+    | 'samplingLockedWhenThinking'
     | 'lastCheckAt'
     | 'lastCheckAvailable'
     | 'lastCheckReason'
@@ -55,6 +65,16 @@ export interface AiModel {
   model: string
   maxTokens: number
   enabled: boolean
+  supportsThinking: boolean
+  thinkingEnabled: boolean
+  reasoningEffort: 'low' | 'medium' | 'high'
+  temperatureDefault: number
+  temperatureMin: number
+  temperatureMax: number
+  topPDefault: number
+  topPMin: number
+  topPMax: number
+  samplingLockedWhenThinking: boolean
   lastCheckAt: Date | null
   lastCheckAvailable: boolean | null
   lastCheckReason: string | null
@@ -66,6 +86,9 @@ export interface AiConfig {
   [OptionalProps]?:
     | 'id'
     | 'temperature'
+    | 'topP'
+    | 'thinkingEnabled'
+    | 'reasoningEffort'
     | 'isDefault'
     | 'enabled'
     | 'order'
@@ -81,6 +104,9 @@ export interface AiConfig {
     | 'style_analysis'
     | 'planning'
   temperature: string | null
+  topP: string | null
+  thinkingEnabled: boolean | null
+  reasoningEffort: 'low' | 'medium' | 'high' | null
   isDefault: boolean
   enabled: boolean
   order: number
@@ -97,6 +123,9 @@ export interface Novel {
     | 'styleGuide'
     | 'worldSetting'
     | 'aiTemperature'
+    | 'aiTopP'
+    | 'aiThinkingEnabled'
+    | 'aiReasoningEffort'
     | 'aiExtraPrompt'
     | 'enabledSkillIds'
     | 'defaultPromptTemplateId'
@@ -113,6 +142,9 @@ export interface Novel {
   styleGuide: string | null
   worldSetting: string | null
   aiTemperature: string | null
+  aiTopP: string | null
+  aiThinkingEnabled: boolean | null
+  aiReasoningEffort: 'low' | 'medium' | 'high' | null
   aiExtraPrompt: string | null
   /** JSON 序列化：number[] 本书默认启用的写作技能包 id */
   enabledSkillIds: string | null
@@ -586,6 +618,48 @@ export const AiModelSchema = new EntitySchema<AiModel>({
     model: { type: 'string' },
     maxTokens: { type: 'number', fieldName: 'max_tokens', default: 4096 },
     enabled: { type: 'boolean', default: true },
+    supportsThinking: {
+      type: 'boolean',
+      fieldName: 'supports_thinking',
+      default: false
+    },
+    thinkingEnabled: {
+      type: 'boolean',
+      fieldName: 'thinking_enabled',
+      default: false
+    },
+    reasoningEffort: {
+      type: 'string',
+      fieldName: 'reasoning_effort',
+      default: 'low'
+    },
+    temperatureDefault: {
+      type: 'number',
+      fieldName: 'temperature_default',
+      default: 0.7
+    },
+    temperatureMin: {
+      type: 'number',
+      fieldName: 'temperature_min',
+      default: 0
+    },
+    temperatureMax: {
+      type: 'number',
+      fieldName: 'temperature_max',
+      default: 1.5
+    },
+    topPDefault: {
+      type: 'number',
+      fieldName: 'top_p_default',
+      default: 0.95
+    },
+    topPMin: { type: 'number', fieldName: 'top_p_min', default: 0.01 },
+    topPMax: { type: 'number', fieldName: 'top_p_max', default: 1 },
+    samplingLockedWhenThinking: {
+      type: 'boolean',
+      fieldName: 'sampling_locked_when_thinking',
+      default: false
+    },
     lastCheckAt: {
       type: UnixTimestampType,
       fieldName: 'last_check_at',
@@ -630,6 +704,19 @@ export const AiConfigSchema = new EntitySchema<AiConfig>({
     aiModel: { kind: 'm:1', entity: () => 'AiModel', fieldName: 'ai_model_id' },
     purpose: { type: 'string' },
     temperature: { type: 'string', nullable: true, default: '0.7' },
+    topP: { type: 'string', nullable: true, fieldName: 'top_p', default: null },
+    thinkingEnabled: {
+      type: 'boolean',
+      nullable: true,
+      fieldName: 'thinking_enabled',
+      default: null
+    },
+    reasoningEffort: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'reasoning_effort',
+      default: null
+    },
     isDefault: { type: 'boolean', fieldName: 'is_default', default: false },
     enabled: { type: 'boolean', default: true },
     order: { type: 'number', default: 0 },
@@ -670,6 +757,21 @@ export const NovelSchema = new EntitySchema<Novel>({
       type: 'string',
       nullable: true,
       fieldName: 'ai_temperature'
+    },
+    aiTopP: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'ai_top_p'
+    },
+    aiThinkingEnabled: {
+      type: 'boolean',
+      nullable: true,
+      fieldName: 'ai_thinking_enabled'
+    },
+    aiReasoningEffort: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'ai_reasoning_effort'
     },
     aiExtraPrompt: {
       type: 'string',

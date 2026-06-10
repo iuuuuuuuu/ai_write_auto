@@ -13,6 +13,9 @@ const createNovelSchema = z.object({
   styleGuide: z.string().max(10000, '风格指南不能超过10000字').optional(),
   worldSetting: z.string().max(20000, '世界观设定不能超过20000字').optional(),
   aiTemperature: z.string().optional(),
+  aiTopP: z.string().optional(),
+  aiThinkingEnabled: z.boolean().nullable().optional(),
+  aiReasoningEffort: z.enum(['low', 'medium', 'high']).nullable().optional(),
   aiExtraPrompt: z.string().max(5000, 'AI提示词不能超过5000字').optional()
 })
 
@@ -40,6 +43,9 @@ export default defineEventHandler(async (event) => {
     styleGuide: data.styleGuide || null,
     worldSetting: data.worldSetting || null,
     aiTemperature: data.aiTemperature || null,
+    aiTopP: data.aiTopP || null,
+    aiThinkingEnabled: data.aiThinkingEnabled ?? null,
+    aiReasoningEffort: data.aiReasoningEffort ?? null,
     aiExtraPrompt: data.aiExtraPrompt || null,
     status: 'draft'
   })

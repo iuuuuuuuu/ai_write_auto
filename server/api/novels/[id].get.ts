@@ -5,11 +5,15 @@ export default defineEventHandler(async (event) => {
   const id = parseIntParam(event, 'id')
   const em = useEm(event)
 
-  const novel = await em.findOne(NovelSchema, {
-    id,
-    user: auth.userId,
-    deletedAt: null,
-  }, { populate: ['aiConfig', 'aiConfig.aiModel'] })
+  const novel = await em.findOne(
+    NovelSchema,
+    {
+      id,
+      user: auth.userId,
+      deletedAt: null
+    },
+    { populate: ['aiConfig', 'aiConfig.aiModel', 'aiConfig.aiModel.provider'] }
+  )
 
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
@@ -22,5 +26,11 @@ export default defineEventHandler(async (event) => {
     ...novel,
     aiConfigId: aiConfig?.id || null,
     aiConfigName: aiModel?.name || null,
+    aiConfigModel: aiModel?.model || null,
+    aiConfigOperational:
+      Boolean(aiConfig?.enabled) &&
+      Boolean(aiModel?.enabled) &&
+      Boolean((aiModel?.provider as any)?.enabled) &&
+      aiModel?.lastCheckAvailable === true
   }
 })

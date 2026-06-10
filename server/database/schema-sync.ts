@@ -6,8 +6,12 @@ import {
 } from './entities'
 import { syncNovelTemplateSeeds } from '../services/novel-template-seeds'
 import { syncWritingSkillSeeds } from '../services/writing-skill-seeds'
+import {
+  getBuiltinModelPreset,
+  getKnownBuiltinModelNames
+} from '../utils/ai-model-capabilities'
 
-export const DATABASE_SCHEMA_VERSION = '2026.06.10.002'
+export const DATABASE_SCHEMA_VERSION = '2026.06.10.003'
 
 export interface DatabaseSchemaSyncResult {
   version: string
@@ -135,6 +139,47 @@ async function migrateModelsToProviders(orm: MikroORM): Promise<void> {
   } catch {}
 }
 
+async function backfillBuiltinModelCapabilities(orm: MikroORM): Promise<void> {
+  const conn = orm.em.getConnection()
+
+  for (const modelName of getKnownBuiltinModelNames()) {
+    const preset = getBuiltinModelPreset(modelName)
+    try {
+      await conn.execute(
+        `UPDATE ai_models
+         SET supports_thinking = ?,
+             thinking_enabled = ?,
+             reasoning_effort = ?,
+             temperature_default = ?,
+             temperature_min = ?,
+             temperature_max = ?,
+             top_p_default = ?,
+             top_p_min = ?,
+             top_p_max = ?,
+             sampling_locked_when_thinking = ?
+         WHERE lower(model) = ?
+           AND (supports_thinking IS NULL OR supports_thinking = 0)
+           AND (thinking_enabled IS NULL OR thinking_enabled = 0)
+           AND (temperature_default IS NULL OR temperature_default = 0.7)
+           AND (top_p_default IS NULL OR top_p_default = 0.95)`,
+        [
+          preset.supportsThinking,
+          preset.thinkingEnabled,
+          preset.reasoningEffort,
+          preset.temperatureDefault,
+          preset.temperatureMin,
+          preset.temperatureMax,
+          preset.topPDefault,
+          preset.topPMin,
+          preset.topPMax,
+          preset.samplingLockedWhenThinking,
+          modelName
+        ]
+      )
+    } catch {}
+  }
+}
+
 async function recordSchemaMigration(
   orm: MikroORM,
   version: string,
@@ -184,6 +229,7 @@ export async function syncDatabaseSchema(
 
   // Migrate existing ai_models data to new provider structure
   await migrateModelsToProviders(orm)
+  await backfillBuiltinModelCapabilities(orm)
   if (source !== 'setup') {
     await syncNovelTemplateSeeds(orm)
   }

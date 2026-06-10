@@ -478,10 +478,6 @@ export default defineEventHandler(async (event) => {
             finalTruncated
           } = await streamWithContinuation(
             toAiOptions(aiConfig, {
-              temperature:
-                promptNovel.aiTemperature ?
-                  parseFloat(promptNovel.aiTemperature)
-                : parseFloat(aiConfig.temperature ?? '0.7'),
               maxTokens: aiConfig.maxTokens || MAX_TOKENS_WORKSPACE,
               extraBody: PROSE_SAMPLING,
               messages: prompt,

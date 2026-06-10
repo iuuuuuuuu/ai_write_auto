@@ -1,8 +1,12 @@
-import { AI_CONNECT_TIMEOUT_MS, AI_STREAM_READ_TIMEOUT_MS } from './ai-constants'
+import {
+  AI_CONNECT_TIMEOUT_MS,
+  AI_STREAM_READ_TIMEOUT_MS
+} from './ai-constants'
 import { getOrm } from '../database'
 import { AiModelSchema } from '../database/entities'
 import { wrap } from '@mikro-orm/core'
 import type { ResolvedAiConfig } from './ai-configs'
+import { resolveAiRequestParameters } from './ai-model-capabilities'
 
 export interface AiRequestOptions {
   apiUrl: string
@@ -10,6 +14,9 @@ export interface AiRequestOptions {
   model: string
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
   temperature?: number
+  topP?: number
+  thinkingEnabled?: boolean
+  reasoningEffort?: string | null
   maxTokens?: number
   stream?: boolean
   signal?: AbortSignal
@@ -30,15 +37,48 @@ export const PROSE_SAMPLING = {
 } as const
 
 export function toAiOptions(
-  config: Pick<ResolvedAiConfig, 'apiUrl' | 'apiKey' | 'model' | 'modelId'>,
-  overrides: Omit<AiRequestOptions, 'apiUrl' | 'apiKey' | 'model' | 'modelId'> = {} as any
+  config: Pick<ResolvedAiConfig, 'apiUrl' | 'apiKey' | 'model' | 'modelId'> &
+    Partial<
+      Pick<
+        ResolvedAiConfig,
+        | 'temperature'
+        | 'topP'
+        | 'thinkingEnabled'
+        | 'reasoningEffort'
+        | 'capabilities'
+      >
+    >,
+  overrides: Omit<
+    AiRequestOptions,
+    'apiUrl' | 'apiKey' | 'model' | 'modelId'
+  > = {} as any
 ): AiRequestOptions {
+  const parameters = resolveAiRequestParameters({
+    model: config.model,
+    modelCapabilities: config.capabilities,
+    config: {
+      temperature: config.temperature,
+      topP: config.topP,
+      thinkingEnabled: config.thinkingEnabled,
+      reasoningEffort: config.reasoningEffort
+    },
+    request: {
+      temperature: overrides.temperature,
+      topP: overrides.topP,
+      thinkingEnabled: overrides.thinkingEnabled,
+      reasoningEffort: overrides.reasoningEffort
+    }
+  })
   return {
     apiUrl: config.apiUrl,
     apiKey: config.apiKey,
     model: config.model,
     modelId: config.modelId,
-    ...overrides
+    ...overrides,
+    temperature: parameters.temperature,
+    topP: parameters.topP,
+    thinkingEnabled: parameters.thinkingEnabled,
+    reasoningEffort: parameters.reasoningEffort
   } as AiRequestOptions
 }
 
@@ -59,7 +99,10 @@ function stripThinking(text: string): string {
   const cleaned = text
     .replace(/<think>[\s\S]*?<\/think>/g, '')
     .replace(/<\|think\|>[\s\S]*?<\|\/think\|>/g, '')
-    .replace(/^The request was rejected.*|^This content violates.*|content.?policy|safety filter/gi, '')
+    .replace(
+      /^The request was rejected.*|^This content violates.*|content.?policy|safety filter/gi,
+      ''
+    )
     .trim()
   // Reasoning models may wrap the entire output in <think> tags.
   // Fall back to the raw text so we don't return empty content.
@@ -69,17 +112,25 @@ function stripThinking(text: string): string {
   return cleaned
 }
 
-async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Response> {
+async function doFetch(
+  options: AiRequestOptions,
+  stream: boolean
+): Promise<Response> {
   const controller = new AbortController()
   let timedOut = false
-  const connectTimeout = setTimeout(() => { timedOut = true; controller.abort() }, AI_CONNECT_TIMEOUT_MS)
+  const connectTimeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, AI_CONNECT_TIMEOUT_MS)
 
   if (options.signal) {
     if (options.signal.aborted) {
       clearTimeout(connectTimeout)
       throw new Error('请求已被取消')
     }
-    options.signal.addEventListener('abort', () => controller.abort(), { once: true })
+    options.signal.addEventListener('abort', () => controller.abort(), {
+      once: true
+    })
   }
 
   let response: Response
@@ -88,23 +139,32 @@ async function doFetch(options: AiRequestOptions, stream: boolean): Promise<Resp
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${options.apiKey}`,
+        Authorization: `Bearer ${options.apiKey}`
       },
       body: JSON.stringify({
         model: options.model,
         messages: options.messages,
         temperature: options.temperature ?? 0.7,
+        top_p: options.topP ?? 0.95,
         max_tokens: options.maxTokens ?? 4096,
         stream,
-        ...options.extraBody,
+        ...(typeof options.thinkingEnabled === 'boolean' ?
+          { enable_thinking: options.thinkingEnabled }
+        : {}),
+        ...(options.reasoningEffort ?
+          { reasoning_effort: options.reasoningEffort }
+        : {}),
+        ...options.extraBody
       }),
-      signal: controller.signal,
+      signal: controller.signal
     })
   } catch (e: any) {
     clearTimeout(connectTimeout)
     if (e.name === 'AbortError') {
       if (timedOut) {
-        throw new Error(`AI API 连接超时（${AI_CONNECT_TIMEOUT_MS / 1000}秒），请检查 API 地址是否可达: ${options.apiUrl}`)
+        throw new Error(
+          `AI API 连接超时（${AI_CONNECT_TIMEOUT_MS / 1000}秒），请检查 API 地址是否可达: ${options.apiUrl}`
+        )
       }
       throw new Error('请求已被取消')
     }
@@ -144,7 +204,9 @@ export async function callAi(options: AiRequestOptions): Promise<string> {
   return stripThinking(content)
 }
 
-export async function callAiWithUsage(options: AiRequestOptions): Promise<AiResultWithUsage> {
+export async function callAiWithUsage(
+  options: AiRequestOptions
+): Promise<AiResultWithUsage> {
   const response = await doFetch(options, false)
   const data = await response.json()
   const msg = data.choices[0]?.message
@@ -157,7 +219,9 @@ export async function callAiWithUsage(options: AiRequestOptions): Promise<AiResu
   }
 }
 
-export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStreamChunk> {
+export async function* streamAi(
+  options: AiRequestOptions
+): AsyncGenerator<AiStreamChunk> {
   const response = await doFetch(options, true)
 
   const reader = response.body!.getReader()
@@ -172,7 +236,15 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
       let timeoutId: ReturnType<typeof setTimeout>
       const readPromise = reader.read()
       const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error(`AI API 流式读取超时（${AI_STREAM_READ_TIMEOUT_MS / 1000}秒无数据）`)), AI_STREAM_READ_TIMEOUT_MS)
+        timeoutId = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `AI API 流式读取超时（${AI_STREAM_READ_TIMEOUT_MS / 1000}秒无数据）`
+              )
+            ),
+          AI_STREAM_READ_TIMEOUT_MS
+        )
       })
       const { done, value } = await Promise.race([readPromise, timeoutPromise])
       clearTimeout(timeoutId!)
@@ -199,29 +271,50 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
 
           if (delta) {
             // Skip content moderation messages from API providers
-            if (/^The request was rejected|^This content violates|content.?policy|safety filter/i.test(delta)) {
+            if (
+              /^The request was rejected|^This content violates|content.?policy|safety filter/i.test(
+                delta
+              )
+            ) {
               continue
             }
             hasContent = true
             if (insideThink) {
               thinkBuffer += delta
-              if (thinkBuffer.includes('</think>') || thinkBuffer.includes('<|/think|>')) {
+              if (
+                thinkBuffer.includes('</think>') ||
+                thinkBuffer.includes('<|/think|>')
+              ) {
                 insideThink = false
-                const afterClose = thinkBuffer.split(/<\/think>|<\|\/think\|>/).pop() || ''
+                const afterClose =
+                  thinkBuffer.split(/<\/think>|<\|\/think\|>/).pop() || ''
                 thinkBuffer = ''
-                if (afterClose.trim()) yield { content: afterClose, done: false, usage }
+                if (afterClose.trim())
+                  yield { content: afterClose, done: false, usage }
               }
-            } else if (delta.includes('<think>') || delta.includes('<|think|>')) {
+            } else if (
+              delta.includes('<think>') ||
+              delta.includes('<|think|>')
+            ) {
               const beforeOpen = delta.split(/<think>|<\|think\|>/)[0] || ''
-              if (beforeOpen.trim()) yield { content: beforeOpen, done: false, usage }
+              if (beforeOpen.trim())
+                yield { content: beforeOpen, done: false, usage }
               insideThink = true
-              const afterOpen = delta.split(/<think>|<\|think\|>/).slice(1).join('')
+              const afterOpen = delta
+                .split(/<think>|<\|think\|>/)
+                .slice(1)
+                .join('')
               thinkBuffer = afterOpen
-              if (thinkBuffer.includes('</think>') || thinkBuffer.includes('<|/think|>')) {
+              if (
+                thinkBuffer.includes('</think>') ||
+                thinkBuffer.includes('<|/think|>')
+              ) {
                 insideThink = false
-                const afterClose = thinkBuffer.split(/<\/think>|<\|\/think\|>/).pop() || ''
+                const afterClose =
+                  thinkBuffer.split(/<\/think>|<\|\/think\|>/).pop() || ''
                 thinkBuffer = ''
-                if (afterClose.trim()) yield { content: afterClose, done: false, usage }
+                if (afterClose.trim())
+                  yield { content: afterClose, done: false, usage }
               }
             } else {
               yield { content: delta, done: false, usage }
@@ -229,7 +322,12 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
           }
           if (finishReason === 'stop' || finishReason === 'length') {
             if (!hasContent) break
-            yield { content: '', done: true, truncated: finishReason === 'length', usage }
+            yield {
+              content: '',
+              done: true,
+              truncated: finishReason === 'length',
+              usage
+            }
             return
           }
         } catch {}
@@ -247,8 +345,22 @@ export async function* streamAi(options: AiRequestOptions): AsyncGenerator<AiStr
     const usage = fallbackData.usage
     const cleaned = stripThinking(content)
     if (cleaned) {
-      yield { content: cleaned, done: false, usage: { prompt_tokens: usage?.prompt_tokens || 0, completion_tokens: usage?.completion_tokens || 0 } }
+      yield {
+        content: cleaned,
+        done: false,
+        usage: {
+          prompt_tokens: usage?.prompt_tokens || 0,
+          completion_tokens: usage?.completion_tokens || 0
+        }
+      }
     }
-    yield { content: '', done: true, usage: { prompt_tokens: usage?.prompt_tokens || 0, completion_tokens: usage?.completion_tokens || 0 } }
+    yield {
+      content: '',
+      done: true,
+      usage: {
+        prompt_tokens: usage?.prompt_tokens || 0,
+        completion_tokens: usage?.completion_tokens || 0
+      }
+    }
   }
 }

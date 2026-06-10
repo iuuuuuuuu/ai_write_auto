@@ -20,9 +20,24 @@ interface AiModelItem {
   model: string
   maxTokens: number
   enabled: boolean
+  supportsThinking: boolean
+  thinkingEnabled: boolean
+  reasoningEffort: 'low' | 'medium' | 'high'
+  temperatureDefault: number
+  temperatureMin: number
+  temperatureMax: number
+  topPDefault: number
+  topPMin: number
+  topPMax: number
+  samplingLockedWhenThinking: boolean
+  operational?: boolean
   lastCheckAt: string | null
   lastCheckAvailable: boolean | null
   lastCheckReason: string | null
+  providerEnabled?: boolean
+  providerLastCheckAt?: string | null
+  providerLastCheckAvailable?: boolean | null
+  providerLastCheckReason?: string | null
   providerId?: number
   providerName?: string
   apiUrl?: string
@@ -32,8 +47,12 @@ interface AiConfigItem {
   id: number
   purpose: string
   temperature: string | null
+  topP: string | null
+  thinkingEnabled: boolean | null
+  reasoningEffort: 'low' | 'medium' | 'high' | null
   isDefault: boolean
   enabled: boolean
+  operational: boolean
   order: number
   aiModel: AiModelItem
 }
@@ -49,6 +68,25 @@ const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
 const { post, del: apiDel } = useApi()
+
+function isOperationalModel(
+  model: Pick<
+    AiModelItem,
+    'enabled' | 'lastCheckAvailable' | 'operational' | 'providerEnabled'
+  >
+) {
+  return (
+    model.operational ??
+    (model.enabled &&
+      model.providerEnabled !== false &&
+      model.lastCheckAvailable === true)
+  )
+}
+
+function modelStatusClass(model: AiModelItem) {
+  if (!model.enabled) return 'bg-(--ui-text-dimmed)/30'
+  return isOperationalModel(model) ? 'bg-emerald-500' : 'bg-red-500'
+}
 
 /* ─────────────── Providers ─────────────── */
 
@@ -233,8 +271,13 @@ async function checkProviderConnectivity(provider: AiProviderItem) {
   for (const model of enabledModels) {
     checkingModelId.value = model.id
     try {
-      await $fetch('/api/ai/models-check', { params: { id: model.id } })
-      passed++
+      const result = await $fetch<{ available: boolean }>(
+        '/api/ai/models-check',
+        {
+          params: { id: model.id }
+        }
+      )
+      if (result.available) passed++
     } catch {}
   }
   checkingModelId.value = null
@@ -265,8 +308,14 @@ function timeAgo(isoStr: string | null): string {
 async function checkModelConnectivity(model: AiModelItem) {
   checkingModelId.value = model.id
   try {
-    await $fetch('/api/ai/models-check', { params: { id: model.id } })
-    await refreshProviders()
+    const result = await $fetch<{ available: boolean; reason: string | null }>(
+      '/api/ai/models-check',
+      { params: { id: model.id } }
+    )
+    await Promise.all([refreshProviders(), refreshConfigs()])
+    if (!result.available) {
+      message.error(result.reason || `${model.name} 检测失败`)
+    }
   } catch {
     message.error(`${model.name} 检测失败`)
   } finally {
@@ -284,10 +333,10 @@ async function checkAllModels() {
     } catch {}
   }
   checkingModelId.value = null
-  await refreshProviders()
+  await Promise.all([refreshProviders(), refreshConfigs()])
   checkingAll.value = false
   const passed = models.value.filter(
-    (m) => m.enabled && m.lastCheckAvailable
+    (m) => m.enabled && isOperationalModel(m)
   ).length
   message.info(`检测完成：${passed}/${enabledModels.length} 个模型可用`)
 }
@@ -298,8 +347,25 @@ const modelForm = reactive({
   name: '',
   model: '',
   maxTokens: 4096,
-  enabled: true
+  enabled: true,
+  supportsThinking: false,
+  thinkingEnabled: false,
+  reasoningEffort: 'low' as 'low' | 'medium' | 'high',
+  temperatureDefault: 0.7,
+  temperatureMin: 0,
+  temperatureMax: 1.5,
+  topPDefault: 0.95,
+  topPMin: 0.01,
+  topPMax: 1,
+  samplingLockedWhenThinking: false
 })
+
+const isModelSamplingLockedByDefault = computed(
+  () =>
+    modelForm.supportsThinking &&
+    modelForm.thinkingEnabled &&
+    modelForm.samplingLockedWhenThinking
+)
 
 let modelTestResult: Record<string, unknown> = {}
 
@@ -310,6 +376,16 @@ function resetModelForm() {
   modelForm.model = ''
   modelForm.maxTokens = 4096
   modelForm.enabled = true
+  modelForm.supportsThinking = false
+  modelForm.thinkingEnabled = false
+  modelForm.reasoningEffort = 'low'
+  modelForm.temperatureDefault = 0.7
+  modelForm.temperatureMin = 0
+  modelForm.temperatureMax = 1.5
+  modelForm.topPDefault = 0.95
+  modelForm.topPMin = 0.01
+  modelForm.topPMax = 1
+  modelForm.samplingLockedWhenThinking = false
   modelTestResult = {}
 }
 
@@ -326,6 +402,16 @@ function startEditModel(model: AiModelItem, providerId: number) {
   modelForm.model = model.model
   modelForm.maxTokens = model.maxTokens
   modelForm.enabled = model.enabled
+  modelForm.supportsThinking = model.supportsThinking
+  modelForm.thinkingEnabled = model.thinkingEnabled
+  modelForm.reasoningEffort = model.reasoningEffort
+  modelForm.temperatureDefault = model.temperatureDefault
+  modelForm.temperatureMin = model.temperatureMin
+  modelForm.temperatureMax = model.temperatureMax
+  modelForm.topPDefault = model.topPDefault
+  modelForm.topPMin = model.topPMin
+  modelForm.topPMax = model.topPMax
+  modelForm.samplingLockedWhenThinking = model.samplingLockedWhenThinking
   showModelForm.value = true
 }
 
@@ -349,6 +435,18 @@ async function saveModel() {
         model: modelForm.model.trim(),
         maxTokens: modelForm.maxTokens,
         enabled: modelForm.enabled,
+        supportsThinking: modelForm.supportsThinking,
+        thinkingEnabled:
+          modelForm.supportsThinking ? modelForm.thinkingEnabled : false,
+        reasoningEffort: modelForm.reasoningEffort,
+        temperatureDefault: modelForm.temperatureDefault,
+        temperatureMin: modelForm.temperatureMin,
+        temperatureMax: modelForm.temperatureMax,
+        topPDefault: modelForm.topPDefault,
+        topPMin: modelForm.topPMin,
+        topPMax: modelForm.topPMax,
+        samplingLockedWhenThinking:
+          modelForm.supportsThinking && modelForm.samplingLockedWhenThinking,
         ...modelTestResult
       },
       { successMessage: modelForm.id ? '模型已更新' : '模型已添加' }
@@ -391,7 +489,7 @@ async function testModelForm() {
       message.error(result.reason || '连通性测试失败')
     }
     if (modelForm.id) {
-      await refreshProviders()
+      await Promise.all([refreshProviders(), refreshConfigs()])
     }
   } catch (e: any) {
     modelTestResult = {
@@ -477,7 +575,7 @@ const { data: configs, refresh: refreshConfigs } = await useFetch<
 
 const enabledModelOptions = computed(() =>
   models.value
-    .filter((m) => m.enabled)
+    .filter((m) => isOperationalModel(m))
     .map((m) => ({
       label: `${m.providerName} / ${m.name} (${m.model})`,
       value: m.id
@@ -542,6 +640,9 @@ async function onDrop(targetConfig: AiConfigItem, e: DragEvent) {
     aiModelId: c.aiModel.id,
     purpose: c.purpose,
     temperature: c.temperature || '0.7',
+    topP: c.topP || '0.95',
+    thinkingEnabled: c.thinkingEnabled,
+    reasoningEffort: c.reasoningEffort,
     isDefault: i === 0,
     enabled: c.enabled,
     order: i
@@ -567,15 +668,39 @@ const editingPurpose = ref<AiPurpose>('generation')
 const inlineForm = reactive({
   aiModelId: null as number | null,
   temperature: '0.7',
+  topP: '0.95',
+  thinkingEnabled: null as boolean | null,
+  reasoningEffort: null as 'low' | 'medium' | 'high' | null,
   isDefault: false,
   enabled: true
 })
+
+const selectedInlineModel = computed(
+  () => models.value.find((model) => model.id === inlineForm.aiModelId) || null
+)
+
+const isInlineSamplingLocked = computed(() => {
+  const model = selectedInlineModel.value
+  if (!model?.supportsThinking || !model.samplingLockedWhenThinking) {
+    return false
+  }
+  return (inlineForm.thinkingEnabled ?? model.thinkingEnabled) === true
+})
+
+const reasoningOptions = [
+  { label: '低', value: 'low' },
+  { label: '中', value: 'medium' },
+  { label: '高', value: 'high' }
+] as const
 
 function startNewConfig(purpose: AiPurpose) {
   editingConfigId.value = 'new'
   editingPurpose.value = purpose
   inlineForm.aiModelId = null
   inlineForm.temperature = '0.7'
+  inlineForm.topP = '0.95'
+  inlineForm.thinkingEnabled = null
+  inlineForm.reasoningEffort = null
   inlineForm.isDefault = false
   inlineForm.enabled = true
 }
@@ -585,6 +710,9 @@ function startEditExistingConfig(config: AiConfigItem) {
   editingPurpose.value = config.purpose as AiPurpose
   inlineForm.aiModelId = config.aiModel?.id ?? null
   inlineForm.temperature = config.temperature || '0.7'
+  inlineForm.topP = config.topP || '0.95'
+  inlineForm.thinkingEnabled = config.thinkingEnabled
+  inlineForm.reasoningEffort = config.reasoningEffort
   inlineForm.isDefault = config.isDefault
   inlineForm.enabled = config.enabled
 }
@@ -608,6 +736,9 @@ async function saveInlineConfig(purpose: AiPurpose) {
         aiModelId: inlineForm.aiModelId,
         purpose,
         temperature: inlineForm.temperature?.trim() || '0.7',
+        topP: inlineForm.topP?.trim() || '0.95',
+        thinkingEnabled: inlineForm.thinkingEnabled,
+        reasoningEffort: inlineForm.reasoningEffort,
         isDefault: currentIsDefault,
         enabled: inlineForm.enabled
       },
@@ -694,7 +825,11 @@ async function deleteConfig(config: AiConfigItem) {
           <div
             class="w-2 h-2 rounded-full shrink-0"
             :class="
-              provider.enabled ? 'bg-emerald-500' : 'bg-(--ui-text-dimmed)/30'
+              provider.enabled && provider.lastCheckAvailable === true ?
+                'bg-emerald-500'
+              : provider.enabled && provider.lastCheckAvailable === false ?
+                'bg-red-500'
+              : 'bg-(--ui-text-dimmed)/30'
             "
           />
           <div class="flex-1 min-w-0">
@@ -804,9 +939,7 @@ async function deleteConfig(config: AiConfigItem) {
             >
               <div
                 class="w-1.5 h-1.5 rounded-full shrink-0"
-                :class="
-                  model.enabled ? 'bg-emerald-500' : 'bg-(--ui-text-dimmed)/30'
-                "
+                :class="modelStatusClass(model)"
               />
               <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-1.5">
@@ -1009,8 +1142,8 @@ async function deleteConfig(config: AiConfigItem) {
                 <div
                   class="w-1.5 h-1.5 rounded-full shrink-0"
                   :class="
-                    config.enabled && config.aiModel?.enabled ?
-                      'bg-emerald-500'
+                    config.enabled && config.operational ? 'bg-emerald-500'
+                    : config.enabled ? 'bg-red-500'
                     : 'bg-(--ui-text-dimmed)/30'
                   "
                 />
@@ -1030,10 +1163,19 @@ async function deleteConfig(config: AiConfigItem) {
                       class="text-[9px] px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 font-bold"
                       >模型已禁用</span
                     >
+                    <span
+                      v-else-if="config.enabled && !config.operational"
+                      class="text-[9px] px-1 py-0.5 rounded bg-red-500/10 text-red-600 font-bold"
+                      >不可用</span
+                    >
                   </div>
                   <p class="text-[10px] text-(--ui-text-dimmed) truncate">
                     {{ config.aiModel?.model }} · 温度
-                    {{ config.temperature || '0.7' }}
+                    {{ config.temperature || '0.7' }} · top_p
+                    {{ config.topP || '0.95' }}
+                    <span v-if="config.thinkingEnabled !== null">
+                      · 思考 {{ config.thinkingEnabled ? '开' : '关' }}
+                    </span>
                   </p>
                 </div>
                 <button
@@ -1063,8 +1205,16 @@ async function deleteConfig(config: AiConfigItem) {
                   />
                   <NInput
                     v-model:value="inlineForm.temperature"
-                    placeholder="0.7"
+                    placeholder="温度"
                     size="small"
+                    :disabled="isInlineSamplingLocked"
+                    style="width: 70px"
+                  />
+                  <NInput
+                    v-model:value="inlineForm.topP"
+                    placeholder="top_p"
+                    size="small"
+                    :disabled="isInlineSamplingLocked"
                     style="width: 70px"
                   />
                   <NSwitch
@@ -1072,6 +1222,36 @@ async function deleteConfig(config: AiConfigItem) {
                     size="small"
                   />
                 </div>
+                <div
+                  v-if="selectedInlineModel?.supportsThinking"
+                  class="flex items-center gap-2"
+                >
+                  <NCheckbox
+                    :checked="inlineForm.thinkingEnabled === true"
+                    @update:checked="
+                      (checked) => {
+                        inlineForm.thinkingEnabled = checked ? true : false
+                      }
+                    "
+                  >
+                    启用思考
+                  </NCheckbox>
+                  <NSelect
+                    v-model:value="inlineForm.reasoningEffort"
+                    :options="reasoningOptions"
+                    size="small"
+                    clearable
+                    placeholder="思考强度"
+                    style="width: 110px"
+                  />
+                </div>
+                <p
+                  v-if="isInlineSamplingLocked"
+                  class="text-[10px] text-amber-600"
+                >
+                  当前模型启用思考时会使用模型默认采样值，温度和 top_p
+                  覆盖不会生效。
+                </p>
                 <div class="flex justify-end gap-1.5">
                   <NButton
                     size="tiny"
@@ -1113,8 +1293,16 @@ async function deleteConfig(config: AiConfigItem) {
               />
               <NInput
                 v-model:value="inlineForm.temperature"
-                placeholder="0.7"
+                placeholder="温度"
                 size="small"
+                :disabled="isInlineSamplingLocked"
+                style="width: 70px"
+              />
+              <NInput
+                v-model:value="inlineForm.topP"
+                placeholder="top_p"
+                size="small"
+                :disabled="isInlineSamplingLocked"
                 style="width: 70px"
               />
               <button
@@ -1133,6 +1321,36 @@ async function deleteConfig(config: AiConfigItem) {
                 size="small"
               />
             </div>
+            <div
+              v-if="selectedInlineModel?.supportsThinking"
+              class="flex items-center gap-2"
+            >
+              <NCheckbox
+                :checked="inlineForm.thinkingEnabled === true"
+                @update:checked="
+                  (checked) => {
+                    inlineForm.thinkingEnabled = checked ? true : false
+                  }
+                "
+              >
+                启用思考
+              </NCheckbox>
+              <NSelect
+                v-model:value="inlineForm.reasoningEffort"
+                :options="reasoningOptions"
+                size="small"
+                clearable
+                placeholder="思考强度"
+                style="width: 110px"
+              />
+            </div>
+            <p
+              v-if="isInlineSamplingLocked"
+              class="text-[10px] text-amber-600"
+            >
+              当前模型启用思考时会使用模型默认采样值，温度和 top_p
+              覆盖不会生效。
+            </p>
             <div class="flex justify-end gap-1.5">
               <NButton
                 size="tiny"
@@ -1247,7 +1465,7 @@ async function deleteConfig(config: AiConfigItem) {
       v-model:show="showModelForm"
       preset="card"
       :title="modelForm.id ? '编辑模型' : '添加模型'"
-      style="max-width: 480px"
+      style="max-width: 720px"
     >
       <div class="space-y-4">
         <NFormItem
@@ -1304,6 +1522,157 @@ async function deleteConfig(config: AiConfigItem) {
               label="启用"
             />
           </NFormItem>
+        </div>
+        <div class="rounded-lg border border-(--ui-border) p-3 space-y-3">
+          <div>
+            <div class="text-sm font-semibold text-(--ui-text)">模型能力</div>
+            <p class="text-xs text-(--ui-text-dimmed) mt-1">
+              这里描述模型本身的能力和推荐范围。用途配置、小说配置和生成时临时参数都会以这里的范围为准。
+            </p>
+          </div>
+          <NAlert
+            type="info"
+            :show-icon="false"
+            size="small"
+          >
+            不确定时保持默认即可。Temperature 越高越发散，适合创意写作；top_p
+            越低越保守，通常保持 0.9-1。支持思考只在模型接口明确支持
+            reasoning/thinking
+            时开启；思考模型不一定会锁定采样参数，只有模型文档说明开启思考后必须使用推荐采样值时，才需要打开“思考时锁定采样”。
+          </NAlert>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <NFormItem
+              label="是否支持思考"
+              description="模型接口支持 enable_thinking、reasoning_effort 或同类推理参数时开启；普通聊天模型保持关闭。"
+            >
+              <NCheckbox
+                v-model:checked="modelForm.supportsThinking"
+                label="支持思考模式"
+              />
+            </NFormItem>
+            <NFormItem
+              label="默认启用思考"
+              description="开启后未单独覆盖的生成会默认带思考参数；会更稳但通常更慢、消耗更多。"
+            >
+              <NCheckbox
+                v-model:checked="modelForm.thinkingEnabled"
+                :disabled="!modelForm.supportsThinking"
+                label="默认启用"
+              />
+            </NFormItem>
+          </div>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <NFormItem
+              label="思考强度"
+              description="控制推理预算：low 更快，medium 平衡，high 更适合复杂规划但成本更高。"
+            >
+              <NSelect
+                v-model:value="modelForm.reasoningEffort"
+                :options="reasoningOptions"
+                :disabled="!modelForm.supportsThinking"
+                size="small"
+              />
+            </NFormItem>
+            <NFormItem
+              label="思考时锁定采样"
+              description="不是所有思考模型都需要。仅当模型文档说明思考模式会固定或忽略 Temperature/top_p 时开启；开启后系统会使用下方默认值，例如部分小米 mimo 思考模型。"
+            >
+              <NCheckbox
+                v-model:checked="modelForm.samplingLockedWhenThinking"
+                :disabled="!modelForm.supportsThinking"
+                label="使用模型推荐值"
+              />
+            </NFormItem>
+          </div>
+          <NAlert
+            v-if="isModelSamplingLockedByDefault"
+            type="warning"
+            :show-icon="false"
+            size="small"
+          >
+            当前组合表示：这个模型默认启用思考，并且思考时会锁定采样。用途配置、小说配置和生成时临时填写的
+            Temperature/top_p 会被置灰并由这里的默认值接管。
+          </NAlert>
+          <div class="grid gap-4 sm:grid-cols-3">
+            <NFormItem
+              label="Temperature 默认"
+              description="默认创意程度。小说正文常用 0.7-1.0；越高越有变化，也越容易跑偏。"
+            >
+              <NInputNumber
+                v-model:value="modelForm.temperatureDefault"
+                :min="0"
+                :max="2"
+                :step="0.1"
+                size="small"
+              />
+            </NFormItem>
+            <NFormItem
+              label="Temperature 最小"
+              description="允许用户在用途配置或生成时设置的最低值。"
+            >
+              <NInputNumber
+                v-model:value="modelForm.temperatureMin"
+                :min="0"
+                :max="2"
+                :step="0.1"
+                :disabled="isModelSamplingLockedByDefault"
+                size="small"
+              />
+            </NFormItem>
+            <NFormItem
+              label="Temperature 最大"
+              description="允许用户在用途配置或生成时设置的最高值。"
+            >
+              <NInputNumber
+                v-model:value="modelForm.temperatureMax"
+                :min="0"
+                :max="2"
+                :step="0.1"
+                :disabled="isModelSamplingLockedByDefault"
+                size="small"
+              />
+            </NFormItem>
+          </div>
+          <div class="grid gap-4 sm:grid-cols-3">
+            <NFormItem
+              label="top_p 默认"
+              description="候选词采样范围。一般 0.9-1；越低越克制，越高越开放。"
+            >
+              <NInputNumber
+                v-model:value="modelForm.topPDefault"
+                :min="0.01"
+                :max="1"
+                :step="0.01"
+                size="small"
+              />
+            </NFormItem>
+            <NFormItem
+              label="top_p 最小"
+              description="允许配置的最低 top_p，通常不要低于 0.1，除非模型文档明确建议。"
+            >
+              <NInputNumber
+                v-model:value="modelForm.topPMin"
+                :min="0.01"
+                :max="1"
+                :step="0.01"
+                :disabled="isModelSamplingLockedByDefault"
+                size="small"
+              />
+            </NFormItem>
+            <NFormItem
+              label="top_p 最大"
+              description="允许配置的最高 top_p，通常保持 1。"
+            >
+              <NInputNumber
+                v-model:value="modelForm.topPMax"
+                :min="0.01"
+                :max="1"
+                :step="0.01"
+                :disabled="isModelSamplingLockedByDefault"
+                size="small"
+              />
+            </NFormItem>
+          </div>
         </div>
       </div>
       <template #footer>
