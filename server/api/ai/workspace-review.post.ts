@@ -1,8 +1,14 @@
 import { z } from 'zod'
 import { streamAi, toAiOptions } from '../../utils/ai-client'
 import { recordUsage, createRequestSignal } from '../../utils/ai-stream'
-import { resolveNovelAiConfig, type ResolvedAiConfig } from '../../utils/ai-configs'
-import { REVIEW_MAX_CHAPTERS, MAX_TOKENS_REVIEW } from '../../utils/ai-constants'
+import {
+  resolveNovelAiConfig,
+  type ResolvedAiConfig
+} from '../../utils/ai-configs'
+import {
+  REVIEW_MAX_CHAPTERS,
+  MAX_TOKENS_REVIEW
+} from '../../utils/ai-constants'
 import {
   NovelSchema,
   ChapterSchema,
@@ -10,6 +16,7 @@ import {
   PlotPointSchema,
   ConsistencyIssueSchema
 } from '../../database/entities'
+import { filterUsablePlotPoints } from '../../utils/plot-points'
 
 const reviewSchema = z.object({
   novelId: z.number().int().positive(),
@@ -45,7 +52,10 @@ const cleanJson = (s: string) =>
   s.replace(/^```(?:json)?\s*\n?|\n?```\s*$/g, '').trim()
 
 /** 三级容错解析单章审核结果：贪婪数组 → 惰性数组 → 对象包装字段。 */
-function parseIssues(raw: string): { issues: ReviewIssue[]; parseError?: string } {
+function parseIssues(raw: string): {
+  issues: ReviewIssue[]
+  parseError?: string
+} {
   let issues: ReviewIssue[] = []
   let parseError: string | undefined
   try {
@@ -63,7 +73,13 @@ function parseIssues(raw: string): { issues: ReviewIssue[]; parseError?: string 
       try {
         const obj = JSON.parse(cleaned)
         if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-          for (const key of ['issues', 'results', 'problems', 'items', 'data']) {
+          for (const key of [
+            'issues',
+            'results',
+            'problems',
+            'items',
+            'data'
+          ]) {
             if (Array.isArray((obj as any)[key])) {
               issues = (obj as any)[key]
               break
@@ -112,9 +128,21 @@ export default defineEventHandler(async (event) => {
   // 注意 resolveNovelAiConfig 找不到会抛错（而非返回 null），故用 try/catch 实现真正的回退。
   let aiConfig: ResolvedAiConfig
   try {
-    aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'consistency_check', data.aiConfigId)
+    aiConfig = await resolveNovelAiConfig(
+      em,
+      auth.userId,
+      data.novelId,
+      'consistency_check',
+      data.aiConfigId
+    )
   } catch {
-    aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
+    aiConfig = await resolveNovelAiConfig(
+      em,
+      auth.userId,
+      data.novelId,
+      'generation',
+      data.aiConfigId
+    )
   }
 
   // 按章号升序加载，逐章顺序审核
@@ -127,7 +155,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: 'No chapters found' })
 
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
-  const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
+  const allPlotPoints = await em.find(
+    PlotPointSchema,
+    { novel: data.novelId },
+    { populate: ['chapter'] }
+  )
+  const plotPoints = filterUsablePlotPoints(allPlotPoints)
 
   const characterSummary = characters
     .map((c) => {
@@ -139,10 +172,16 @@ export default defineEventHandler(async (event) => {
       return info
     })
     .join('\n')
-  const plotContext = plotPoints.length
-    ? '## 情节点\n' + plotPoints.map((p) => `- [${p.type}/${p.status}] ${p.description}`).join('\n') + '\n'
+  const plotContext =
+    plotPoints.length ?
+      '## 情节点\n' +
+      plotPoints
+        .map((p) => `- [${p.type}/${p.status}] ${p.description}`)
+        .join('\n') +
+      '\n'
     : ''
-  const styleContext = novel.styleGuide ? `## 风格指南\n${novel.styleGuide}\n` : ''
+  const styleContext =
+    novel.styleGuide ? `## 风格指南\n${novel.styleGuide}\n` : ''
 
   const signal = createRequestSignal(event)
   const encoder = new TextEncoder()
@@ -150,7 +189,9 @@ export default defineEventHandler(async (event) => {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const send = (payload: Record<string, unknown>) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`))
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(payload)}\n\n`)
+        )
 
       controller.enqueue(encoder.encode(': connected\n\n'))
 
@@ -160,7 +201,11 @@ export default defineEventHandler(async (event) => {
       let totalIssues = 0
       let reviewedCount = 0
       // 已审章节摘要——逐章独审会丢失跨章一致性，用前文摘要补偿
-      const reviewedSummaries: Array<{ number: number; title: string; summary: string }> = []
+      const reviewedSummaries: Array<{
+        number: number
+        title: string
+        summary: string
+      }> = []
 
       try {
         for (const [i, chapter] of chapters.entries()) {
@@ -169,10 +214,17 @@ export default defineEventHandler(async (event) => {
             return
           }
 
-          send({ type: 'progress', current: chapter.chapterNumber, title: chapter.title, completed: i, total: chapters.length })
+          send({
+            type: 'progress',
+            current: chapter.chapterNumber,
+            title: chapter.title,
+            completed: i,
+            total: chapters.length
+          })
 
-          const prevContext = reviewedSummaries.length
-            ? `## 前文已审章节摘要（仅作跨章一致性参考，不要重复报告这些章节的问题）\n${reviewedSummaries
+          const prevContext =
+            reviewedSummaries.length ?
+              `## 前文已审章节摘要（仅作跨章一致性参考，不要重复报告这些章节的问题）\n${reviewedSummaries
                 .map((s) => `第${s.number}章《${s.title}》：${s.summary}`)
                 .join('\n')}\n`
             : ''
@@ -221,7 +273,12 @@ ${(chapter.content || '').slice(0, 6000)}
           let inputTokens = 0
           let outputTokens = 0
           for await (const chunk of streamAi(
-            toAiOptions(aiConfig, { messages, temperature: 0.2, maxTokens: MAX_TOKENS_REVIEW, signal })
+            toAiOptions(aiConfig, {
+              messages,
+              temperature: 0.2,
+              maxTokens: MAX_TOKENS_REVIEW,
+              signal
+            })
           )) {
             if (chunk.content) reviewContent += chunk.content
             if (chunk.usage) {
@@ -230,7 +287,12 @@ ${(chapter.content || '').slice(0, 6000)}
             }
           }
           await recordUsage(
-            { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model },
+            {
+              em,
+              userId: auth.userId,
+              configId: aiConfig.id,
+              model: aiConfig.model
+            },
             inputTokens,
             outputTokens
           )
@@ -241,8 +303,12 @@ ${(chapter.content || '').slice(0, 6000)}
             chapterId: chapter.id,
             chapterNumber: chapter.chapterNumber,
             type: it.type,
-            severity: ['high', 'medium', 'low'].includes(it.severity) ? it.severity : 'medium',
-            description: typeof it.description === 'string' ? it.description : '',
+            severity:
+              ['high', 'medium', 'low'].includes(it.severity) ?
+                it.severity
+              : 'medium',
+            description:
+              typeof it.description === 'string' ? it.description : '',
             suggestion: typeof it.suggestion === 'string' ? it.suggestion : '',
             originalText: it.originalText,
             fixedText: it.fixedText
@@ -260,7 +326,9 @@ ${(chapter.content || '').slice(0, 6000)}
           await em.flush()
 
           const high = normalized.filter((i) => i.severity === 'high').length
-          const medium = normalized.filter((i) => i.severity === 'medium').length
+          const medium = normalized.filter(
+            (i) => i.severity === 'medium'
+          ).length
           const low = normalized.filter((i) => i.severity === 'low').length
           totalHigh += high
           totalMedium += medium

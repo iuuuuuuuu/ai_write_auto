@@ -4,6 +4,7 @@ import {
   CharacterAppearanceSchema,
   ChapterCharacterSchema
 } from '../../../database/entities'
+import { buildCharacterAppearancePayload } from '../../../utils/character-appearances'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -37,43 +38,10 @@ export default defineEventHandler(async (event) => {
   )
 
   return characters.map((character) => {
-    const appearanceItems = appearances
-      .filter((appearance) => appearance.character.id === character.id)
-      .map((appearance) => ({
-        id: appearance.id,
-        chapterId: appearance.chapter.id,
-        chapterNumber: appearance.chapter.chapterNumber,
-        chapterTitle: appearance.chapter.title,
-        role: appearance.role,
-        snippet: appearance.snippet,
-        background: appearance.background,
-        positionStart: appearance.positionStart,
-        positionEnd: appearance.positionEnd,
-        createdAt: appearance.createdAt
-      }))
-
-    const appearanceChapterIds = new Set(
-      appearanceItems.map((appearance) => appearance.chapterId)
-    )
-    const assignmentItems = assignments
-      .filter(
-        (assignment) =>
-          assignment.character.id === character.id &&
-          !appearanceChapterIds.has(assignment.chapter.id)
-      )
-      .map((assignment) => ({
-        id: assignment.id,
-        chapterId: assignment.chapter.id,
-        chapterNumber: assignment.chapter.chapterNumber,
-        chapterTitle: assignment.chapter.title,
-        role: assignment.role,
-        chapterStory: assignment.chapterStory,
-        snippet: null,
-        background: null,
-        positionStart: null,
-        positionEnd: null,
-        createdAt: null
-      }))
+    const appearancePayload = buildCharacterAppearancePayload(character, {
+      appearances,
+      assignments
+    })
 
     return {
       id: character.id,
@@ -87,12 +55,10 @@ export default defineEventHandler(async (event) => {
       rolePosition: character.rolePosition,
       storyRole: character.storyRole,
       overallArc: character.overallArc,
-      firstAppearanceChapter: character.firstAppearanceChapter,
-      lastAppearanceChapter: character.lastAppearanceChapter,
+      firstAppearanceChapter: appearancePayload.firstAppearanceChapter,
+      lastAppearanceChapter: appearancePayload.lastAppearanceChapter,
       createdAt: character.createdAt,
-      appearances: [...appearanceItems, ...assignmentItems].sort(
-        (left, right) => left.chapterNumber - right.chapterNumber
-      )
+      appearances: appearancePayload.appearances
     }
   })
 })

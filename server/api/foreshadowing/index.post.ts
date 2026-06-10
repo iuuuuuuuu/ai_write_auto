@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { ForeshadowingSchema, NovelSchema, ChapterSchema } from '../../database/entities'
+import {
+  ForeshadowingSchema,
+  NovelSchema,
+  ChapterSchema
+} from '../../database/entities'
 import { isEmbeddingReady } from '../../services/embedding'
 import { indexForeshadowing } from '../../services/content-rag'
 
@@ -16,12 +20,22 @@ export default defineEventHandler(async (event) => {
   const data = schema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: data.novelId,
+    user: auth.userId
+  })
   if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
 
   let chapter = null
   if (data.chapterId) {
-    chapter = await em.findOne(ChapterSchema, { id: data.chapterId, novel: data.novelId })
+    chapter = await em.findOne(ChapterSchema, {
+      id: data.chapterId,
+      novel: data.novelId,
+      deletedAt: null
+    })
+    if (!chapter) {
+      throw createError({ statusCode: 400, message: 'Chapter not found' })
+    }
   }
 
   const foreshadowing = em.create(ForeshadowingSchema, {
@@ -35,8 +49,17 @@ export default defineEventHandler(async (event) => {
 
   // Index for RAG
   if (isEmbeddingReady()) {
-    await indexForeshadowing(foreshadowing.id, data.novelId, data.chapterId || null, data.content).catch(() => {})
+    await indexForeshadowing(
+      foreshadowing.id,
+      data.novelId,
+      chapter?.id || null,
+      data.content
+    ).catch(() => {})
   }
 
-  return { id: foreshadowing.id, content: foreshadowing.content, status: foreshadowing.status }
+  return {
+    id: foreshadowing.id,
+    content: foreshadowing.content,
+    status: foreshadowing.status
+  }
 })

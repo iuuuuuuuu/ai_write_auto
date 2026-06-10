@@ -17,6 +17,8 @@ import {
   PlotPointSchema
 } from '../database/entities'
 import { indexForeshadowing, indexPlotEvent } from '../services/content-rag'
+import { filterUsablePlotPoints } from './plot-points'
+import { isActiveChapterRef } from './chapter-refs'
 
 export type ThreadKind =
   | 'foreshadow_setup'
@@ -93,9 +95,9 @@ export function parsePlotThreads(raw: string): ParsedThread[] {
       typeof item.groundQuote === 'string' ? item.groundQuote.trim() : ''
     if (!summary || !groundQuote) continue
     const relatedTo =
-      typeof item.relatedTo === 'string' && item.relatedTo.trim()
-        ? item.relatedTo.trim()
-        : null
+      typeof item.relatedTo === 'string' && item.relatedTo.trim() ?
+        item.relatedTo.trim()
+      : null
     out.push({ kind, summary, groundQuote, relatedTo })
   }
   return out
@@ -170,14 +172,20 @@ export async function runPlotThreadExtraction(
   )
   if (!chapter || !chapter.content) return ZERO
 
-  const activeFs = await em.find(ForeshadowingSchema, {
-    novel: novelId,
-    status: 'active'
-  })
-  const activePp = await em.find(PlotPointSchema, {
-    novel: novelId,
-    status: { $ne: 'resolved' }
-  })
+  const allActiveFs = await em.find(
+    ForeshadowingSchema,
+    { novel: novelId, status: 'active' },
+    { populate: ['chapter'] }
+  )
+  const activeFs = allActiveFs.filter((foreshadowing) =>
+    isActiveChapterRef(foreshadowing.chapter)
+  )
+  const allActivePp = await em.find(
+    PlotPointSchema,
+    { novel: novelId, status: { $ne: 'resolved' } },
+    { populate: ['chapter'] }
+  )
+  const activePp = filterUsablePlotPoints(allActivePp)
 
   const messages = buildPlotThreadExtractionPrompt({
     chapterNumber: chapter.chapterNumber,

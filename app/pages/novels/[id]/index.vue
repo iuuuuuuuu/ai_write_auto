@@ -324,6 +324,7 @@ const regenerateOutlineForm = reactive({
 })
 const outlineSearchQuery = shallowRef('')
 const plotPointSearchQuery = shallowRef('')
+const foreshadowingRefreshKey = shallowRef(0)
 const characterSearchQuery = shallowRef('')
 const characterAppearanceFilter = shallowRef<CharacterAppearanceFilter>('all')
 const expandedCharacterIds = shallowRef<number[]>([])
@@ -578,7 +579,12 @@ function confirmBatchDeleteChapters() {
       message.success(`已删除 ${ids.length} 个章节`)
       chapterSelectMode.value = false
       selectedChapterIds.value = []
-      await refreshChapters()
+      await Promise.all([
+        refreshChapters(),
+        refreshCharacters(),
+        refreshPlotPoints()
+      ])
+      foreshadowingRefreshKey.value += 1
     }
   })
 }
@@ -2199,6 +2205,7 @@ async function savePlotPoint() {
           <NovelForeshadowingPanel
             :novel-id="novelId"
             :chapters="chapters || []"
+            :refresh-key="foreshadowingRefreshKey"
           />
         </section>
       </div>

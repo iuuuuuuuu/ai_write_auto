@@ -3,6 +3,7 @@ import type { ResolvedAiConfig } from '../utils/ai-configs'
 import { getActiveForeshadowing } from './content-rag'
 import { ensureChapterOutline } from './outline-autofill'
 import { resolveSkillIdsForNovel } from '../utils/writing-skills'
+import { filterUsablePlotPoints } from '../utils/plot-points'
 import {
   ChapterSchema,
   CharacterSchema,
@@ -67,9 +68,12 @@ export async function resolveChapterGenerationInputs(
   const characters = await opts.em.find(CharacterSchema, {
     novel: opts.novelId
   })
-  const plotPoints = await opts.em.find(PlotPointSchema, {
-    novel: opts.novelId
-  })
+  const allPlotPoints = await opts.em.find(
+    PlotPointSchema,
+    { novel: opts.novelId },
+    { populate: ['chapter'] }
+  )
+  const plotPoints = filterUsablePlotPoints(allPlotPoints)
   const storyArcs = await opts.em.find(StoryArcSchema, { novel: opts.novelId })
 
   let chapterOutline = opts.chapterOutline

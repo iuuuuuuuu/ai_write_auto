@@ -35,6 +35,7 @@ import {
 } from '../../utils/ai-constants'
 import { ensureOutlinesForRange } from '../../services/outline-autofill'
 import { resolveSkillIdsForNovel } from '../../utils/writing-skills'
+import { filterUsablePlotPoints } from '../../utils/plot-points'
 
 const workspaceSchema = z.object({
   novelId: z.number().int().positive(),
@@ -207,7 +208,12 @@ export default defineEventHandler(async (event) => {
 
   // Pre-load shared context once
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
-  const plotPoints = await em.find(PlotPointSchema, { novel: data.novelId })
+  const allPlotPoints = await em.find(
+    PlotPointSchema,
+    { novel: data.novelId },
+    { populate: ['chapter'] }
+  )
+  const plotPoints = filterUsablePlotPoints(allPlotPoints)
   const storyArcs = await em.find(StoryArcSchema, { novel: data.novelId })
   const outlines = await em.find(
     NovelOutlineSchema,
@@ -359,9 +365,12 @@ export default defineEventHandler(async (event) => {
           const promptCharacters = await em.find(CharacterSchema, {
             novel: data.novelId
           })
-          const promptPlotPoints = await em.find(PlotPointSchema, {
-            novel: data.novelId
-          })
+          const promptAllPlotPoints = await em.find(
+            PlotPointSchema,
+            { novel: data.novelId },
+            { populate: ['chapter'] }
+          )
+          const promptPlotPoints = filterUsablePlotPoints(promptAllPlotPoints)
           const promptStoryArcs = await em.find(StoryArcSchema, {
             novel: data.novelId
           })
