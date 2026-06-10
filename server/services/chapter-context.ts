@@ -13,7 +13,8 @@ import {
   type PromptCharacter,
   type PromptPlotPoint,
   type PromptStoryArc,
-  type PromptForeshadowing
+  type PromptForeshadowing,
+  type PromptCharacterStateChange
 } from '../utils/ai-prompts'
 import {
   CharacterStateChangeSchema,
@@ -216,13 +217,60 @@ export interface PrepareChapterOptions {
   extraNotes?: RagContextItem[]
   /** 本次生成应注入的写作技能包 id（小说默认启用 + 本次勾选），加载失败静默跳过 */
   skillIds?: number[]
+  contextSelection?: GenerationContextSelection
 }
 
 export interface PrepareChapterResult {
   messages: Array<{ role: 'system' | 'user'; content: string }>
   retrievedNotes: RagContextItem[]
+  characterStateChanges: PromptCharacterStateChange[]
   queries?: string[]
   usage: Usage
+}
+
+export interface GenerationContextSelection {
+  includedKeys?: string[]
+  excludedKeys?: string[]
+}
+
+export interface SelectableGenerationContext {
+  ragContext: RagContextItem[]
+  characterStateChanges: Array<PromptCharacterStateChange & { id?: number }>
+}
+
+export function getRagContextKey(item: RagContextItem): string {
+  return `rag:${item.contentType}:${item.chapterId ?? 'novel'}:${item.characterName || ''}`
+}
+
+export function getCharacterStateChangeKey(
+  change: PromptCharacterStateChange & { id?: number }
+): string {
+  return `state-change:${change.id ?? `${change.chapterNumber}:${change.characterName}:${change.changeType}`}`
+}
+
+function shouldKeepContextItem(
+  key: string,
+  selection?: GenerationContextSelection
+): boolean {
+  if (!selection) return true
+  const included = new Set(selection.includedKeys || [])
+  const excluded = new Set(selection.excludedKeys || [])
+  if (excluded.has(key)) return false
+  return included.size === 0 || included.has(key)
+}
+
+export function applyGenerationContextSelection(
+  context: SelectableGenerationContext,
+  selection?: GenerationContextSelection
+): SelectableGenerationContext {
+  return {
+    ragContext: context.ragContext.filter((item) =>
+      shouldKeepContextItem(getRagContextKey(item), selection)
+    ),
+    characterStateChanges: context.characterStateChanges.filter((change) =>
+      shouldKeepContextItem(getCharacterStateChangeKey(change), selection)
+    )
+  }
 }
 
 async function loadAcceptedCharacterStateChanges(
@@ -255,6 +303,7 @@ async function loadAcceptedCharacterStateChanges(
     const character = change.character as Character
     const relatedCharacter = change.relatedCharacter as Character | null
     return {
+      id: change.id,
       chapterNumber: chapter.chapterNumber,
       characterName: character.name,
       relatedCharacterName: relatedCharacter?.name ?? null,
@@ -311,6 +360,14 @@ export async function prepareChapterContext(
     currentChapterNumber: opts.currentChapter?.chapterNumber
   })
 
+  const selectedContext = applyGenerationContextSelection(
+    {
+      ragContext: gathered.retrievedNotes,
+      characterStateChanges
+    },
+    opts.contextSelection
+  )
+
   const messages = buildGenerationPrompt({
     novel: opts.novel,
     chapters: opts.precedingChapters,
@@ -320,16 +377,17 @@ export async function prepareChapterContext(
     currentChapter: opts.currentChapter,
     currentChapterOutline: opts.outline,
     userDirection: opts.direction,
-    ragContext: gathered.retrievedNotes,
+    ragContext: selectedContext.ragContext,
     foreshadowing: opts.foreshadowing,
     recentChapterContent: opts.recentChapterContent,
-    characterStateChanges,
+    characterStateChanges: selectedContext.characterStateChanges,
     skills
   })
 
   return {
     messages,
-    retrievedNotes: gathered.retrievedNotes,
+    retrievedNotes: selectedContext.ragContext,
+    characterStateChanges: selectedContext.characterStateChanges,
     queries: gathered.queries,
     usage: gathered.usage
   }

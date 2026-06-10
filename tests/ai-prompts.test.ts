@@ -17,8 +17,104 @@ import {
   buildQueryPlanningPrompt,
   buildPlotThreadExtractionPrompt
 } from '../server/utils/ai-prompts'
+import { applyGenerationContextSelection } from '../server/services/chapter-context'
 
 describe('ai-prompts', () => {
+  describe('generation context selection', () => {
+    it('filters optional rag memories and character state changes by excluded keys', () => {
+      const result = applyGenerationContextSelection(
+        {
+          ragContext: [
+            {
+              contentType: 'chapter_story',
+              chapterId: 1,
+              characterName: '林氏',
+              content: '林氏上一章被禁足'
+            },
+            {
+              contentType: 'plot_event',
+              chapterId: 2,
+              content: '孙美人暗中递信'
+            }
+          ],
+          characterStateChanges: [
+            {
+              id: 10,
+              chapterNumber: 1,
+              characterName: '林氏',
+              relatedCharacterName: null,
+              changeType: 'currentState',
+              afterValue: '被禁足，不可随意出宫门',
+              evidenceQuote: '禁足三日'
+            },
+            {
+              id: 11,
+              chapterNumber: 2,
+              characterName: '孙美人',
+              relatedCharacterName: '林氏',
+              changeType: 'relationships',
+              afterValue: '表面示好，暗中试探',
+              evidenceQuote: '妹妹何必防我'
+            }
+          ]
+        },
+        {
+          excludedKeys: ['rag:chapter_story:1:林氏', 'state-change:10']
+        }
+      )
+
+      expect(result.ragContext).toHaveLength(1)
+      expect(result.ragContext[0].content).toBe('孙美人暗中递信')
+      expect(result.characterStateChanges).toHaveLength(1)
+      expect(result.characterStateChanges[0].id).toBe(11)
+    })
+
+    it('keeps excluded context out of the final generation prompt', () => {
+      const selected = applyGenerationContextSelection(
+        {
+          ragContext: [
+            {
+              contentType: 'chapter_story',
+              chapterId: 1,
+              characterName: '林氏',
+              content: '林氏上一章被禁足'
+            },
+            {
+              contentType: 'plot_event',
+              chapterId: 2,
+              content: '孙美人暗中递信'
+            }
+          ],
+          characterStateChanges: [
+            {
+              id: 10,
+              chapterNumber: 1,
+              characterName: '林氏',
+              changeType: 'currentState',
+              afterValue: '被禁足，不可随意出宫门',
+              evidenceQuote: '禁足三日'
+            }
+          ]
+        },
+        {
+          excludedKeys: ['rag:chapter_story:1:林氏', 'state-change:10']
+        }
+      )
+      const prompt = buildGenerationPrompt({
+        novel: { title: '后宫试探' },
+        chapters: [],
+        characters: [],
+        plotPoints: [],
+        ragContext: selected.ragContext,
+        characterStateChanges: selected.characterStateChanges
+      })
+
+      expect(prompt[1].content).not.toContain('林氏上一章被禁足')
+      expect(prompt[1].content).not.toContain('禁足三日')
+      expect(prompt[1].content).toContain('孙美人暗中递信')
+    })
+  })
+
   describe('protocol rules', () => {
     it('adds court protocol details for palace context', () => {
       const result = buildProseProtocolRules({

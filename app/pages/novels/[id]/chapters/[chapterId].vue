@@ -15,6 +15,7 @@ import {
   type AiTitleUsage
 } from '../../../../utils/chapter-title'
 import type { DraftRecoveryType } from '../../../../composables/useDraftRecovery'
+import type { GenerationContextSelection } from '../../../../composables/useGenerationContextSelection'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -646,6 +647,11 @@ const selectedAiConfigId = ref<number | undefined>()
 const generateTemperature = ref<number>(0.7)
 const generateMaxTokens = ref<number>(4096)
 const generateWizardStep = ref(1)
+const generationContextPreviewRef = ref<{
+  fetchPreview: () => Promise<void>
+} | null>(null)
+const generationContextSelection = ref<GenerationContextSelection | null>(null)
+const generationContextReady = ref(false)
 const chapterOutlineDraft = ref('')
 const outlineIdea = ref('')
 const generatingChapterOutline = ref(false)
@@ -1668,6 +1674,8 @@ function openGenerateWizard() {
   generateWizardStep.value = 1
   chapterOutlineDraft.value = currentChapterOutline.value?.description || ''
   outlineIdea.value = generateDirection.value.trim()
+  generationContextSelection.value = null
+  generationContextReady.value = false
   showGenerateDialog.value = true
 }
 
@@ -1696,7 +1704,12 @@ async function nextGenerateWizardStep() {
   if (generateWizardStep.value === 2) {
     await saveChapterCharacters()
   }
-  generateWizardStep.value = Math.min(generateWizardStep.value + 1, 4)
+  generateWizardStep.value = Math.min(generateWizardStep.value + 1, 5)
+  if (generateWizardStep.value === 4) {
+    generationContextReady.value = false
+    await nextTick()
+    await generationContextPreviewRef.value?.fetchPreview()
+  }
 }
 
 function prevGenerateWizardStep() {
@@ -2308,7 +2321,8 @@ async function generateChapter() {
         aiConfigId: selectedAiConfigId.value,
         temperature: generateTemperature.value,
         maxTokens: generateMaxTokens.value,
-        skillIds: selectedSkillIds.value
+        skillIds: selectedSkillIds.value,
+        contextSelection: generationContextSelection.value || undefined
       }),
       signal: controller.signal
     })
@@ -4297,6 +4311,7 @@ onBeforeUnmount(() => {
           <NStep title="本章大纲" />
           <NStep title="推荐角色" />
           <NStep title="大致剧情" />
+          <NStep title="上下文确认" />
           <NStep title="生成正文" />
         </NSteps>
         <NAlert
@@ -4509,6 +4524,22 @@ onBeforeUnmount(() => {
           v-show="generateWizardStep === 4"
           class="space-y-4"
         >
+          <GenerationContextPreview
+            ref="generationContextPreviewRef"
+            :novel-id="novelId"
+            :chapter-id="chapterId"
+            :chapter-outline="chapterOutlineDraft"
+            :direction="buildFinalGenerateDirection()"
+            :skill-ids="selectedSkillIds"
+            @update:selection="generationContextSelection = $event"
+            @ready-change="generationContextReady = $event"
+          />
+        </div>
+
+        <div
+          v-show="generateWizardStep === 5"
+          class="space-y-4"
+        >
           <NFormItem label="Prompt 模板">
             <div class="w-full space-y-2">
               <div class="flex gap-2">
@@ -4703,7 +4734,7 @@ onBeforeUnmount(() => {
               上一步
             </NButton>
             <NButton
-              v-if="generateWizardStep < 4"
+              v-if="generateWizardStep < 5"
               type="primary"
               :disabled="
                 generateWizardStep === 1 && !chapterOutlineDraft.trim()
@@ -4719,7 +4750,8 @@ onBeforeUnmount(() => {
               :disabled="
                 !selectedAiConfigId ||
                 !aiStatus.available ||
-                !chapterOutlineDraft.trim()
+                !chapterOutlineDraft.trim() ||
+                !generationContextReady
               "
               @click="generateChapter"
             >
