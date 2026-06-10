@@ -893,6 +893,64 @@ const characterChapterCount = computed(() => {
   }, 0)
 })
 
+const latestChapter = computed(() => {
+  return [...(chapters.value || [])].sort((left, right) => {
+    return right.chapterNumber - left.chapterNumber
+  })[0]
+})
+
+const nextOutline = computed(() => {
+  const nextChapterNumber = (chapters.value?.length || 0) + 1
+  return (
+    sortedOutlines.value.find(
+      (outline) => outline.chapterNumber >= nextChapterNumber
+    ) || sortedOutlines.value.at(-1)
+  )
+})
+
+const missingCharacterProfileCount = computed(() => {
+  return sortedCharacters.value.filter((character) => {
+    return !(
+      character.realName &&
+      character.displayTitle &&
+      character.rolePosition &&
+      character.storyRole
+    )
+  }).length
+})
+
+const writingPlanItems = computed(() => [
+  {
+    label: '大纲',
+    value: `${sortedOutlines.value.length} 条`,
+    description:
+      sortedOutlines.value.length ?
+        '可直接作为章节生成方向'
+      : '建议先生成章节大纲',
+    icon: 'lucide:list-tree',
+    tone: sortedOutlines.value.length ? 'text-primary-500' : 'text-amber-500'
+  },
+  {
+    label: '角色',
+    value: `${sortedCharacters.value.length} 位`,
+    description:
+      missingCharacterProfileCount.value ?
+        `${missingCharacterProfileCount.value} 位资料待补全`
+      : '核心身份字段已补齐',
+    icon: 'lucide:users',
+    tone:
+      missingCharacterProfileCount.value ? 'text-amber-500' : 'text-emerald-500'
+  },
+  {
+    label: '线索',
+    value: `${plotPoints.value?.length || 0} 个`,
+    description:
+      plotPoints.value?.length ? '可辅助追踪冲突与回收' : '可添加关键情节节点',
+    icon: 'lucide:route',
+    tone: plotPoints.value?.length ? 'text-blue-500' : 'text-(--ui-text-dimmed)'
+  }
+])
+
 const chapterStatusOptions = computed(() => [
   { label: '全部状态', value: 'all' },
   { label: `草稿 ${getChapterStatusCount('draft')}`, value: 'draft' },
@@ -1360,245 +1418,236 @@ async function savePlotPoint() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-[1600px] 2xl:px-2">
+  <div class="w-full">
     <div
       v-if="novel"
       class="space-y-4"
     >
-      <section class="card-glass p-4 lg:p-5">
-        <div
-          class="grid gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)]"
-        >
-          <div class="min-w-0">
-            <div
-              class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
-            >
-              <div class="min-w-0">
-                <div class="mb-2 flex flex-wrap items-center gap-2">
-                  <span
-                    class="inline-block h-5 w-1 rounded-full"
-                    :style="{ backgroundColor: genreColor(novel.genre) }"
-                  />
-                  <NTag
-                    size="small"
-                    :type="statusColor"
-                    >{{ statusLabel }}</NTag
-                  >
-                  <span class="text-xs text-(--ui-text-dimmed)">{{
-                    novel.genre || '未分类'
-                  }}</span>
-                  <span class="text-xs text-(--ui-text-dimmed)">
-                    创建于 {{ formatDate(novel.createdAt) }}
-                  </span>
-                </div>
-                <h1
-                  class="text-2xl font-semibold text-(--ui-text-highlighted) lg:text-3xl"
-                >
-                  {{ novel.title }}
-                </h1>
-                <p
-                  class="mt-2 max-w-4xl text-sm leading-relaxed text-(--ui-text-muted)"
-                >
-                  {{ novel.description || '暂无简介' }}
-                </p>
-              </div>
-              <div class="flex shrink-0 gap-2">
-                <NButton
-                  secondary
-                  size="small"
-                  @click="navigateTo(`/novels/${novel.id}/read`)"
-                >
-                  <template #icon><Icon icon="lucide:book-open" /></template>
-                  阅读全文
-                </NButton>
-                <NButton
-                  secondary
-                  size="small"
-                  @click="
-                    chapters?.length ?
-                      navigateTo(
-                        `/novels/${novel.id}/chapters/${chapters[0]!.id}`
-                      )
-                    : openNewChapterDialog()
-                  "
-                >
-                  <template #icon><Icon icon="lucide:pen-tool" /></template>
-                  继续写作
-                </NButton>
-                <NButton
-                  secondary
-                  size="small"
-                  @click="showExportDialog = true"
-                >
-                  <template #icon><Icon icon="lucide:download" /></template>
-                  导出
-                </NButton>
-                <NButton
-                  quaternary
-                  size="small"
-                  type="error"
-                  @click="deleteNovel"
-                >
-                  <template #icon><Icon icon="lucide:trash-2" /></template>
-                </NButton>
-              </div>
+      <section class="card-glass overflow-hidden p-0">
+        <div class="grid xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div class="min-w-0 p-5 lg:p-6">
+            <div class="flex flex-wrap items-center gap-2">
+              <span
+                class="inline-block h-5 w-1 rounded-full"
+                :style="{ backgroundColor: genreColor(novel.genre) }"
+              />
+              <NTag
+                size="small"
+                :type="statusColor"
+                >{{ statusLabel }}</NTag
+              >
+              <span class="text-xs text-(--ui-text-dimmed)">{{
+                novel.genre || '未分类'
+              }}</span>
+              <span class="text-xs text-(--ui-text-dimmed)">
+                创建于 {{ formatDate(novel.createdAt) }}
+              </span>
             </div>
 
-            <div
-              class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"
-            >
-              <div
-                class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2"
+            <div class="mt-4 max-w-4xl">
+              <h1
+                class="text-2xl font-semibold tracking-tight text-(--ui-text-highlighted) lg:text-4xl"
               >
-                <p class="text-[11px] text-(--ui-text-dimmed)">章节</p>
-                <p
-                  class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)"
+                {{ novel.title }}
+              </h1>
+              <p
+                class="mt-3 max-w-3xl text-sm leading-relaxed text-(--ui-text-muted)"
+              >
+                {{ novel.description || '暂无简介' }}
+              </p>
+            </div>
+
+            <div class="mt-5 flex flex-wrap gap-2">
+              <NButton
+                size="small"
+                type="primary"
+                @click="
+                  latestChapter ?
+                    navigateTo(
+                      `/novels/${novel.id}/chapters/${latestChapter.id}`
+                    )
+                  : openNewChapterDialog()
+                "
+              >
+                <template #icon><Icon icon="lucide:pen-tool" /></template>
+                继续写作
+              </NButton>
+              <NButton
+                secondary
+                size="small"
+                @click="navigateTo(`/novels/${novel.id}/read`)"
+              >
+                <template #icon><Icon icon="lucide:book-open" /></template>
+                阅读全文
+              </NButton>
+              <NButton
+                secondary
+                size="small"
+                @click="showExportDialog = true"
+              >
+                <template #icon><Icon icon="lucide:download" /></template>
+                导出
+              </NButton>
+              <NButton
+                quaternary
+                size="small"
+                type="error"
+                @click="deleteNovel"
+              >
+                <template #icon><Icon icon="lucide:trash-2" /></template>
+              </NButton>
+            </div>
+
+            <dl
+              class="mt-6 grid gap-3 rounded-xl bg-(--ui-bg-muted)/70 px-3 py-3 ring-1 ring-(--ui-border) sm:grid-cols-2 lg:grid-cols-6"
+            >
+              <div>
+                <dt class="text-[11px] text-(--ui-text-dimmed)">章节</dt>
+                <dd
+                  class="mt-0.5 font-mono text-base text-(--ui-text-highlighted)"
                 >
                   {{ chapters?.length || 0 }}
-                </p>
+                </dd>
               </div>
-              <div
-                class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2"
-              >
-                <p class="text-[11px] text-(--ui-text-dimmed)">字数</p>
-                <p
-                  class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)"
+              <div>
+                <dt class="text-[11px] text-(--ui-text-dimmed)">字数</dt>
+                <dd
+                  class="mt-0.5 font-mono text-base text-(--ui-text-highlighted)"
                 >
                   {{ totalWords.toLocaleString() }}
-                </p>
+                </dd>
               </div>
-              <div
-                class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2"
-              >
-                <p class="text-[11px] text-(--ui-text-dimmed)">角色</p>
-                <p
-                  class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)"
+              <div>
+                <dt class="text-[11px] text-(--ui-text-dimmed)">角色</dt>
+                <dd
+                  class="mt-0.5 font-mono text-base text-(--ui-text-highlighted)"
                 >
                   {{ sortedCharacters.length }}
-                </p>
+                </dd>
               </div>
-              <div
-                class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2"
-              >
-                <p class="text-[11px] text-(--ui-text-dimmed)">出场</p>
-                <p
-                  class="mt-0.5 font-mono text-lg text-(--ui-text-highlighted)"
+              <div>
+                <dt class="text-[11px] text-(--ui-text-dimmed)">出场</dt>
+                <dd
+                  class="mt-0.5 font-mono text-base text-(--ui-text-highlighted)"
                 >
                   {{ characterChapterCount }}
-                </p>
+                </dd>
               </div>
-              <div
-                class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2"
-              >
-                <p class="text-[11px] text-(--ui-text-dimmed)">状态</p>
-                <p class="mt-1 truncate text-sm text-(--ui-text-highlighted)">
+              <div>
+                <dt class="text-[11px] text-(--ui-text-dimmed)">状态</dt>
+                <dd
+                  class="mt-0.5 truncate text-sm text-(--ui-text-highlighted)"
+                >
                   {{ statusLabel }}
-                </p>
+                </dd>
               </div>
-              <div
-                class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) px-3 py-2"
-              >
-                <p class="text-[11px] text-(--ui-text-dimmed)">更新</p>
-                <p class="mt-1 truncate text-sm text-(--ui-text-highlighted)">
+              <div>
+                <dt class="text-[11px] text-(--ui-text-dimmed)">更新</dt>
+                <dd
+                  class="mt-0.5 truncate text-sm text-(--ui-text-highlighted)"
+                >
                   {{ formatDate(novel.updatedAt) }}
-                </p>
+                </dd>
               </div>
-            </div>
+            </dl>
           </div>
 
           <aside
-            class="cursor-pointer rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3.5 transition-shadow hover:ring-(--ui-border-active)"
-            @click="openAiSettings"
+            class="border-t border-(--ui-border) bg-(--ui-bg-muted)/60 p-5 xl:border-l xl:border-t-0 lg:p-6"
           >
-            <div class="mb-3 flex items-center gap-2">
+            <div class="flex items-center gap-2">
               <Icon
-                icon="lucide:sparkles"
+                icon="lucide:compass"
                 class="size-4 text-primary-500"
               />
               <h2 class="text-sm font-semibold text-(--ui-text-highlighted)">
-                AI 设定
+                下一步写作
               </h2>
-              <Icon
-                icon="lucide:pencil"
-                class="ml-auto size-3.5 text-(--ui-text-dimmed)"
-              />
             </div>
-            <div class="grid grid-cols-2 gap-2 text-xs">
-              <div class="rounded-md bg-(--ui-bg-elevated)/70 p-2">
-                <p class="text-(--ui-text-dimmed)">Temperature</p>
-                <p class="mt-1 font-mono text-(--ui-text-highlighted)">
-                  {{ novel.aiTemperature || '默认' }}
-                </p>
-              </div>
-              <div class="rounded-md bg-(--ui-bg-elevated)/70 p-2">
-                <p class="text-(--ui-text-dimmed)">模型</p>
-                <p class="mt-1 truncate text-(--ui-text-highlighted)">
-                  {{ novel.aiConfigName || '未设置' }}
-                </p>
-              </div>
-            </div>
-            <div
-              v-if="novel.aiExtraPrompt"
-              class="mt-2 rounded-md bg-(--ui-bg-elevated)/70 p-2"
-            >
-              <p class="text-xs text-(--ui-text-dimmed)">额外提示</p>
+
+            <div class="mt-4 rounded-xl bg-(--ui-bg-elevated)/70 p-3">
+              <p class="text-[11px] text-(--ui-text-dimmed)">最近章节</p>
+              <p class="mt-1 truncate text-sm text-(--ui-text-highlighted)">
+                <template v-if="latestChapter">
+                  Ch.{{ latestChapter.chapterNumber }}
+                  {{
+                    stripChapterNumberPrefix(latestChapter.title) || '未命名'
+                  }}
+                </template>
+                <template v-else>还没有章节</template>
+              </p>
               <p
-                class="mt-1 line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed text-(--ui-text-muted)"
+                v-if="latestChapter?.summary"
+                class="mt-2 line-clamp-2 text-xs leading-relaxed text-(--ui-text-muted)"
               >
-                {{ novel.aiExtraPrompt }}
+                {{ latestChapter.summary }}
               </p>
             </div>
-            <p
-              v-else
-              class="mt-2 rounded-md bg-(--ui-bg-elevated)/70 p-2 text-xs text-(--ui-text-dimmed)"
-            >
-              暂未配置额外提示
-            </p>
-          </aside>
-        </div>
 
-        <div
-          v-if="novel.styleGuide || novel.worldSetting"
-          class="mt-4 grid gap-3 xl:grid-cols-2"
-        >
-          <section
-            v-if="novel.styleGuide"
-            class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
-          >
-            <div class="mb-1.5 flex items-center gap-2">
-              <Icon
-                icon="lucide:palette"
-                class="size-3.5 text-amber-500"
-              />
-              <h2 class="text-sm font-semibold text-(--ui-text-highlighted)">
-                风格指南
-              </h2>
+            <div class="mt-3 rounded-xl bg-(--ui-bg-elevated)/70 p-3">
+              <p class="text-[11px] text-(--ui-text-dimmed)">下一条大纲</p>
+              <p class="mt-1 text-sm text-(--ui-text-highlighted)">
+                <template v-if="nextOutline">
+                  Ch.{{ nextOutline.chapterNumber }}
+                </template>
+                <template v-else>暂无大纲</template>
+              </p>
+              <p
+                class="mt-2 line-clamp-3 text-xs leading-relaxed text-(--ui-text-muted)"
+              >
+                {{
+                  nextOutline?.description ||
+                  '可以先生成章节大纲，再开始正文创作。'
+                }}
+              </p>
             </div>
-            <p
-              class="line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-(--ui-text-muted)"
+
+            <button
+              class="mt-3 flex w-full items-center gap-2 rounded-xl bg-(--ui-bg-elevated)/70 p-3 text-left ring-1 ring-transparent transition-colors hover:ring-(--ui-border-active)"
+              type="button"
+              @click="openAiSettings"
             >
-              {{ novel.styleGuide }}
-            </p>
-          </section>
-          <section
-            v-if="novel.worldSetting"
-            class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
-          >
-            <div class="mb-1.5 flex items-center gap-2">
               <Icon
-                icon="lucide:globe"
-                class="size-3.5 text-blue-500"
+                icon="lucide:sparkles"
+                class="size-4 shrink-0 text-primary-500"
               />
-              <h2 class="text-sm font-semibold text-(--ui-text-highlighted)">
-                世界观
-              </h2>
+              <span class="min-w-0 flex-1">
+                <span class="block text-xs text-(--ui-text-dimmed)"
+                  >AI 设定</span
+                >
+                <span
+                  class="mt-0.5 block truncate text-sm text-(--ui-text-highlighted)"
+                >
+                  {{ novel.aiConfigName || '未设置模型' }} ·
+                  {{ novel.aiTemperature || '默认温度' }}
+                </span>
+              </span>
+              <Icon
+                icon="lucide:pencil"
+                class="size-3.5 text-(--ui-text-dimmed)"
+              />
+            </button>
+
+            <div class="mt-4 grid gap-2">
+              <div
+                v-for="item in writingPlanItems"
+                :key="item.label"
+                class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg px-2 py-1.5"
+              >
+                <Icon
+                  :icon="item.icon"
+                  class="size-3.5"
+                  :class="item.tone"
+                />
+                <p class="truncate text-xs text-(--ui-text-muted)">
+                  {{ item.description }}
+                </p>
+                <span class="font-mono text-xs text-(--ui-text-highlighted)">
+                  {{ item.value }}
+                </span>
+              </div>
             </div>
-            <p
-              class="line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-(--ui-text-muted)"
-            >
-              {{ novel.worldSetting }}
-            </p>
-          </section>
+          </aside>
         </div>
       </section>
 
@@ -1756,291 +1805,405 @@ async function savePlotPoint() {
         </div>
       </section>
 
-      <!-- Outline -->
-      <section class="card-glass p-5">
-        <div
-          class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
-        >
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <Icon
-                icon="lucide:list-tree"
-                class="size-4 text-primary-500"
-              />
-              <h2 class="font-semibold text-(--ui-text-highlighted)">
-                章节大纲
-              </h2>
+      <div
+        class="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.72fr)]"
+      >
+        <!-- Outline -->
+        <section class="card-glass p-5">
+          <div
+            class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <Icon
+                  icon="lucide:list-tree"
+                  class="size-4 text-primary-500"
+                />
+                <h2 class="font-semibold text-(--ui-text-highlighted)">
+                  章节大纲
+                </h2>
+              </div>
+              <p class="mt-1 text-xs text-(--ui-text-dimmed)">
+                {{ sortedOutlines.length }} 条大纲，可用于后续章节生成
+              </p>
             </div>
-            <p class="mt-1 text-xs text-(--ui-text-dimmed)">
-              {{ sortedOutlines.length }} 条大纲，可用于后续章节生成
-            </p>
+            <div class="flex gap-2">
+              <NButton
+                size="tiny"
+                @click="openGenerateOutlineDialog"
+              >
+                <template #icon><Icon icon="lucide:sparkles" /></template>
+                AI 生成
+              </NButton>
+              <NButton
+                size="tiny"
+                @click="() => openRegenerateOutlineDialog()"
+              >
+                <template #icon><Icon icon="lucide:refresh-cw" /></template>
+                重新规划后续
+              </NButton>
+              <NButton
+                v-if="!editingOutlines"
+                size="tiny"
+                type="primary"
+                @click="startEditOutlines"
+              >
+                <template #icon><Icon icon="lucide:pencil" /></template>
+                编辑大纲
+              </NButton>
+              <template v-else>
+                <NButton
+                  size="tiny"
+                  quaternary
+                  @click="cancelEditOutlines"
+                >
+                  取消
+                </NButton>
+                <NButton
+                  size="tiny"
+                  type="primary"
+                  :loading="savingOutlines"
+                  @click="saveOutlines"
+                >
+                  保存
+                </NButton>
+              </template>
+            </div>
           </div>
-          <div class="flex gap-2">
-            <NButton
-              size="tiny"
-              @click="openGenerateOutlineDialog"
+
+          <div
+            v-if="!editingOutlines && sortedOutlines.length"
+            class="mb-3"
+          >
+            <NInput
+              v-model:value="outlineSearchQuery"
+              clearable
+              size="small"
+              placeholder="搜索章节号或大纲内容"
             >
-              <template #icon><Icon icon="lucide:sparkles" /></template>
-              AI 生成
-            </NButton>
-            <NButton
-              size="tiny"
-              @click="() => openRegenerateOutlineDialog()"
+              <template #prefix>
+                <Icon
+                  icon="lucide:search"
+                  class="size-4 text-(--ui-text-dimmed)"
+                />
+              </template>
+            </NInput>
+          </div>
+
+          <div
+            v-if="editingOutlines"
+            class="max-h-[420px] space-y-2 overflow-y-auto pr-1"
+          >
+            <div
+              v-for="(outline, index) in outlineFormItems"
+              :key="index"
+              draggable="true"
+              class="grid gap-2 rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-2 md:grid-cols-[auto_120px_minmax(0,1fr)_auto] cursor-move transition-opacity"
+              :class="{ 'opacity-50': draggingOutlineIndex === index }"
+              @dragstart="handleOutlineDragStart(index)"
+              @dragover="handleOutlineDragOver($event, index)"
+              @dragend="handleOutlineDragEnd"
             >
-              <template #icon><Icon icon="lucide:refresh-cw" /></template>
-              重新规划后续
-            </NButton>
+              <div class="flex items-center text-(--ui-text-dimmed)">
+                <Icon
+                  icon="lucide:grip-vertical"
+                  class="size-4"
+                />
+              </div>
+              <NInputNumber
+                v-model:value="outline.chapterNumber"
+                :min="1"
+                size="small"
+                class="w-full"
+              />
+              <NInput
+                v-model:value="outline.description"
+                size="small"
+                placeholder="本章核心事件、冲突或转折"
+              />
+              <NButton
+                size="small"
+                quaternary
+                type="error"
+                @click="removeOutlineItem(index)"
+              >
+                删除
+              </NButton>
+            </div>
             <NButton
-              v-if="!editingOutlines"
-              size="tiny"
-              type="primary"
-              @click="startEditOutlines"
+              size="small"
+              dashed
+              block
+              @click="addOutlineItem"
             >
-              <template #icon><Icon icon="lucide:pencil" /></template>
-              编辑大纲
+              <template #icon><Icon icon="lucide:plus" /></template>
+              添加章节大纲
             </NButton>
-            <template v-else>
+          </div>
+
+          <div
+            v-else-if="!sortedOutlines.length"
+            class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) py-8 text-center text-sm text-(--ui-text-muted)"
+          >
+            暂无章节大纲，可手动编辑或使用 AI 生成。
+          </div>
+
+          <div
+            v-else-if="!filteredOutlines.length"
+            class="py-8 text-center"
+          >
+            <Icon
+              icon="lucide:search-x"
+              class="mx-auto size-8 text-(--ui-text-dimmed)"
+            />
+            <p class="mt-2 text-sm text-(--ui-text-muted)">没有匹配的大纲</p>
+          </div>
+
+          <div
+            v-else
+            class="grid max-h-[420px] gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3"
+          >
+            <article
+              v-for="outline in filteredOutlines"
+              :key="`${outline.chapterNumber}-${outline.sortOrder}`"
+              class="cv-auto rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
+            >
+              <p class="text-xs font-mono text-primary-500">
+                Ch.{{ outline.chapterNumber }}
+              </p>
+              <p
+                class="mt-1 line-clamp-3 text-xs leading-relaxed text-(--ui-text-muted)"
+              >
+                {{ outline.description }}
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <aside class="space-y-4">
+          <section class="card-glass p-5">
+            <div class="mb-4 flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <Icon
+                    icon="lucide:scroll-text"
+                    class="size-4 text-blue-500"
+                  />
+                  <h2 class="font-semibold text-(--ui-text-highlighted)">
+                    创作约束
+                  </h2>
+                </div>
+                <p class="mt-1 text-xs text-(--ui-text-dimmed)">
+                  世界观、风格和模型会影响后续生成
+                </p>
+              </div>
               <NButton
                 size="tiny"
                 quaternary
-                @click="cancelEditOutlines"
+                @click="openAiSettings"
               >
-                取消
+                <template #icon><Icon icon="lucide:pencil" /></template>
+                编辑
               </NButton>
-              <NButton
-                size="tiny"
-                type="primary"
-                :loading="savingOutlines"
-                @click="saveOutlines"
-              >
-                保存
-              </NButton>
-            </template>
-          </div>
-        </div>
-
-        <div
-          v-if="!editingOutlines && sortedOutlines.length"
-          class="mb-3"
-        >
-          <NInput
-            v-model:value="outlineSearchQuery"
-            clearable
-            size="small"
-            placeholder="搜索章节号或大纲内容"
-          >
-            <template #prefix>
-              <Icon
-                icon="lucide:search"
-                class="size-4 text-(--ui-text-dimmed)"
-              />
-            </template>
-          </NInput>
-        </div>
-
-        <div
-          v-if="editingOutlines"
-          class="max-h-[420px] space-y-2 overflow-y-auto pr-1"
-        >
-          <div
-            v-for="(outline, index) in outlineFormItems"
-            :key="index"
-            draggable="true"
-            class="grid gap-2 rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-2 md:grid-cols-[auto_120px_minmax(0,1fr)_auto] cursor-move transition-opacity"
-            :class="{ 'opacity-50': draggingOutlineIndex === index }"
-            @dragstart="handleOutlineDragStart(index)"
-            @dragover="handleOutlineDragOver($event, index)"
-            @dragend="handleOutlineDragEnd"
-          >
-            <div class="flex items-center text-(--ui-text-dimmed)">
-              <Icon
-                icon="lucide:grip-vertical"
-                class="size-4"
-              />
             </div>
-            <NInputNumber
-              v-model:value="outline.chapterNumber"
-              :min="1"
-              size="small"
-              class="w-full"
-            />
-            <NInput
-              v-model:value="outline.description"
-              size="small"
-              placeholder="本章核心事件、冲突或转折"
-            />
-            <NButton
-              size="small"
-              quaternary
-              type="error"
-              @click="removeOutlineItem(index)"
-            >
-              删除
-            </NButton>
-          </div>
-          <NButton
-            size="small"
-            dashed
-            block
-            @click="addOutlineItem"
-          >
-            <template #icon><Icon icon="lucide:plus" /></template>
-            添加章节大纲
-          </NButton>
-        </div>
 
-        <div
-          v-else-if="!sortedOutlines.length"
-          class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) py-8 text-center text-sm text-(--ui-text-muted)"
-        >
-          暂无章节大纲，可手动编辑或使用 AI 生成。
-        </div>
-
-        <div
-          v-else-if="!filteredOutlines.length"
-          class="py-8 text-center"
-        >
-          <Icon
-            icon="lucide:search-x"
-            class="mx-auto size-8 text-(--ui-text-dimmed)"
-          />
-          <p class="mt-2 text-sm text-(--ui-text-muted)">没有匹配的大纲</p>
-        </div>
-
-        <div
-          v-else
-          class="grid max-h-[420px] gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3"
-        >
-          <article
-            v-for="outline in filteredOutlines"
-            :key="`${outline.chapterNumber}-${outline.sortOrder}`"
-            class="cv-auto rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
-          >
-            <p class="text-xs font-mono text-primary-500">
-              Ch.{{ outline.chapterNumber }}
-            </p>
-            <p
-              class="mt-1 line-clamp-3 text-xs leading-relaxed text-(--ui-text-muted)"
-            >
-              {{ outline.description }}
-            </p>
-          </article>
-        </div>
-      </section>
-
-      <!-- Plot Points -->
-      <section class="card-glass p-5">
-        <div
-          class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
-        >
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <Icon
-                icon="lucide:route"
-                class="size-4 text-violet-500"
-              />
-              <h2 class="font-semibold text-(--ui-text-highlighted)">
-                情节线索
-              </h2>
-            </div>
-            <p class="mt-1 text-xs text-(--ui-text-dimmed)">
-              {{ plotPoints?.length || 0 }} 个情节节点
-            </p>
-          </div>
-          <NButton
-            size="tiny"
-            type="primary"
-            @click="openPlotPointDialog"
-          >
-            <template #icon><Icon icon="lucide:plus" /></template>
-            添加线索
-          </NButton>
-        </div>
-
-        <div
-          v-if="plotPoints?.length"
-          class="mb-3"
-        >
-          <NInput
-            v-model:value="plotPointSearchQuery"
-            clearable
-            size="small"
-            placeholder="搜索情节描述、类型或关联章节"
-          >
-            <template #prefix>
-              <Icon
-                icon="lucide:search"
-                class="size-4 text-(--ui-text-dimmed)"
-              />
-            </template>
-          </NInput>
-        </div>
-
-        <div
-          v-if="!plotPoints?.length"
-          class="rounded-lg bg-(--ui-bg-muted)/30 py-8 text-center text-sm text-(--ui-text-muted)"
-        >
-          暂无情节点，可手动添加以追踪故事中的关键事件。
-        </div>
-
-        <div
-          v-else-if="!filteredPlotPoints.length"
-          class="py-8 text-center"
-        >
-          <Icon
-            icon="lucide:search-x"
-            class="mx-auto size-8 text-(--ui-text-dimmed)"
-          />
-          <p class="mt-2 text-sm text-(--ui-text-muted)">没有匹配的情节线索</p>
-        </div>
-
-        <div
-          v-else
-          class="max-h-[420px] space-y-2 overflow-y-auto pr-1"
-        >
-          <div
-            v-for="point in filteredPlotPoints"
-            :key="point.id"
-            class="flex items-start gap-3 rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
-          >
-            <div
-              class="mt-0.5 size-2 shrink-0 rounded-full"
-              :class="{
-                'bg-emerald-500': point.status === 'resolved',
-                'bg-amber-500': point.status === 'developing',
-                'bg-(--ui-text-dimmed)': point.status === 'introduced'
-              }"
-            />
-            <div class="min-w-0 flex-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <NTag
-                  size="tiny"
-                  :type="getPlotPointStatusType(point.status)"
+            <div class="space-y-3">
+              <section class="rounded-xl bg-(--ui-bg-muted) p-3">
+                <div class="mb-1.5 flex items-center gap-2">
+                  <Icon
+                    icon="lucide:globe"
+                    class="size-3.5 text-blue-500"
+                  />
+                  <h3 class="text-sm font-medium text-(--ui-text-highlighted)">
+                    世界观
+                  </h3>
+                </div>
+                <p
+                  class="line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed text-(--ui-text-muted)"
                 >
-                  {{ getPlotPointTypeLabel(point.type) }}
-                </NTag>
-                <span
-                  v-if="point.chapterId"
-                  class="text-[11px] text-(--ui-text-dimmed)"
+                  {{ novel.worldSetting || '暂无世界观设定' }}
+                </p>
+              </section>
+
+              <section class="rounded-xl bg-(--ui-bg-muted) p-3">
+                <div class="mb-1.5 flex items-center gap-2">
+                  <Icon
+                    icon="lucide:palette"
+                    class="size-3.5 text-amber-500"
+                  />
+                  <h3 class="text-sm font-medium text-(--ui-text-highlighted)">
+                    风格指南
+                  </h3>
+                </div>
+                <p
+                  class="line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed text-(--ui-text-muted)"
                 >
-                  关联章节
-                  {{
-                    chapters?.find((c) => c.id === point.chapterId)
-                      ?.chapterNumber || point.chapterId
-                  }}
-                </span>
-              </div>
-              <p class="mt-1 text-xs leading-relaxed text-(--ui-text-muted)">
-                {{ point.description }}
-              </p>
+                  {{ novel.styleGuide || '暂无风格指南' }}
+                </p>
+              </section>
+
+              <section class="rounded-xl bg-(--ui-bg-muted) p-3">
+                <div class="mb-1.5 flex items-center gap-2">
+                  <Icon
+                    icon="lucide:sparkles"
+                    class="size-3.5 text-primary-500"
+                  />
+                  <h3 class="text-sm font-medium text-(--ui-text-highlighted)">
+                    AI 设定
+                  </h3>
+                </div>
+                <div
+                  class="grid gap-2 text-xs sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2"
+                >
+                  <div class="rounded-md bg-(--ui-bg-elevated)/70 p-2">
+                    <p class="text-(--ui-text-dimmed)">模型</p>
+                    <p class="mt-1 truncate text-(--ui-text-highlighted)">
+                      {{ novel.aiConfigName || '未设置' }}
+                    </p>
+                  </div>
+                  <div class="rounded-md bg-(--ui-bg-elevated)/70 p-2">
+                    <p class="text-(--ui-text-dimmed)">Temperature</p>
+                    <p class="mt-1 font-mono text-(--ui-text-highlighted)">
+                      {{ novel.aiTemperature || '默认' }}
+                    </p>
+                  </div>
+                </div>
+                <p
+                  v-if="novel.aiExtraPrompt"
+                  class="mt-2 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-(--ui-text-muted)"
+                >
+                  {{ novel.aiExtraPrompt }}
+                </p>
+              </section>
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
+        </aside>
+      </div>
 
       <div
-        class="stagger-children grid gap-4 xl:grid-cols-[minmax(520px,0.92fr)_minmax(640px,1.08fr)]"
+        class="grid gap-4 xl:grid-cols-[minmax(0,0.78fr)_minmax(420px,0.62fr)]"
       >
+        <!-- Plot Points -->
+        <section class="card-glass p-5">
+          <div
+            class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <Icon
+                  icon="lucide:route"
+                  class="size-4 text-violet-500"
+                />
+                <h2 class="font-semibold text-(--ui-text-highlighted)">
+                  情节线索
+                </h2>
+              </div>
+              <p class="mt-1 text-xs text-(--ui-text-dimmed)">
+                {{ plotPoints?.length || 0 }} 个情节节点
+              </p>
+            </div>
+            <NButton
+              size="tiny"
+              type="primary"
+              @click="openPlotPointDialog"
+            >
+              <template #icon><Icon icon="lucide:plus" /></template>
+              添加线索
+            </NButton>
+          </div>
+
+          <div
+            v-if="plotPoints?.length"
+            class="mb-3"
+          >
+            <NInput
+              v-model:value="plotPointSearchQuery"
+              clearable
+              size="small"
+              placeholder="搜索情节描述、类型或关联章节"
+            >
+              <template #prefix>
+                <Icon
+                  icon="lucide:search"
+                  class="size-4 text-(--ui-text-dimmed)"
+                />
+              </template>
+            </NInput>
+          </div>
+
+          <div
+            v-if="!plotPoints?.length"
+            class="rounded-lg bg-(--ui-bg-muted)/30 py-8 text-center text-sm text-(--ui-text-muted)"
+          >
+            暂无情节点，可手动添加以追踪故事中的关键事件。
+          </div>
+
+          <div
+            v-else-if="!filteredPlotPoints.length"
+            class="py-8 text-center"
+          >
+            <Icon
+              icon="lucide:search-x"
+              class="mx-auto size-8 text-(--ui-text-dimmed)"
+            />
+            <p class="mt-2 text-sm text-(--ui-text-muted)">
+              没有匹配的情节线索
+            </p>
+          </div>
+
+          <div
+            v-else
+            class="max-h-[420px] space-y-2 overflow-y-auto pr-1"
+          >
+            <div
+              v-for="point in filteredPlotPoints"
+              :key="point.id"
+              class="flex items-start gap-3 rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-3"
+            >
+              <div
+                class="mt-0.5 size-2 shrink-0 rounded-full"
+                :class="{
+                  'bg-emerald-500': point.status === 'resolved',
+                  'bg-amber-500': point.status === 'developing',
+                  'bg-(--ui-text-dimmed)': point.status === 'introduced'
+                }"
+              />
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <NTag
+                    size="tiny"
+                    :type="getPlotPointStatusType(point.status)"
+                  >
+                    {{ getPlotPointTypeLabel(point.type) }}
+                  </NTag>
+                  <span
+                    v-if="point.chapterId"
+                    class="text-[11px] text-(--ui-text-dimmed)"
+                  >
+                    关联章节
+                    {{
+                      chapters?.find((c) => c.id === point.chapterId)
+                        ?.chapterNumber || point.chapterId
+                    }}
+                  </span>
+                </div>
+                <p class="mt-1 text-xs leading-relaxed text-(--ui-text-muted)">
+                  {{ point.description }}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card-glass p-5">
+          <NovelForeshadowingPanel
+            :novel-id="novelId"
+            :chapters="chapters || []"
+          />
+        </section>
+      </div>
+
+      <div class="stagger-children grid gap-4">
         <!-- Chapters -->
         <section class="card-glass p-5">
           <div class="mb-4 flex flex-col gap-4">
@@ -2459,7 +2622,7 @@ async function savePlotPoint() {
             </div>
             <div
               v-else
-              class="mt-4 grid min-h-0 gap-3 overflow-y-auto pr-1 md:grid-cols-2 2xl:grid-cols-3"
+              class="mt-4 grid min-h-0 gap-3 overflow-y-auto pr-1 xl:grid-cols-2"
             >
               <article
                 v-for="character in filteredCharacters"
@@ -2584,7 +2747,7 @@ async function savePlotPoint() {
                   </div>
                   <div
                     v-if="character.rolePosition"
-                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5 sm:col-span-2"
                   >
                     <p class="text-[10px] text-(--ui-text-dimmed)">身份</p>
                     <p class="mt-0.5 leading-relaxed text-(--ui-text-muted)">
@@ -2593,7 +2756,7 @@ async function savePlotPoint() {
                   </div>
                   <div
                     v-if="character.storyRole"
-                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5 sm:col-span-2"
                   >
                     <p class="text-[10px] text-(--ui-text-dimmed)">作用</p>
                     <p class="mt-0.5 leading-relaxed text-(--ui-text-muted)">
@@ -2621,7 +2784,7 @@ async function savePlotPoint() {
                       {{ character.traits }}
                     </p>
                   </div>
-                  <div class="grid gap-2 sm:grid-cols-2">
+                  <div class="grid gap-2">
                     <div
                       v-if="character.currentState"
                       class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
@@ -2651,10 +2814,21 @@ async function savePlotPoint() {
                   v-if="character.overallArc"
                   class="mt-3 rounded-md bg-primary-500/5 px-2 py-1.5 text-xs"
                 >
-                  <p class="text-[10px] font-medium text-primary-500/80">
-                    故事弧线
-                  </p>
-                  <p class="mt-0.5 leading-relaxed text-(--ui-text-muted)">
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-[10px] font-medium text-primary-500/80">
+                      故事弧线
+                    </p>
+                    <button
+                      class="text-[10px] text-primary-600 transition-colors hover:text-primary-500"
+                      type="button"
+                      @click="openCharacterDetail(character)"
+                    >
+                      查看详情
+                    </button>
+                  </div>
+                  <p
+                    class="mt-0.5 line-clamp-2 leading-relaxed text-(--ui-text-muted)"
+                  >
                     {{ character.overallArc }}
                   </p>
                 </div>
@@ -2986,13 +3160,6 @@ async function savePlotPoint() {
             打开工作区
           </NButton>
         </div>
-      </section>
-
-      <section class="card-glass p-5">
-        <NovelForeshadowingPanel
-          :novel-id="novelId"
-          :chapters="chapters || []"
-        />
       </section>
 
       <!-- AI Generate Outline Dialog -->
@@ -3659,7 +3826,7 @@ async function savePlotPoint() {
         </div>
 
         <div class="border-t border-(--ui-border) pt-3">
-          <CharacterStateTimeline
+          <NovelCharacterStateTimeline
             :novel-id="novelId"
             :character-id="detailCharacter.id"
             @refreshed="refreshDetailCharacter"

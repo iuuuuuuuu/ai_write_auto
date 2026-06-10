@@ -3,21 +3,31 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="mx-auto max-w-6xl space-y-5">
+  <div class="mx-auto w-full max-w-[1600px] space-y-5">
     <section class="card-glass relative overflow-hidden p-6 sm:p-7">
       <div class="relative z-10 flex items-center gap-4">
-        <div class="liquid-panel flex size-12 items-center justify-center rounded-[1.35rem]">
+        <div
+          class="liquid-panel flex size-12 items-center justify-center rounded-[1.35rem]"
+        >
           <Icon
             icon="lucide:settings"
             class="size-5 text-primary-500"
           />
         </div>
         <div>
-          <p class="mb-1 text-xs uppercase tracking-[0.22em] text-primary-500/80">Preferences</p>
-          <h1 class="text-2xl font-semibold tracking-[-0.04em] text-(--ui-text-highlighted)">
+          <p
+            class="mb-1 text-xs uppercase tracking-[0.22em] text-primary-500/80"
+          >
+            Preferences
+          </p>
+          <h1
+            class="text-2xl font-semibold tracking-[-0.04em] text-(--ui-text-highlighted)"
+          >
             {{ t('common.settings') }}
           </h1>
-          <p class="mt-1 text-sm text-(--ui-text-muted)">管理个人偏好与系统配置</p>
+          <p class="mt-1 text-sm text-(--ui-text-muted)">
+            管理个人偏好与系统配置
+          </p>
         </div>
       </div>
     </section>

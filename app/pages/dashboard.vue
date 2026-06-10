@@ -176,6 +176,67 @@ onMounted(() => {
   }
 })
 
+const primaryRecentActivity = computed(() => recentActivity.value?.[0] || null)
+
+const secondaryRecentActivities = computed(() => {
+  return recentActivity.value?.slice(1, 5) || []
+})
+
+const dashboardStatItems = computed(() => [
+  {
+    label: '作品',
+    value: (stats.value?.totalNovels || 0).toLocaleString(),
+    description: '作品库',
+    icon: 'lucide:book-open',
+    tone: 'text-primary-500'
+  },
+  {
+    label: '总字数',
+    value: (stats.value?.totalWords || 0).toLocaleString(),
+    description: '累计创作',
+    icon: 'lucide:type',
+    tone: 'text-blue-500'
+  },
+  {
+    label: '连续',
+    value: `${stats.value?.streak || 0}`,
+    description: '天保持节奏',
+    icon: 'lucide:flame',
+    tone: 'text-amber-500'
+  },
+  {
+    label: '今日',
+    value: (stats.value?.todayWords || 0).toLocaleString(),
+    description: '已写字数',
+    icon: 'lucide:pencil',
+    tone: 'text-emerald-500'
+  }
+])
+
+const dailyGoalText = computed(() => {
+  const todayWords = stats.value?.todayWords || 0
+  const dailyGoal = stats.value?.dailyGoal || 0
+  if (!dailyGoal) return `${todayWords.toLocaleString()} 字`
+  return `${todayWords.toLocaleString()} / ${dailyGoal.toLocaleString()} 字`
+})
+
+const dailyProgress = computed(() => {
+  return Math.min(100, Math.max(0, stats.value?.dailyProgress || 0))
+})
+
+const primaryActionLabel = computed(() => {
+  return primaryRecentActivity.value ? '继续写作' : t('novel.create')
+})
+
+function openPrimaryAction() {
+  const activity = primaryRecentActivity.value
+  if (activity) {
+    router.push(`/novels/${activity.novelId}/chapters/${activity.id}`)
+    return
+  }
+  showCreateModal.value = true
+}
+
 function getGenreColor(genre: string | null) {
   return getNovelGenreColor(genre)
 }
@@ -362,183 +423,131 @@ function resetImport() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-[1500px] space-y-4">
-    <!-- Greeting & Stats -->
-    <section
-      class="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]"
-    >
-      <div
-        class="card-glass flex min-h-[220px] flex-col justify-between overflow-hidden rounded-[2rem] p-5 md:p-7"
-      >
-        <div class="max-w-3xl">
-          <p
-            class="mb-2 text-xs uppercase tracking-[0.24em] text-(--ui-text-dimmed)"
-          >
-            Writing Command Center
-          </p>
-          <h1
-            class="text-3xl font-medium tracking-normal text-(--ui-text-highlighted) md:text-5xl"
-          >
-            {{ getGreeting() }}，<span
-              class="bg-gradient-to-r from-primary-400 to-primary-600 bg-clip-text text-transparent"
-              >{{ user?.username }}</span
+  <div class="w-full space-y-4">
+    <section class="card-glass overflow-hidden p-0">
+      <div class="grid min-h-[240px] xl:grid-cols-[minmax(0,1fr)_360px]">
+        <div class="flex flex-col justify-between p-5 md:p-7">
+          <div class="max-w-4xl">
+            <p class="mb-2 text-xs text-(--ui-text-dimmed)">今日写作轨道</p>
+            <h1
+              class="text-3xl font-semibold tracking-tight text-(--ui-text-highlighted) md:text-5xl"
             >
-          </h1>
-          <p class="mt-3 text-sm leading-6 text-(--ui-text-muted)">
-            <template v-if="stats?.todayWords">
-              今日已写
-              <span class="font-medium text-(--ui-text)">{{
-                stats.todayWords.toLocaleString()
-              }}</span>
-              字
-              <template v-if="stats.streak > 1">
-                · 连续
-                <span class="font-medium text-(--ui-text)">{{
-                  stats.streak
-                }}</span>
-                天保持创作节奏</template
-              >
-            </template>
-            <template v-else
-              >今天还没有开始写作，先创建作品或继续最近章节。</template
-            >
-          </p>
-        </div>
-        <div class="mt-8 flex flex-wrap gap-2">
-          <NButton
-            size="medium"
-            round
-            @click="showImportModal = true"
-          >
-            <template #icon
-              ><Icon
-                icon="lucide:upload"
-                class="h-4 w-4"
-            /></template>
-            导入
-          </NButton>
-          <NButton
-            type="primary"
-            size="medium"
-            round
-            @click="showCreateModal = true"
-          >
-            <template #icon
-              ><Icon
-                icon="lucide:plus"
-                class="h-4 w-4"
-            /></template>
-            {{ t('novel.create') }}
-          </NButton>
-        </div>
-      </div>
+              {{ getGreeting() }}，{{ user?.username }}
+            </h1>
+            <p class="mt-3 max-w-2xl text-sm leading-6 text-(--ui-text-muted)">
+              <template v-if="primaryRecentActivity">
+                上次停在《{{ primaryRecentActivity.novelTitle }}》第{{
+                  primaryRecentActivity.chapterNumber
+                }}章，{{
+                  formatRelativeTime(primaryRecentActivity.updatedAt)
+                }}更新。
+              </template>
+              <template v-else>
+                今天还没有待续章节，可以先创建作品或导入已有稿件。
+              </template>
+            </p>
+          </div>
 
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-        <div class="grid grid-cols-2 gap-3">
-          <div class="liquid-panel flex items-center gap-3 p-3.5">
-            <div
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
-            >
-              <Icon
-                icon="lucide:book-open"
-                class="h-5 w-5 text-white"
-              />
-            </div>
-            <div class="min-w-0">
-              <p
-                class="font-mono text-xl font-medium leading-none text-(--ui-text)"
+          <div
+            class="mt-6 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end"
+          >
+            <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <div
+                v-for="item in dashboardStatItems"
+                :key="item.label"
+                class="rounded-xl bg-(--ui-bg-muted)/70 p-3 ring-1 ring-(--ui-border)"
               >
-                {{ stats?.totalNovels || 0 }}
-              </p>
-              <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">部作品</p>
+                <div class="flex items-center gap-2">
+                  <Icon
+                    :icon="item.icon"
+                    class="size-3.5"
+                    :class="item.tone"
+                  />
+                  <span class="text-[11px] text-(--ui-text-dimmed)">{{
+                    item.label
+                  }}</span>
+                </div>
+                <p class="mt-2 font-mono text-xl text-(--ui-text-highlighted)">
+                  {{ item.value }}
+                </p>
+                <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">
+                  {{ item.description }}
+                </p>
+              </div>
             </div>
-          </div>
-          <div class="liquid-panel flex items-center gap-3 p-3.5">
-            <div
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
-            >
-              <Icon
-                icon="lucide:type"
-                class="h-5 w-5 text-white"
-              />
-            </div>
-            <div class="min-w-0">
-              <p
-                class="truncate font-mono text-xl font-medium leading-none text-(--ui-text)"
+
+            <div class="flex flex-wrap gap-2 lg:justify-end">
+              <NButton
+                size="medium"
+                type="primary"
+                @click="openPrimaryAction"
               >
-                {{ (stats?.totalWords || 0).toLocaleString() }}
-              </p>
-              <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">总字数</p>
-            </div>
-          </div>
-          <div class="liquid-panel flex items-center gap-3 p-3.5">
-            <div
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500"
-            >
-              <Icon
-                icon="lucide:flame"
-                class="h-5 w-5 text-white"
-              />
-            </div>
-            <div class="min-w-0">
-              <p
-                class="font-mono text-xl font-medium leading-none text-(--ui-text)"
+                <template #icon><Icon icon="lucide:pen-tool" /></template>
+                {{ primaryActionLabel }}
+              </NButton>
+              <NButton
+                size="medium"
+                secondary
+                @click="showCreateModal = true"
               >
-                {{ stats?.streak || 0 }}
-              </p>
-              <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">天连续</p>
-            </div>
-          </div>
-          <div class="liquid-panel flex items-center gap-3 p-3.5">
-            <div
-              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
-            >
-              <Icon
-                icon="lucide:pencil"
-                class="h-5 w-5 text-white"
-              />
-            </div>
-            <div class="min-w-0">
-              <p
-                class="truncate font-mono text-xl font-medium leading-none text-(--ui-text)"
+                <template #icon><Icon icon="lucide:plus" /></template>
+                {{ t('novel.create') }}
+              </NButton>
+              <NButton
+                size="medium"
+                secondary
+                @click="showImportModal = true"
               >
-                {{ (stats?.todayWords || 0).toLocaleString() }}
-              </p>
-              <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">今日</p>
+                <template #icon><Icon icon="lucide:upload" /></template>
+                导入
+              </NButton>
             </div>
           </div>
         </div>
 
-        <section
-          v-if="stats?.dailyGoal"
-          class="liquid-panel flex flex-col justify-between p-4"
+        <aside
+          class="border-t border-(--ui-border) bg-(--ui-bg-muted)/60 p-5 xl:border-l xl:border-t-0 md:p-6"
         >
-          <div class="mb-4 flex items-center justify-between gap-3">
-            <div class="flex items-center gap-2">
-              <span
-                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500/12 text-primary-500"
-              >
-                <Icon
-                  icon="lucide:target"
-                  class="size-4"
-                />
-              </span>
-              <span class="text-sm font-medium text-(--ui-text)"
-                >今日写作目标</span
-              >
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs text-(--ui-text-dimmed)">今日目标</p>
+              <p class="mt-1 font-mono text-lg text-(--ui-text-highlighted)">
+                {{ dailyGoalText }}
+              </p>
             </div>
-            <span class="font-mono text-xs text-(--ui-text-muted)">
-              {{ (stats.todayWords || 0).toLocaleString() }} /
-              {{ stats.dailyGoal.toLocaleString() }} 字
+            <span
+              class="rounded-lg bg-(--ui-bg-elevated) px-2 py-1 font-mono text-xs text-(--ui-text-muted)"
+            >
+              {{ dailyProgress }}%
             </span>
           </div>
           <NProgress
+            class="mt-4"
             type="line"
-            :percentage="stats.dailyProgress || 0"
+            :percentage="dailyProgress"
             :height="8"
             :show-indicator="false"
           />
-        </section>
+
+          <div class="mt-5 rounded-xl bg-(--ui-bg-elevated)/80 p-3">
+            <p class="text-[11px] text-(--ui-text-dimmed)">下一步</p>
+            <template v-if="primaryRecentActivity">
+              <p class="mt-1 truncate text-sm text-(--ui-text-highlighted)">
+                第{{ primaryRecentActivity.chapterNumber }}章 ·
+                {{ primaryRecentActivity.title }}
+              </p>
+              <p class="mt-1 truncate text-xs text-(--ui-text-muted)">
+                {{ primaryRecentActivity.novelTitle }}
+              </p>
+            </template>
+            <p
+              v-else
+              class="mt-1 text-sm text-(--ui-text-muted)"
+            >
+              创建作品后开始规划世界观、角色和章节。
+            </p>
+          </div>
+        </aside>
       </div>
     </section>
 
@@ -565,21 +574,21 @@ function resetImport() {
             </h2>
           </div>
           <div
-            class="mt-4 grid gap-2 text-xs text-(--ui-text-muted) md:grid-cols-4"
+            class="mt-3 grid gap-2 text-xs text-(--ui-text-muted) lg:grid-cols-4"
           >
-            <div class="rounded-2xl bg-(--ui-bg-muted) p-3">
+            <div class="rounded-lg bg-(--ui-bg-muted)/70 p-2.5">
               <p class="font-medium text-(--ui-text)">1. 创建作品</p>
               <p class="mt-1">先填写标题、类型和一句故事简介。</p>
             </div>
-            <div class="rounded-2xl bg-(--ui-bg-muted) p-3">
+            <div class="rounded-lg bg-(--ui-bg-muted)/70 p-2.5">
               <p class="font-medium text-(--ui-text)">2. 补充设定</p>
               <p class="mt-1">在详细设定中写下世界观和写作风格。</p>
             </div>
-            <div class="rounded-2xl bg-(--ui-bg-muted) p-3">
+            <div class="rounded-lg bg-(--ui-bg-muted)/70 p-2.5">
               <p class="font-medium text-(--ui-text)">3. 规划大纲</p>
               <p class="mt-1">进入作品详情后编辑或 AI 生成章节大纲。</p>
             </div>
-            <div class="rounded-2xl bg-(--ui-bg-muted) p-3">
+            <div class="rounded-lg bg-(--ui-bg-muted)/70 p-2.5">
               <p class="font-medium text-(--ui-text)">4. 开始写作</p>
               <p class="mt-1">打开章节，使用保存、续写和扩写快捷键。</p>
             </div>
@@ -595,49 +604,76 @@ function resetImport() {
       </div>
     </section>
 
-    <div class="grid gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
+    <div class="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
       <!-- Recent Activity -->
-      <section
-        v-if="recentActivity?.length"
-        class="liquid-panel p-4"
-      >
-        <h2
-          class="mb-3 text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)"
-        >
-          继续写作
-        </h2>
-        <div class="grid gap-2">
+      <aside class="space-y-4">
+        <section class="liquid-panel p-4">
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <h2 class="text-sm font-medium text-(--ui-text-highlighted)">
+              继续写作
+            </h2>
+            <span class="text-[11px] text-(--ui-text-dimmed)">
+              {{ recentActivity?.length || 0 }} 条
+            </span>
+          </div>
+
           <NuxtLink
-            v-for="item in recentActivity"
-            :key="item.id"
-            :to="`/novels/${item.novelId}/chapters/${item.id}`"
-            class="group rounded-2xl bg-(--ui-bg-elevated) p-3 ring-1 ring-(--ui-border) transition-all duration-200 hover:-translate-y-0.5 hover:ring-(--ui-border-accented)"
+            v-if="primaryRecentActivity"
+            :to="`/novels/${primaryRecentActivity.novelId}/chapters/${primaryRecentActivity.id}`"
+            class="group block rounded-xl bg-(--ui-bg-elevated) p-3 ring-1 ring-(--ui-border) transition-all duration-200 hover:-translate-y-0.5 hover:ring-(--ui-border-accented)"
           >
             <div class="mb-2 flex items-center gap-1.5">
               <span
-                class="rounded-full bg-primary-500/10 px-2 py-0.5 text-[10px] font-medium text-primary-600 dark:text-primary-400"
-                >第{{ item.chapterNumber }}章</span
+                class="rounded-md bg-primary-500/10 px-2 py-0.5 text-[10px] font-medium text-primary-600 dark:text-primary-400"
+                >最近</span
               >
               <span class="text-[10px] text-(--ui-text-dimmed)">{{
-                formatRelativeTime(item.updatedAt)
+                formatRelativeTime(primaryRecentActivity.updatedAt)
               }}</span>
             </div>
             <p
-              class="truncate text-[14px] font-medium text-(--ui-text) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400"
+              class="line-clamp-2 text-sm font-medium text-(--ui-text) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400"
             >
-              {{ item.title }}
+              第{{ primaryRecentActivity.chapterNumber }}章 ·
+              {{ primaryRecentActivity.title }}
             </p>
             <p class="mt-1 truncate text-[11px] text-(--ui-text-dimmed)">
-              {{ item.novelTitle }}
+              {{ primaryRecentActivity.novelTitle }}
             </p>
           </NuxtLink>
-        </div>
-      </section>
 
-      <div class="space-y-4">
+          <div
+            v-if="secondaryRecentActivities.length"
+            class="mt-3 space-y-1.5"
+          >
+            <NuxtLink
+              v-for="item in secondaryRecentActivities"
+              :key="item.id"
+              :to="`/novels/${item.novelId}/chapters/${item.id}`"
+              class="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-(--ui-bg-muted)"
+            >
+              <span class="truncate text-(--ui-text-muted)">
+                {{ item.novelTitle }} · Ch.{{ item.chapterNumber }}
+              </span>
+              <span class="text-(--ui-text-dimmed)">{{
+                formatRelativeTime(item.updatedAt)
+              }}</span>
+            </NuxtLink>
+          </div>
+
+          <div
+            v-if="!recentActivity?.length"
+            class="rounded-xl bg-(--ui-bg-muted)/70 p-4 text-sm text-(--ui-text-muted)"
+          >
+            暂无最近章节，创建作品后这里会显示待续内容。
+          </div>
+        </section>
+
         <!-- Reading History -->
         <ReadingHistory />
+      </aside>
 
+      <div class="space-y-4">
         <!-- Novels Grid -->
         <section class="liquid-panel p-4">
           <div class="mb-3 flex items-center justify-between gap-2">

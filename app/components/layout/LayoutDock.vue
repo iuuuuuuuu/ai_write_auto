@@ -7,12 +7,28 @@ const props = defineProps<{
 }>()
 
 const { t } = useI18n()
+const route = useRoute()
 const { user, logout } = useAuth()
 const { settings } = useLayoutSettings()
 const colorMode = useNaiveColorMode()
 
 const settingsDrawerOpen = useState('layout-settings-drawer', () => false)
 const globalSearchOpen = useState('global-search-open', () => false)
+
+const isWideWorkspaceRoute = computed(() => {
+  const path = route.path
+  return (
+    path === '/dashboard' ||
+    path === '/models' ||
+    path === '/settings' ||
+    path === '/trash' ||
+    path.startsWith('/api-docs') ||
+    path.startsWith('/admin') ||
+    /^\/novels\/[^/]+\/?$/.test(path) ||
+    path.includes('/chapters/') ||
+    path.includes('/workspace')
+  )
+})
 
 function toggleDarkMode() {
   const current = colorMode.colorModePreference.get()
@@ -22,10 +38,10 @@ function toggleDarkMode() {
 
 <template>
   <div class="min-h-screen flex flex-col">
-    <header
-      class="sticky top-0 z-30 px-4 pt-3 pb-2"
-    >
-      <div class="card-glass mx-auto flex h-14 max-w-[1120px] items-center gap-3 rounded-full px-3">
+    <header class="sticky top-0 z-30 px-4 pt-3 pb-2">
+      <div
+        class="card-glass mx-auto flex h-14 max-w-[1120px] items-center gap-3 rounded-full px-3"
+      >
         <div
           v-if="settings.showLogo"
           class="flex items-center gap-2.5 pl-1 pr-2"
@@ -181,13 +197,19 @@ function toggleDarkMode() {
       v-if="settings.showTabs"
       class="sticky top-[76px] z-20 bg-(--ui-bg)"
     >
-      <div class="mx-auto max-w-[1440px] px-6">
+      <div
+        class="mx-auto px-6"
+        :class="isWideWorkspaceRoute ? 'max-w-none' : 'max-w-[1440px]'"
+      >
         <TabBar area="user" />
       </div>
     </div>
 
     <main class="flex min-w-0 flex-1 flex-col px-6 pb-28 pt-4">
-      <div class="mx-auto flex w-full max-w-[1440px] flex-1 flex-col">
+      <div
+        class="mx-auto flex w-full flex-1 flex-col"
+        :class="isWideWorkspaceRoute ? 'max-w-none' : 'max-w-[1440px]'"
+      >
         <div class="min-h-0 flex-1">
           <slot />
         </div>
