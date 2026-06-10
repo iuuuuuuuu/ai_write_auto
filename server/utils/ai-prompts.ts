@@ -169,6 +169,7 @@ export function buildGenerationPrompt(context: {
 ## 叙事要求
 - 保持与已有章节一致的写作风格、人称与时态
 - 角色言行符合其性格与当前处境；推进剧情，不重复已有内容
+- **严格遵守世界观设定中的社会规范、等级体系、称呼礼仪**（如古代宫廷需用「小主」「娘娘」「陛下」等，现代都市用「你」「您」等，武侠江湖用「掌门」「前辈」等）
 - 注意伏笔的铺设与回收
 
 ## 文字要求（避免「AI 腔」）
@@ -756,16 +757,22 @@ export function buildStyleAnalysisPrompt(
 }
 
 export function buildConsistencyCheckPrompt(context: {
+  novel?: { worldSetting?: string | null }
   characters: Array<{
     name: string
     description?: string | null
     traits?: string | null
   }>
   recentSummaries: Array<{ chapterNumber: number; summary: string }>
-  priorPassages: Array<{ chapterNumber: number | null; label: string; content: string }>
+  priorPassages: Array<{
+    chapterNumber: number | null
+    label: string
+    content: string
+  }>
   targetChapter: { chapterNumber: number; content: string }
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const { characters, recentSummaries, priorPassages, targetChapter } = context
+  const { novel, characters, recentSummaries, priorPassages, targetChapter } =
+    context
 
   const charInfo = characters
     .map((c) => `${c.name}: ${c.description || ''} (${c.traits || ''})`)
@@ -775,8 +782,9 @@ export function buildConsistencyCheckPrompt(context: {
     .map((c) => `第${c.chapterNumber}章: ${c.summary}`)
     .join('\n')
 
-  const priorText = priorPassages.length
-    ? priorPassages
+  const priorText =
+    priorPassages.length ?
+      priorPassages
         .map(
           (p) =>
             `【${p.chapterNumber ? `第${p.chapterNumber}章` : p.label}】${p.content}`
@@ -791,10 +799,11 @@ export function buildConsistencyCheckPrompt(context: {
 
 检查项目：
 1. 角色名字/称呼前后不一致
-2. 时间线矛盾
-3. 已死亡/离开的角色意外出现
-4. 地点描述前后矛盾
-5. 角色性格无合理原因突变
+2. 称呼不符合世界观设定（如宫廷文中用"小姐"而非"小主/娘娘"，武侠文中用"你"而非"阁下/前辈"等）
+3. 时间线矛盾
+4. 已死亡/离开的角色意外出现
+5. 地点描述前后矛盾
+6. 角色性格无合理原因突变
 
 举证要求（非常重要，违反则该问题作废）：
 - 每条问题必须同时给出两段**真实存在、逐字摘录**的原文：
@@ -810,7 +819,7 @@ export function buildConsistencyCheckPrompt(context: {
     },
     {
       role: 'user',
-      content: `角色档案：\n${charInfo}\n\n前情摘要：\n${summaryText}\n\n早先相关原文（priorQuote 必须摘自这里或上面的前情摘要）：\n${priorText}\n\n当前章节（第${targetChapter.chapterNumber}章，quote 必须摘自这里）：\n${targetChapter.content}`
+      content: `${novel?.worldSetting ? `世界观设定：\n${novel.worldSetting}\n\n` : ''}角色档案：\n${charInfo}\n\n前情摘要：\n${summaryText}\n\n早先相关原文（priorQuote 必须摘自这里或上面的前情摘要）：\n${priorText}\n\n当前章节（第${targetChapter.chapterNumber}章，quote 必须摘自这里）：\n${targetChapter.content}`
     }
   ]
 }
@@ -1007,13 +1016,19 @@ export function buildPlotThreadExtractionPrompt(context: {
   activeForeshadowing: Array<{ content: string }>
   activePlotPoints: Array<{ description: string }>
 }): Array<{ role: 'system' | 'user'; content: string }> {
-  const { chapterNumber, chapterContent, activeForeshadowing, activePlotPoints } =
-    context
-  const fsList = activeForeshadowing.length
-    ? activeForeshadowing.map((f, i) => `${i + 1}. ${f.content}`).join('\n')
+  const {
+    chapterNumber,
+    chapterContent,
+    activeForeshadowing,
+    activePlotPoints
+  } = context
+  const fsList =
+    activeForeshadowing.length ?
+      activeForeshadowing.map((f, i) => `${i + 1}. ${f.content}`).join('\n')
     : '（暂无）'
-  const ppList = activePlotPoints.length
-    ? activePlotPoints.map((p, i) => `${i + 1}. ${p.description}`).join('\n')
+  const ppList =
+    activePlotPoints.length ?
+      activePlotPoints.map((p, i) => `${i + 1}. ${p.description}`).join('\n')
     : '（暂无）'
 
   return [
@@ -1075,7 +1090,10 @@ export function buildQueryPlanningPrompt(context: {
   if (characterNames?.length)
     userPrompt += `\n已知角色：${characterNames.slice(0, 30).join('、')}\n`
   if (foreshadowingTitles?.length)
-    userPrompt += `\n待回收伏笔：${foreshadowingTitles.slice(0, 12).map((t) => t.slice(0, 30)).join('；')}\n`
+    userPrompt += `\n待回收伏笔：${foreshadowingTitles
+      .slice(0, 12)
+      .map((t) => t.slice(0, 30))
+      .join('；')}\n`
   if (recentSummaries?.length)
     userPrompt += `\n近章摘要：\n${recentSummaries.slice(-6).join('\n')}\n`
 

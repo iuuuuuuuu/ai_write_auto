@@ -69,27 +69,27 @@ export default defineEventHandler(async (event) => {
 
   const messages = [
     {
-      role: 'system' as const,
-      content:
-        '你是章节标题生成器。只输出一个 4-10 个中文字的章节标题本身，然后立即结束。\n严禁输出：思考过程、解释说明、序号（如「第3章」）、书名号/引号/标点、多个候选、或「标题：」之类前缀。\n标题应概括本章核心事件或氛围。现在直接输出标题，不要任何多余文字。'
-    },
-    {
       role: 'user' as const,
       content:
         contentHint ?
-          `小说：${novel.title}${novel.genre ? `（${novel.genre}）` : ''}\n第${chapterNumber}章${previousHint}${outlineHint}\n\n章节内容片段：\n${contentHint}\n\n请生成章节标题：`
-        : `小说：${novel.title}${novel.genre ? `（${novel.genre}）` : ''}\n第${chapterNumber}章${previousHint}${outlineHint}\n请生成一个适合作为下一章的章节标题：`
+          `小说：${novel.title}${novel.genre ? `（${novel.genre}）` : ''}\n第${chapterNumber}章${previousHint}${outlineHint}\n\n章节内容片段：\n${contentHint}\n\n===\n请为这一章生成一个 4-10 字的章节标题（名词短语或动宾短语，如「宫廷初遇」「危机四伏」）。\n直接输出标题，不要思考过程、序号、引号、前缀。`
+        : `小说：${novel.title}${novel.genre ? `（${novel.genre}）` : ''}\n第${chapterNumber}章${previousHint}${outlineHint}\n\n===\n请为这一章生成一个 4-10 字的章节标题（名词短语或动宾短语，如「宫廷初遇」「危机四伏」）。\n直接输出标题，不要思考过程、序号、引号、前缀。`
     }
   ]
 
   // 标题是「服务端消费完再返回 JSON」的短任务，不需要流式；改用非流式 callAiWithUsage
   // 才能可靠拿到 usage——流式下多数 OpenAI 兼容端点不回 usage 块（未传 stream_options），
   // 导致前端「本次消耗」恒为 0。
-  const { content: title, inputTokens, outputTokens } = await callAiWithUsage(
+  // 思考模型需要更大 token 预算(思考过程约200-500 tokens)，但非思考模型保持 48 即可
+  const {
+    content: title,
+    inputTokens,
+    outputTokens
+  } = await callAiWithUsage(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.8,
-      maxTokens: 48,
+      maxTokens: 600, // 增大到 600 以容纳思考模型的思考过程 + 标题输出
       extraBody: {
         enable_thinking: false,
         reasoning_effort: 'low'
@@ -116,6 +116,11 @@ export default defineEventHandler(async (event) => {
       .split(/[\n\r]+/)
       .map((s) => s.trim())
       .find((s) => s.length > 0) || ''
+
+  // 调试: 记录原始返回
+  console.log('[标题生成] 原始AI返回:', title)
+  console.log('[标题生成] 清洗后首行:', firstLine)
+
   const cleaned = firstLine
     .replace(/^第\s*\d+\s*章[：:、.\s]*/g, '')
     .replace(/^(章节标题|标题|title)\s*[：:]\s*/gi, '')
@@ -123,10 +128,12 @@ export default defineEventHandler(async (event) => {
     .replace(/^[，,。.！!？?；;、]+|[，,。.！!？?；;、]+$/g, '')
     .slice(0, 16)
 
-  if (!cleaned) {
+  console.log('[标题生成] 最终标题:', cleaned)
+
+  if (!cleaned || cleaned.length < 2) {
     throw createError({
       statusCode: 500,
-      message: `AI 返回标题为空，原始响应: ${title || '(空)'}`
+      message: `AI 返回标题过短或为空。原始: "${title}" / 清洗后: "${cleaned}"`
     })
   }
 

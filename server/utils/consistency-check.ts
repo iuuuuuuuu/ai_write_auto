@@ -2,7 +2,13 @@ import type { EntityManager } from '@mikro-orm/core'
 import { createHash } from 'node:crypto'
 import { streamAi, toAiOptions } from './ai-client'
 import { buildConsistencyCheckPrompt } from './ai-prompts'
-import { AiConfigSchema, ChapterSchema, CharacterSchema, ConsistencyIssueSchema } from '../database/entities'
+import {
+  AiConfigSchema,
+  ChapterSchema,
+  CharacterSchema,
+  ConsistencyIssueSchema,
+  NovelSchema
+} from '../database/entities'
 import { retrieveRelevant } from '../services/content-rag'
 
 export interface ParsedIssue {
@@ -57,9 +63,13 @@ export function validateConsistencyIssues(
   for (const raw of parsed as any[]) {
     if (!raw || typeof raw !== 'object') continue
     const quote = typeof raw.quote === 'string' ? raw.quote.trim() : ''
-    const priorQuote = typeof raw.priorQuote === 'string' ? raw.priorQuote.trim() : ''
+    const priorQuote =
+      typeof raw.priorQuote === 'string' ? raw.priorQuote.trim() : ''
     if (!quote || !priorQuote) continue
-    const rawConf = typeof raw.confidence === 'number' ? raw.confidence : parseFloat(raw.confidence)
+    const rawConf =
+      typeof raw.confidence === 'number' ?
+        raw.confidence
+      : parseFloat(raw.confidence)
     const confidence = Number.isFinite(rawConf) ? rawConf : 0.6
     if (confidence < MIN_CONFIDENCE) continue
     const qn = normalizeText(quote)
@@ -67,12 +77,19 @@ export function validateConsistencyIssues(
     if (qn.length < 4 || pqn.length < 4) continue
     if (!targetNorm.includes(qn)) continue
     if (priorNorm && !priorNorm.includes(pqn)) continue
-    const priorChapter = typeof raw.priorChapter === 'number' && Number.isFinite(raw.priorChapter)
-      ? raw.priorChapter
-      : (parseInt(raw.priorChapter, 10) || null)
+    const priorChapter =
+      (
+        typeof raw.priorChapter === 'number' &&
+        Number.isFinite(raw.priorChapter)
+      ) ?
+        raw.priorChapter
+      : parseInt(raw.priorChapter, 10) || null
     validated.push({
       type: typeof raw.type === 'string' && raw.type ? raw.type : 'unknown',
-      severity: ['high', 'medium', 'low'].includes(raw.severity) ? raw.severity : 'medium',
+      severity:
+        ['high', 'medium', 'low'].includes(raw.severity) ?
+          raw.severity
+        : 'medium',
       description: typeof raw.description === 'string' ? raw.description : '',
       quote,
       priorQuote,
@@ -89,31 +106,64 @@ export async function runConsistencyCheck(
   novelId: number,
   chapterId: number
 ): Promise<Array<{ type: string; severity: string; description: string }>> {
-  const config = await em.findOne(AiConfigSchema, { user: userId, purpose: 'consistency_check', enabled: true, isDefault: true }, { populate: ['aiModel', 'aiModel.provider'] })
-    || await em.findOne(AiConfigSchema, { user: userId, purpose: 'consistency_check', enabled: true }, { populate: ['aiModel', 'aiModel.provider'] })
-    || await em.findOne(AiConfigSchema, { user: userId, purpose: 'extraction', enabled: true }, { populate: ['aiModel', 'aiModel.provider'] })
+  const config =
+    (await em.findOne(
+      AiConfigSchema,
+      {
+        user: userId,
+        purpose: 'consistency_check',
+        enabled: true,
+        isDefault: true
+      },
+      { populate: ['aiModel', 'aiModel.provider'] }
+    )) ||
+    (await em.findOne(
+      AiConfigSchema,
+      { user: userId, purpose: 'consistency_check', enabled: true },
+      { populate: ['aiModel', 'aiModel.provider'] }
+    )) ||
+    (await em.findOne(
+      AiConfigSchema,
+      { user: userId, purpose: 'extraction', enabled: true },
+      { populate: ['aiModel', 'aiModel.provider'] }
+    ))
   if (!config || !config.aiModel) return []
   const aiModel = config.aiModel as any
   if (!aiModel.enabled) return []
   const provider = aiModel.provider
   if (!provider?.enabled) return []
-  const aiConfig = { apiUrl: provider.apiUrl, apiKey: provider.apiKey, model: aiModel.model, modelId: aiModel.id }
+  const aiConfig = {
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
+    model: aiModel.model,
+    modelId: aiModel.id
+  }
 
-  const targetChapter = await em.findOne(ChapterSchema, {
-    id: chapterId,
-    novel: novelId,
-    deletedAt: null,
-  }, { populate: ['content'] })
+  const novel = await em.findOne(NovelSchema, { id: novelId })
+
+  const targetChapter = await em.findOne(
+    ChapterSchema,
+    {
+      id: chapterId,
+      novel: novelId,
+      deletedAt: null
+    },
+    { populate: ['content'] }
+  )
   if (!targetChapter || !targetChapter.content) return []
 
   const characters = await em.find(CharacterSchema, { novel: novelId })
 
-  const precedingChapters = await em.find(ChapterSchema, {
-    novel: novelId,
-    deletedAt: null,
-    chapterNumber: { $lt: targetChapter.chapterNumber },
-    summary: { $ne: null },
-  }, { orderBy: { chapterNumber: 'DESC' }, limit: 5 })
+  const precedingChapters = await em.find(
+    ChapterSchema,
+    {
+      novel: novelId,
+      deletedAt: null,
+      chapterNumber: { $lt: targetChapter.chapterNumber },
+      summary: { $ne: null }
+    },
+    { orderBy: { chapterNumber: 'DESC' }, limit: 5 }
+  )
 
   const recentSummaries = precedingChapters
     .slice()
@@ -123,21 +173,38 @@ export async function runConsistencyCheck(
   // 校验前捞「真实早先段落」喂入：用本章实体（角色名 + 开头正文）做检索 query，
   // 过滤掉本章自身的向量项，给模型真实可引用的 priorQuote 来源（替代只看 5 章摘要）。
   // 无 embedding 时降级为空，仍可用「前情摘要」作 priorQuote 来源。
-  let priorPassages: Array<{ chapterNumber: number | null; label: string; content: string }> = []
+  let priorPassages: Array<{
+    chapterNumber: number | null
+    label: string
+    content: string
+  }> = []
   try {
-    const seed = [characters.map((c) => c.name).join(' '), targetChapter.content.slice(0, 500)]
+    const seed = [
+      characters.map((c) => c.name).join(' '),
+      targetChapter.content.slice(0, 500)
+    ]
       .filter(Boolean)
       .join(' ')
     const retrieved = await retrieveRelevant(novelId, seed, 8)
     const filtered = retrieved.filter((r) => r.chapterId !== targetChapter.id)
     if (filtered.length) {
-      const chapterIds = [...new Set(filtered.map((r) => r.chapterId).filter((id): id is number => typeof id === 'number'))]
-      const chapterRows = chapterIds.length
-        ? await em.find(ChapterSchema, { id: { $in: chapterIds } })
+      const chapterIds = [
+        ...new Set(
+          filtered
+            .map((r) => r.chapterId)
+            .filter((id): id is number => typeof id === 'number')
+        )
+      ]
+      const chapterRows =
+        chapterIds.length ?
+          await em.find(ChapterSchema, { id: { $in: chapterIds } })
         : []
-      const numberById = new Map(chapterRows.map((c) => [c.id, c.chapterNumber]))
+      const numberById = new Map(
+        chapterRows.map((c) => [c.id, c.chapterNumber])
+      )
       priorPassages = filtered.map((r) => ({
-        chapterNumber: r.chapterId != null ? numberById.get(r.chapterId) ?? null : null,
+        chapterNumber:
+          r.chapterId != null ? (numberById.get(r.chapterId) ?? null) : null,
         label: r.characterName || r.contentType,
         content: r.content
       }))
@@ -145,18 +212,24 @@ export async function runConsistencyCheck(
   } catch {}
 
   const messages = buildConsistencyCheckPrompt({
+    novel: novel ? { worldSetting: novel.worldSetting } : undefined,
     characters,
     recentSummaries,
     priorPassages,
-    targetChapter: { chapterNumber: targetChapter.chapterNumber, content: targetChapter.content }
+    targetChapter: {
+      chapterNumber: targetChapter.chapterNumber,
+      content: targetChapter.content
+    }
   })
 
   let result = ''
-  for await (const chunk of streamAi(toAiOptions(aiConfig, {
-    messages,
-    temperature: 0.2,
-    maxTokens: 2000,
-  }))) {
+  for await (const chunk of streamAi(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.2,
+      maxTokens: 2000
+    })
+  )) {
     if (chunk.content) result += chunk.content
   }
 
@@ -165,7 +238,11 @@ export async function runConsistencyCheck(
     ...priorPassages.map((p) => p.content),
     ...recentSummaries.map((s) => s.summary)
   ].join(' ')
-  const validated = validateConsistencyIssues(result, targetChapter.content, priorText)
+  const validated = validateConsistencyIssues(
+    result,
+    targetChapter.content,
+    priorText
+  )
 
   // 按签名 upsert：命中已有行则刷新内容但保留 dismissed；本轮未再出现的非 dismissed 行剪枝；
   // dismissed 行始终保留作墓碑，使被忽略的问题即便重测也不再冒出。
@@ -213,5 +290,9 @@ export async function runConsistencyCheck(
 
   await em.flush()
 
-  return validated.map((i) => ({ type: i.type, severity: i.severity, description: i.description }))
+  return validated.map((i) => ({
+    type: i.type,
+    severity: i.severity,
+    description: i.description
+  }))
 }
