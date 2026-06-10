@@ -362,20 +362,22 @@ function resetImport() {
 </script>
 
 <template>
-  <div class="mx-auto max-w-7xl space-y-5">
+  <div class="mx-auto max-w-[1500px] space-y-4">
     <!-- Greeting & Stats -->
-    <section class="card-glass overflow-hidden rounded-[2rem] p-5 md:p-7">
+    <section
+      class="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.65fr)]"
+    >
       <div
-        class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between"
+        class="card-glass flex min-h-[220px] flex-col justify-between overflow-hidden rounded-[2rem] p-5 md:p-7"
       >
-        <div class="max-w-2xl">
+        <div class="max-w-3xl">
           <p
             class="mb-2 text-xs uppercase tracking-[0.24em] text-(--ui-text-dimmed)"
           >
             Writing Command Center
           </p>
           <h1
-            class="text-3xl font-medium tracking-[-0.05em] text-(--ui-text-highlighted) md:text-5xl"
+            class="text-3xl font-medium tracking-normal text-(--ui-text-highlighted) md:text-5xl"
           >
             {{ getGreeting() }}，<span
               class="bg-gradient-to-r from-primary-400 to-primary-600 bg-clip-text text-transparent"
@@ -402,7 +404,7 @@ function resetImport() {
             >
           </p>
         </div>
-        <div class="flex shrink-0 gap-2">
+        <div class="mt-8 flex flex-wrap gap-2">
           <NButton
             size="medium"
             round
@@ -429,6 +431,114 @@ function resetImport() {
             {{ t('novel.create') }}
           </NButton>
         </div>
+      </div>
+
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="liquid-panel flex items-center gap-3 p-3.5">
+            <div
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
+            >
+              <Icon
+                icon="lucide:book-open"
+                class="h-5 w-5 text-white"
+              />
+            </div>
+            <div class="min-w-0">
+              <p
+                class="font-mono text-xl font-medium leading-none text-(--ui-text)"
+              >
+                {{ stats?.totalNovels || 0 }}
+              </p>
+              <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">部作品</p>
+            </div>
+          </div>
+          <div class="liquid-panel flex items-center gap-3 p-3.5">
+            <div
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
+            >
+              <Icon
+                icon="lucide:type"
+                class="h-5 w-5 text-white"
+              />
+            </div>
+            <div class="min-w-0">
+              <p
+                class="truncate font-mono text-xl font-medium leading-none text-(--ui-text)"
+              >
+                {{ (stats?.totalWords || 0).toLocaleString() }}
+              </p>
+              <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">总字数</p>
+            </div>
+          </div>
+          <div class="liquid-panel flex items-center gap-3 p-3.5">
+            <div
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500"
+            >
+              <Icon
+                icon="lucide:flame"
+                class="h-5 w-5 text-white"
+              />
+            </div>
+            <div class="min-w-0">
+              <p
+                class="font-mono text-xl font-medium leading-none text-(--ui-text)"
+              >
+                {{ stats?.streak || 0 }}
+              </p>
+              <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">天连续</p>
+            </div>
+          </div>
+          <div class="liquid-panel flex items-center gap-3 p-3.5">
+            <div
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
+            >
+              <Icon
+                icon="lucide:pencil"
+                class="h-5 w-5 text-white"
+              />
+            </div>
+            <div class="min-w-0">
+              <p
+                class="truncate font-mono text-xl font-medium leading-none text-(--ui-text)"
+              >
+                {{ (stats?.todayWords || 0).toLocaleString() }}
+              </p>
+              <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">今日</p>
+            </div>
+          </div>
+        </div>
+
+        <section
+          v-if="stats?.dailyGoal"
+          class="liquid-panel flex flex-col justify-between p-4"
+        >
+          <div class="mb-4 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <span
+                class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500/12 text-primary-500"
+              >
+                <Icon
+                  icon="lucide:target"
+                  class="size-4"
+                />
+              </span>
+              <span class="text-sm font-medium text-(--ui-text)"
+                >今日写作目标</span
+              >
+            </div>
+            <span class="font-mono text-xs text-(--ui-text-muted)">
+              {{ (stats.todayWords || 0).toLocaleString() }} /
+              {{ stats.dailyGoal.toLocaleString() }} 字
+            </span>
+          </div>
+          <NProgress
+            type="line"
+            :percentage="stats.dailyProgress || 0"
+            :height="8"
+            :show-indicator="false"
+          />
+        </section>
       </div>
     </section>
 
@@ -485,352 +595,262 @@ function resetImport() {
       </div>
     </section>
 
-    <div class="stagger-children grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <div class="liquid-panel flex items-center gap-3 p-3">
-        <div
-          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
+    <div class="grid gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
+      <!-- Recent Activity -->
+      <section
+        v-if="recentActivity?.length"
+        class="liquid-panel p-4"
+      >
+        <h2
+          class="mb-3 text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)"
         >
-          <Icon
-            icon="lucide:book-open"
-            class="h-5 w-5 text-white"
-          />
-        </div>
-        <div>
-          <p
-            class="font-mono text-xl font-medium leading-none text-(--ui-text)"
+          继续写作
+        </h2>
+        <div class="grid gap-2">
+          <NuxtLink
+            v-for="item in recentActivity"
+            :key="item.id"
+            :to="`/novels/${item.novelId}/chapters/${item.id}`"
+            class="group rounded-2xl bg-(--ui-bg-elevated) p-3 ring-1 ring-(--ui-border) transition-all duration-200 hover:-translate-y-0.5 hover:ring-(--ui-border-accented)"
           >
-            {{ stats?.totalNovels || 0 }}
-          </p>
-          <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">部作品</p>
+            <div class="mb-2 flex items-center gap-1.5">
+              <span
+                class="rounded-full bg-primary-500/10 px-2 py-0.5 text-[10px] font-medium text-primary-600 dark:text-primary-400"
+                >第{{ item.chapterNumber }}章</span
+              >
+              <span class="text-[10px] text-(--ui-text-dimmed)">{{
+                formatRelativeTime(item.updatedAt)
+              }}</span>
+            </div>
+            <p
+              class="truncate text-[14px] font-medium text-(--ui-text) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400"
+            >
+              {{ item.title }}
+            </p>
+            <p class="mt-1 truncate text-[11px] text-(--ui-text-dimmed)">
+              {{ item.novelTitle }}
+            </p>
+          </NuxtLink>
         </div>
-      </div>
-      <div class="liquid-panel flex items-center gap-3 p-3">
-        <div
-          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
-        >
-          <Icon
-            icon="lucide:type"
-            class="h-5 w-5 text-white"
-          />
-        </div>
-        <div>
-          <p
-            class="font-mono text-xl font-medium leading-none text-(--ui-text)"
+      </section>
+
+      <div class="space-y-4">
+        <!-- Reading History -->
+        <ReadingHistory />
+
+        <!-- Novels Grid -->
+        <section class="liquid-panel p-4">
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <h2
+                class="text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)"
+              >
+                我的作品
+              </h2>
+              <span
+                v-if="total"
+                class="text-[11px] text-(--ui-text-dimmed)"
+                >{{ total }} 部</span
+              >
+            </div>
+            <div
+              v-if="novels.length"
+              class="flex items-center gap-2"
+            >
+              <template v-if="selectionMode">
+                <NCheckbox
+                  :checked="allNovelsSelected"
+                  :indeterminate="
+                    selectedNovelIds.length > 0 && !allNovelsSelected
+                  "
+                  @update:checked="toggleSelectAllNovels"
+                >
+                  全选
+                </NCheckbox>
+                <span class="text-[11px] text-(--ui-text-dimmed)"
+                  >已选 {{ selectedNovelIds.length }}</span
+                >
+                <NButton
+                  size="tiny"
+                  type="error"
+                  :disabled="!selectedNovelIds.length"
+                  @click="confirmBatchDeleteNovels"
+                >
+                  <template #icon><Icon icon="lucide:trash-2" /></template>
+                  批量删除
+                </NButton>
+                <NButton
+                  size="tiny"
+                  quaternary
+                  @click="toggleNovelSelectionMode"
+                >
+                  退出
+                </NButton>
+              </template>
+              <NButton
+                v-else
+                size="tiny"
+                quaternary
+                @click="toggleNovelSelectionMode"
+              >
+                <template #icon><Icon icon="lucide:list-checks" /></template>
+                批量管理
+              </NButton>
+            </div>
+          </div>
+
+          <Transition
+            name="fade"
+            mode="out-in"
           >
-            {{ (stats?.totalWords || 0).toLocaleString() }}
-          </p>
-          <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">总字数</p>
-        </div>
-      </div>
-      <div class="liquid-panel flex items-center gap-3 p-3">
-        <div
-          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-amber-500"
-        >
-          <Icon
-            icon="lucide:flame"
-            class="h-5 w-5 text-white"
-          />
-        </div>
-        <div>
-          <p
-            class="font-mono text-xl font-medium leading-none text-(--ui-text)"
-          >
-            {{ stats?.streak || 0 }}
-          </p>
-          <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">天连续</p>
-        </div>
-      </div>
-      <div class="liquid-panel flex items-center gap-3 p-3">
-        <div
-          class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary-500"
-        >
-          <Icon
-            icon="lucide:pencil"
-            class="h-5 w-5 text-white"
-          />
-        </div>
-        <div>
-          <p
-            class="font-mono text-xl font-medium leading-none text-(--ui-text)"
-          >
-            {{ stats?.todayWords || 0 }}
-          </p>
-          <p class="mt-1 text-[11px] text-(--ui-text-dimmed)">今日</p>
-        </div>
+            <div
+              v-if="novelsLoading"
+              class="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3"
+            >
+              <NSkeleton
+                v-for="i in 6"
+                :key="i"
+                class="h-44 rounded-xl"
+                text
+              />
+            </div>
+
+            <div
+              v-else-if="novels.length"
+              key="novels-content"
+            >
+              <TransitionGroup
+                name="list"
+                tag="div"
+                class="relative grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3"
+              >
+                <component
+                  :is="selectionMode ? 'div' : NuxtLinkComponent"
+                  v-for="novel in novels"
+                  :key="novel.id"
+                  :to="selectionMode ? undefined : `/novels/${novel.id}`"
+                  class="group relative flex flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) transition-all duration-200 hover:border-(--ui-border-accented) hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:-translate-y-0.5"
+                  :class="[
+                    selectionMode ? 'cursor-pointer' : '',
+                    selectionMode && selectedNovelIds.includes(novel.id) ?
+                      'ring-2 ring-primary-500 border-primary-500'
+                    : ''
+                  ]"
+                  @click="
+                    selectionMode ? toggleNovelSelection(novel.id) : undefined
+                  "
+                >
+                  <!-- Selection checkbox -->
+                  <div
+                    v-if="selectionMode"
+                    class="absolute right-2 top-2 z-10 rounded-md bg-(--ui-bg-elevated)/90 p-0.5 shadow-sm ring-1 ring-(--ui-border)"
+                    @click.stop="toggleNovelSelection(novel.id)"
+                  >
+                    <NCheckbox :checked="selectedNovelIds.includes(novel.id)" />
+                  </div>
+                  <!-- Top color bar -->
+                  <div
+                    class="h-1.5 w-full"
+                    :style="{ background: getGenreColor(novel.genre) }"
+                  />
+
+                  <div class="flex flex-1 flex-col p-3.5">
+                    <div class="mb-2 flex items-start justify-between gap-2">
+                      <h3
+                        class="line-clamp-2 text-[14px] font-semibold leading-snug text-(--ui-text-highlighted) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400"
+                      >
+                        {{ novel.title }}
+                      </h3>
+                    </div>
+
+                    <p
+                      v-if="novel.description"
+                      class="mb-3 line-clamp-2 text-[12px] leading-relaxed text-(--ui-text-dimmed)"
+                    >
+                      {{ novel.description }}
+                    </p>
+                    <div
+                      v-else
+                      class="mb-3"
+                    />
+
+                    <div
+                      class="mt-auto flex items-center justify-between gap-2"
+                    >
+                      <span
+                        class="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                        :class="
+                          novel.status === 'completed' ?
+                            'bg-emerald-500/10 text-emerald-600'
+                          : novel.status === 'in_progress' ?
+                            'bg-blue-500/10 text-blue-600'
+                          : 'bg-(--ui-bg-muted) text-(--ui-text-dimmed)'
+                        "
+                      >
+                        {{ getStatusLabel(novel.status) }}
+                      </span>
+                      <span
+                        class="text-[11px] font-mono text-(--ui-text-dimmed)"
+                        >{{ (novel.wordCount || 0).toLocaleString() }} 字</span
+                      >
+                    </div>
+
+                    <div
+                      class="mt-2.5 flex items-center justify-between border-t border-(--ui-border) pt-2.5 text-[11px] text-(--ui-text-dimmed)"
+                    >
+                      <span
+                        class="font-medium"
+                        :style="{ color: getGenreColor(novel.genre) }"
+                        >{{ getGenreLabel(novel.genre) }}</span
+                      >
+                      <span>{{ formatRelativeTime(novel.updatedAt) }}</span>
+                    </div>
+                  </div>
+                </component>
+              </TransitionGroup>
+              <div
+                v-if="totalPages > 1"
+                class="flex items-center justify-center pt-4"
+              >
+                <NPagination
+                  :page="page"
+                  :page-count="totalPages"
+                  :page-size="pageSize"
+                  @update:page="goToPage"
+                />
+              </div>
+            </div>
+
+            <div
+              v-else
+              key="novels-empty"
+              class="py-16"
+            >
+              <EmptyState
+                icon="lucide:feather"
+                title="开始你的第一个故事"
+                description="创建一部小说，让 AI 帮助你构建世界、塑造角色、推进情节"
+                :action-label="t('novel.create')"
+                @action="showCreateModal = true"
+              />
+              <div class="-mt-6 flex justify-center">
+                <NButton
+                  size="small"
+                  secondary
+                  :loading="creatingSampleNovel"
+                  @click="createSampleNovel"
+                >
+                  <template #icon>
+                    <Icon icon="lucide:sparkles" />
+                  </template>
+                  生成示例小说
+                </NButton>
+              </div>
+            </div>
+          </Transition>
+        </section>
       </div>
     </div>
-
-    <section
-      v-if="stats?.dailyGoal"
-      class="liquid-panel p-4"
-    >
-      <div class="mb-3 flex items-center justify-between gap-3">
-        <div class="flex items-center gap-2">
-          <span
-            class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-500/12 text-primary-500"
-          >
-            <Icon
-              icon="lucide:target"
-              class="size-4"
-            />
-          </span>
-          <span class="text-sm font-medium text-(--ui-text)">今日写作目标</span>
-        </div>
-        <span class="font-mono text-xs text-(--ui-text-muted)">
-          {{ (stats.todayWords || 0).toLocaleString() }} /
-          {{ stats.dailyGoal.toLocaleString() }} 字
-        </span>
-      </div>
-      <NProgress
-        type="line"
-        :percentage="stats.dailyProgress || 0"
-        :height="8"
-        :show-indicator="false"
-      />
-    </section>
-
-    <!-- Recent Activity -->
-    <section v-if="recentActivity?.length">
-      <h2
-        class="mb-3 text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)"
-      >
-        继续写作
-      </h2>
-      <div class="flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-none">
-        <NuxtLink
-          v-for="item in recentActivity"
-          :key="item.id"
-          :to="`/novels/${item.novelId}/chapters/${item.id}`"
-          class="liquid-panel group w-56 flex-none p-3 transition-transform duration-200"
-        >
-          <div class="mb-2 flex items-center gap-1.5">
-            <span
-              class="rounded-full bg-primary-500/10 px-2 py-0.5 text-[10px] font-medium text-primary-600 dark:text-primary-400"
-              >第{{ item.chapterNumber }}章</span
-            >
-            <span class="text-[10px] text-(--ui-text-dimmed)">{{
-              formatRelativeTime(item.updatedAt)
-            }}</span>
-          </div>
-          <p
-            class="truncate text-[14px] font-medium text-(--ui-text) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400"
-          >
-            {{ item.title }}
-          </p>
-          <p class="mt-1 truncate text-[11px] text-(--ui-text-dimmed)">
-            {{ item.novelTitle }}
-          </p>
-        </NuxtLink>
-      </div>
-    </section>
-
-    <!-- Reading History -->
-    <ReadingHistory />
-
-    <!-- Novels Grid -->
-    <section>
-      <div class="mb-3 flex items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
-          <h2
-            class="text-[11px] font-medium uppercase tracking-[0.22em] text-(--ui-text-dimmed)"
-          >
-            我的作品
-          </h2>
-          <span
-            v-if="total"
-            class="text-[11px] text-(--ui-text-dimmed)"
-            >{{ total }} 部</span
-          >
-        </div>
-        <div
-          v-if="novels.length"
-          class="flex items-center gap-2"
-        >
-          <template v-if="selectionMode">
-            <NCheckbox
-              :checked="allNovelsSelected"
-              :indeterminate="selectedNovelIds.length > 0 && !allNovelsSelected"
-              @update:checked="toggleSelectAllNovels"
-            >
-              全选
-            </NCheckbox>
-            <span class="text-[11px] text-(--ui-text-dimmed)"
-              >已选 {{ selectedNovelIds.length }}</span
-            >
-            <NButton
-              size="tiny"
-              type="error"
-              :disabled="!selectedNovelIds.length"
-              @click="confirmBatchDeleteNovels"
-            >
-              <template #icon><Icon icon="lucide:trash-2" /></template>
-              批量删除
-            </NButton>
-            <NButton
-              size="tiny"
-              quaternary
-              @click="toggleNovelSelectionMode"
-            >
-              退出
-            </NButton>
-          </template>
-          <NButton
-            v-else
-            size="tiny"
-            quaternary
-            @click="toggleNovelSelectionMode"
-          >
-            <template #icon><Icon icon="lucide:list-checks" /></template>
-            批量管理
-          </NButton>
-        </div>
-      </div>
-
-      <Transition
-        name="fade"
-        mode="out-in"
-      >
-        <div
-          v-if="novelsLoading"
-          class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-        >
-          <NSkeleton
-            v-for="i in 6"
-            :key="i"
-            class="h-44 rounded-xl"
-            text
-          />
-        </div>
-
-        <div
-          v-else-if="novels.length"
-          key="novels-content"
-        >
-          <TransitionGroup
-            name="list"
-            tag="div"
-            class="relative grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-          >
-            <component
-              :is="selectionMode ? 'div' : NuxtLinkComponent"
-              v-for="novel in novels"
-              :key="novel.id"
-              :to="selectionMode ? undefined : `/novels/${novel.id}`"
-              class="group relative flex flex-col overflow-hidden rounded-xl border border-(--ui-border) bg-(--ui-bg-elevated) transition-all duration-200 hover:border-(--ui-border-accented) hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] hover:-translate-y-0.5"
-              :class="[
-                selectionMode ? 'cursor-pointer' : '',
-                selectionMode && selectedNovelIds.includes(novel.id) ?
-                  'ring-2 ring-primary-500 border-primary-500'
-                : ''
-              ]"
-              @click="selectionMode ? toggleNovelSelection(novel.id) : undefined"
-            >
-              <!-- Selection checkbox -->
-              <div
-                v-if="selectionMode"
-                class="absolute right-2 top-2 z-10 rounded-md bg-(--ui-bg-elevated)/90 p-0.5 shadow-sm ring-1 ring-(--ui-border)"
-                @click.stop="toggleNovelSelection(novel.id)"
-              >
-                <NCheckbox :checked="selectedNovelIds.includes(novel.id)" />
-              </div>
-              <!-- Top color bar -->
-              <div
-                class="h-1.5 w-full"
-                :style="{ background: getGenreColor(novel.genre) }"
-              />
-
-              <div class="flex flex-1 flex-col p-3.5">
-                <div class="mb-2 flex items-start justify-between gap-2">
-                  <h3
-                    class="line-clamp-2 text-[14px] font-semibold leading-snug text-(--ui-text-highlighted) transition-colors group-hover:text-primary-600 dark:group-hover:text-primary-400"
-                  >
-                    {{ novel.title }}
-                  </h3>
-                </div>
-
-                <p
-                  v-if="novel.description"
-                  class="mb-3 line-clamp-2 text-[12px] leading-relaxed text-(--ui-text-dimmed)"
-                >
-                  {{ novel.description }}
-                </p>
-                <div
-                  v-else
-                  class="mb-3"
-                />
-
-                <div class="mt-auto flex items-center justify-between gap-2">
-                  <span
-                    class="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    :class="
-                      novel.status === 'completed' ?
-                        'bg-emerald-500/10 text-emerald-600'
-                      : novel.status === 'in_progress' ?
-                        'bg-blue-500/10 text-blue-600'
-                      : 'bg-(--ui-bg-muted) text-(--ui-text-dimmed)'
-                    "
-                  >
-                    {{ getStatusLabel(novel.status) }}
-                  </span>
-                  <span class="text-[11px] font-mono text-(--ui-text-dimmed)"
-                    >{{ (novel.wordCount || 0).toLocaleString() }} 字</span
-                  >
-                </div>
-
-                <div
-                  class="mt-2.5 flex items-center justify-between border-t border-(--ui-border) pt-2.5 text-[11px] text-(--ui-text-dimmed)"
-                >
-                  <span
-                    class="font-medium"
-                    :style="{ color: getGenreColor(novel.genre) }"
-                    >{{ getGenreLabel(novel.genre) }}</span
-                  >
-                  <span>{{ formatRelativeTime(novel.updatedAt) }}</span>
-                </div>
-              </div>
-            </component>
-          </TransitionGroup>
-          <div
-            v-if="totalPages > 1"
-            class="flex items-center justify-center pt-4"
-          >
-            <NPagination
-              :page="page"
-              :page-count="totalPages"
-              :page-size="pageSize"
-              @update:page="goToPage"
-            />
-          </div>
-        </div>
-
-        <div
-          v-else
-          key="novels-empty"
-          class="py-16"
-        >
-          <EmptyState
-            icon="lucide:feather"
-            title="开始你的第一个故事"
-            description="创建一部小说，让 AI 帮助你构建世界、塑造角色、推进情节"
-            :action-label="t('novel.create')"
-            @action="showCreateModal = true"
-          />
-          <div class="-mt-6 flex justify-center">
-            <NButton
-              size="small"
-              secondary
-              :loading="creatingSampleNovel"
-              @click="createSampleNovel"
-            >
-              <template #icon>
-                <Icon icon="lucide:sparkles" />
-              </template>
-              生成示例小说
-            </NButton>
-          </div>
-        </div>
-      </Transition>
-    </section>
 
     <NovelCreateWizard
       v-model:show="showCreateModal"
