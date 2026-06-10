@@ -482,7 +482,18 @@ export default defineEventHandler(async (event) => {
               extraBody: PROSE_SAMPLING,
               messages: prompt,
               stream: true,
-              signal
+              signal,
+              tracking: {
+                userId: auth.userId,
+                configId: aiConfig.configId,
+                modelId: aiConfig.modelId,
+                purpose: 'generation',
+                scenario: 'workspace_chapter_generate',
+                source: 'api_route',
+                endpoint: '/api/ai/workspace-generate',
+                novelId: data.novelId,
+                taskId
+              }
             }),
             signal,
             (content) =>

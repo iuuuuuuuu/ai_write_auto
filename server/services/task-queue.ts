@@ -1,5 +1,9 @@
 import { getOrm } from '../database'
-import { streamAi, toAiOptions } from '../utils/ai-client'
+import {
+  streamAi,
+  toAiOptions,
+  type AiRequestTracking
+} from '../utils/ai-client'
 import { runConsistencyCheck } from '../utils/consistency-check'
 import { runPlotThreadExtraction } from '../utils/plot-threads'
 import { parseExtractedCharacters } from '../utils/character-extraction'
@@ -123,6 +127,25 @@ async function processTask(task: GenerationTask): Promise<void> {
     const novelEntity = (await em.findOne(NovelSchema, { id: novelId })) as any
     const userId = novelEntity ? getEntityId(novelEntity.user) : undefined
 
+    function buildTaskTracking(
+      aiConfig: ResolvedAiConfig,
+      scenario: string,
+      purpose: string,
+      chapterId?: number | null
+    ): AiRequestTracking {
+      return {
+        userId: userId ?? null,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose,
+        scenario,
+        source: 'background_task',
+        novelId,
+        chapterId: chapterId ?? null,
+        taskId: task.id
+      }
+    }
+
     if (task.type === 'extract_summary' && task.chapter) {
       const chapter = await em.findOne(
         ChapterSchema,
@@ -139,7 +162,13 @@ async function processTask(task: GenerationTask): Promise<void> {
             toAiOptions(aiConfig, {
               messages,
               temperature: 0.3,
-              maxTokens: 500
+              maxTokens: 500,
+              tracking: buildTaskTracking(
+                aiConfig,
+                'task_extract_summary',
+                'extraction',
+                chapter.id
+              )
             })
           )
           result = aiResult.content
@@ -180,6 +209,12 @@ async function processTask(task: GenerationTask): Promise<void> {
               maxTokens: dynamicMaxTokens(
                 estimateTokens(chapter.content) * 0.5,
                 { floor: 2000, cap: 6000 }
+              ),
+              tracking: buildTaskTracking(
+                aiConfig,
+                'task_character_extract',
+                'extraction',
+                chapter.id
               )
             })
           )
@@ -289,7 +324,13 @@ async function processTask(task: GenerationTask): Promise<void> {
                 toAiOptions(aiConfig, {
                   messages: storyMessages,
                   temperature: 0.3,
-                  maxTokens: 500
+                  maxTokens: 500,
+                  tracking: buildTaskTracking(
+                    aiConfig,
+                    'task_character_story',
+                    'extraction',
+                    chapter.id
+                  )
                 })
               )
               const chapterStory = storyResult.content
@@ -308,7 +349,13 @@ async function processTask(task: GenerationTask): Promise<void> {
                 toAiOptions(aiConfig, {
                   messages: arcMessages,
                   temperature: 0.3,
-                  maxTokens: 800
+                  maxTokens: 800,
+                  tracking: buildTaskTracking(
+                    aiConfig,
+                    'task_character_arc',
+                    'extraction',
+                    chapter.id
+                  )
                 })
               )
               totalInputTokens += arcResult.inputTokens
@@ -440,7 +487,12 @@ async function processTask(task: GenerationTask): Promise<void> {
               toAiOptions(aiConfig, {
                 messages,
                 temperature: 0.3,
-                maxTokens: 500
+                maxTokens: 500,
+                tracking: buildTaskTracking(
+                  aiConfig,
+                  'task_story_arc_generate',
+                  'extraction'
+                )
               })
             )
             const arcSummary = arcResult.content
@@ -497,7 +549,12 @@ async function processTask(task: GenerationTask): Promise<void> {
             toAiOptions(aiConfig, {
               messages,
               temperature: 0.3,
-              maxTokens: 500
+              maxTokens: 500,
+              tracking: buildTaskTracking(
+                aiConfig,
+                'task_style_analysis',
+                'style_analysis'
+              )
             })
           )
           const styleGuide = styleResult.content

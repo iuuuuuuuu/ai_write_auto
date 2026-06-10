@@ -136,7 +136,8 @@ export async function runConsistencyCheck(
     apiUrl: provider.apiUrl,
     apiKey: provider.apiKey,
     model: aiModel.model,
-    modelId: aiModel.id
+    modelId: aiModel.id,
+    configId: config.id
   }
 
   const novel = await em.findOne(NovelSchema, { id: novelId })
@@ -227,7 +228,17 @@ export async function runConsistencyCheck(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
-      maxTokens: 2000
+      maxTokens: 2000,
+      tracking: {
+        userId,
+        configId: config.id,
+        modelId: aiModel.id,
+        purpose: 'consistency_check',
+        scenario: 'consistency_check',
+        source: 'service',
+        novelId,
+        chapterId
+      }
     })
   )) {
     if (chunk.content) result += chunk.content

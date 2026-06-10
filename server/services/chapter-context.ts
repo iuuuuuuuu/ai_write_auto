@@ -128,7 +128,16 @@ async function planQueries(
       maxTokens: 256,
       // query 生成是廉价结构化调用：关掉思考链，省 token、降首 token 延迟（与标题生成一致）。
       // 不支持这些字段的供应商会忽略它们；真失败则上层回落 seed-only。
-      extraBody: { enable_thinking: false, reasoning_effort: 'low' }
+      extraBody: { enable_thinking: false, reasoning_effort: 'low' },
+      tracking: {
+        userId: opts.userId,
+        configId: cfg.configId,
+        modelId: cfg.modelId,
+        purpose: 'planning',
+        scenario: 'rag_query_planning',
+        source: 'service',
+        novelId: opts.novelId
+      }
     })
   )
   usage.inputTokens += res.inputTokens

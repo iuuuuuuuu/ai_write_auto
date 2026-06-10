@@ -118,7 +118,18 @@ export default defineEventHandler(async (event) => {
         messages,
         temperature: parseFloat(aiConfig.temperature || '0.7'),
         maxTokens: MAX_TOKENS_ACTION,
-        extraBody: PROSE_SAMPLING
+        extraBody: PROSE_SAMPLING,
+        tracking: {
+          userId: auth.userId,
+          configId: aiConfig.configId,
+          modelId: aiConfig.modelId,
+          purpose: 'generation',
+          scenario: 'inline_rewrite',
+          source: 'api_route',
+          endpoint: '/api/ai/rewrite',
+          novelId: data.novelId,
+          chapterId: data.chapterId
+        }
       })
     },
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }

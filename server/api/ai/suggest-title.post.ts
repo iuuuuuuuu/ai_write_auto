@@ -93,6 +93,17 @@ export default defineEventHandler(async (event) => {
       extraBody: {
         enable_thinking: false,
         reasoning_effort: 'low'
+      },
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'suggest_title',
+        source: 'api_route',
+        endpoint: '/api/ai/suggest-title',
+        novelId: data.novelId,
+        chapterId: data.chapterId ?? null
       }
     })
   )

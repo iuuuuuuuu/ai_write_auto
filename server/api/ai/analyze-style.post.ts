@@ -7,7 +7,7 @@ import { NovelSchema, ChapterSchema } from '../../database/entities'
 
 const styleSchema = z.object({
   novelId: z.number().int().positive(),
-  aiConfigId: z.number().int().positive().optional(),
+  aiConfigId: z.number().int().positive().optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -16,17 +16,29 @@ export default defineEventHandler(async (event) => {
   const data = styleSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: data.novelId,
+    user: auth.userId
+  })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'style_analysis', data.aiConfigId)
+  const aiConfig = await resolveUserAiConfig(
+    em,
+    auth.userId,
+    'style_analysis',
+    data.aiConfigId
+  )
 
-  const chapters = await em.find(ChapterSchema, {
-    novel: data.novelId,
-    deletedAt: null,
-  }, { orderBy: { chapterNumber: 'ASC' }, limit: 5, populate: ['content'] })
+  const chapters = await em.find(
+    ChapterSchema,
+    {
+      novel: data.novelId,
+      deletedAt: null
+    },
+    { orderBy: { chapterNumber: 'ASC' }, limit: 5, populate: ['content'] }
+  )
 
   const sampleText = chapters
     .filter((c) => c.content)
@@ -34,7 +46,10 @@ export default defineEventHandler(async (event) => {
     .join('\n\n---\n\n')
 
   if (!sampleText) {
-    throw createError({ statusCode: 400, message: 'No chapter content to analyze' })
+    throw createError({
+      statusCode: 400,
+      message: 'No chapter content to analyze'
+    })
   }
 
   const messages = buildStyleAnalysisPrompt(sampleText)
@@ -42,11 +57,23 @@ export default defineEventHandler(async (event) => {
   let styleGuide = ''
   let inputTokens = 0
   let outputTokens = 0
-  for await (const chunk of streamAi(toAiOptions(aiConfig, {
-    messages,
-    temperature: 0.3,
-    maxTokens: 1000,
-  }))) {
+  for await (const chunk of streamAi(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.3,
+      maxTokens: 1000,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'style_analysis',
+        scenario: 'style_analysis',
+        source: 'api_route',
+        endpoint: '/api/ai/analyze-style',
+        novelId: data.novelId
+      }
+    })
+  )) {
     if (chunk.content) styleGuide += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens
@@ -54,9 +81,17 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  await recordUsage({ em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, inputTokens, outputTokens)
+  await recordUsage(
+    { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model },
+    inputTokens,
+    outputTokens
+  )
 
-  await em.nativeUpdate(NovelSchema, { id: data.novelId }, { styleGuide, updatedAt: new Date() })
+  await em.nativeUpdate(
+    NovelSchema,
+    { id: data.novelId },
+    { styleGuide, updatedAt: new Date() }
+  )
 
   return { styleGuide }
 })

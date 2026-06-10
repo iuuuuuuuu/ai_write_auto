@@ -10,10 +10,14 @@ const outlineGenSchema = z.object({
   idea: z.string().min(1),
   chapterCount: z.number().int().min(3).max(200).default(20),
   startChapter: z.number().int().min(1).optional(),
-  existingOutlines: z.array(z.object({
-    chapterNumber: z.number().int().positive(),
-    description: z.string()
-  })).optional(),
+  existingOutlines: z
+    .array(
+      z.object({
+        chapterNumber: z.number().int().positive(),
+        description: z.string()
+      })
+    )
+    .optional(),
   aiConfigId: z.number().int().positive().optional()
 })
 
@@ -23,12 +27,21 @@ export default defineEventHandler(async (event) => {
   const data = outlineGenSchema.parse(body)
   const em = useEm(event)
 
-  const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: data.novelId,
+    user: auth.userId
+  })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
-  const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
+  const aiConfig = await resolveNovelAiConfig(
+    em,
+    auth.userId,
+    data.novelId,
+    'generation',
+    data.aiConfigId
+  )
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
 
   const startChapter = data.startChapter || 1
@@ -41,12 +54,30 @@ export default defineEventHandler(async (event) => {
     existingOutlines: data.existingOutlines
   })
 
-  return createStreamResponse(event, {
-    ...toAiOptions(aiConfig, {
-      messages,
-      temperature: 0.8,
-      // 按章数动态给上限（每章大纲 JSON 约 ~120 tokens），避免大 chapterCount 被固定 4000 截断
-      maxTokens: dynamicMaxTokens(data.chapterCount * 120 + 300, { floor: 1000, cap: 8000 })
-    }),
-  }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }, { parseJsonResult: true })
+  return createStreamResponse(
+    event,
+    {
+      ...toAiOptions(aiConfig, {
+        messages,
+        temperature: 0.8,
+        // 按章数动态给上限（每章大纲 JSON 约 ~120 tokens），避免大 chapterCount 被固定 4000 截断
+        maxTokens: dynamicMaxTokens(data.chapterCount * 120 + 300, {
+          floor: 1000,
+          cap: 8000
+        }),
+        tracking: {
+          userId: auth.userId,
+          configId: aiConfig.configId,
+          modelId: aiConfig.modelId,
+          purpose: 'generation',
+          scenario: 'outline_generate',
+          source: 'api_route',
+          endpoint: '/api/ai/generate-outline',
+          novelId: data.novelId
+        }
+      })
+    },
+    { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model },
+    { parseJsonResult: true }
+  )
 })

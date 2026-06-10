@@ -162,7 +162,8 @@ export async function runPlotThreadExtraction(
     apiUrl: provider.apiUrl,
     apiKey: provider.apiKey,
     model: aiModel.model,
-    modelId: aiModel.id
+    modelId: aiModel.id,
+    configId: config.id
   }
 
   const chapter = await em.findOne(
@@ -198,7 +199,21 @@ export async function runPlotThreadExtraction(
   let inputTokens = 0
   let outputTokens = 0
   for await (const chunk of streamAi(
-    toAiOptions(aiConfig, { messages, temperature: 0.2, maxTokens: 1500 })
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.2,
+      maxTokens: 1500,
+      tracking: {
+        userId,
+        configId: config.id,
+        modelId: aiModel.id,
+        purpose: 'extraction',
+        scenario: 'plot_thread_extract',
+        source: 'service',
+        novelId,
+        chapterId
+      }
+    })
   )) {
     if (chunk.content) result += chunk.content
     if (chunk.usage) {

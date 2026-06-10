@@ -32,7 +32,16 @@ export default defineEventHandler(async (event) => {
       model: model.model,
       messages: [{ role: 'user', content: '1+1' }],
       temperature: 0,
-      maxTokens: 10
+      maxTokens: 10,
+      tracking: {
+        userId: auth.userId,
+        modelId: model.id,
+        modelType: 'connectivity_check',
+        purpose: 'planning',
+        scenario: 'model_connectivity_check',
+        source: 'api_route',
+        endpoint: '/api/ai/models-check'
+      }
     })
     available = true
   } catch (e: any) {

@@ -36,7 +36,16 @@ export default defineEventHandler(async (event) => {
       ...toAiOptions(aiConfig, {
         messages,
         temperature: 0.9,
-        maxTokens: 300
+        maxTokens: 300,
+        tracking: {
+          userId: auth.userId,
+          configId: aiConfig.configId,
+          modelId: aiConfig.modelId,
+          purpose: 'generation',
+          scenario: 'suggest_description',
+          source: 'api_route',
+          endpoint: '/api/ai/suggest-description'
+        }
       })
     },
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }

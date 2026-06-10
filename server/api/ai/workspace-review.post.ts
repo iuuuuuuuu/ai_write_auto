@@ -277,7 +277,19 @@ ${(chapter.content || '').slice(0, 6000)}
               messages,
               temperature: 0.2,
               maxTokens: MAX_TOKENS_REVIEW,
-              signal
+              signal,
+              tracking: {
+                userId: auth.userId,
+                configId: aiConfig.configId,
+                modelId: aiConfig.modelId,
+                purpose: 'consistency_check',
+                scenario: 'workspace_review',
+                source: 'api_route',
+                endpoint: '/api/ai/workspace-review',
+                novelId: data.novelId,
+                chapterId: chapter.id,
+                taskId
+              }
             })
           )) {
             if (chunk.content) reviewContent += chunk.content

@@ -132,7 +132,18 @@ export default defineEventHandler(async (event) => {
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.75,
-      maxTokens: 1200
+      maxTokens: 1200,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'chapter_plan_generate',
+        source: 'api_route',
+        endpoint: '/api/ai/generate-chapter-plan',
+        novelId: data.novelId,
+        chapterId: data.chapterId
+      }
     })
   )
   await recordUsage(

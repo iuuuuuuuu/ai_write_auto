@@ -7,6 +7,18 @@ import { AiModelSchema } from '../database/entities'
 import { wrap } from '@mikro-orm/core'
 import type { ResolvedAiConfig } from './ai-configs'
 import { resolveAiRequestParameters } from './ai-model-capabilities'
+import {
+  failAiGenerationLog,
+  finishAiGenerationLog,
+  markFirstToken,
+  startAiGenerationLog,
+  type AiGenerationLogHandle,
+  type AiGenerationTracking
+} from './ai-generation-logs'
+
+export type AiRequestTracking = Omit<AiGenerationTracking, 'model'> & {
+  model?: string
+}
 
 export interface AiRequestOptions {
   apiUrl: string
@@ -22,6 +34,7 @@ export interface AiRequestOptions {
   signal?: AbortSignal
   extraBody?: Record<string, unknown>
   modelId?: number
+  tracking?: AiRequestTracking
 }
 
 /**
@@ -112,6 +125,38 @@ function stripThinking(text: string): string {
   return cleaned
 }
 
+function countMessageChars(messages: AiRequestOptions['messages']): number {
+  return messages.reduce((sum, message) => sum + message.content.length, 0)
+}
+
+function buildTrackingOptions(
+  options: AiRequestOptions,
+  streamed: boolean
+): AiGenerationTracking {
+  if (!options.tracking) {
+    console.warn(
+      '[ai-client] AI request missing tracking metadata; recording as unclassified_ai_call'
+    )
+  }
+
+  return {
+    ...options.tracking,
+    model: options.tracking?.model ?? options.model,
+    modelId: options.tracking?.modelId ?? options.modelId ?? null,
+    scenario: options.tracking?.scenario ?? 'unclassified_ai_call',
+    source: options.tracking?.source ?? 'unclassified',
+    streamed: options.tracking?.streamed ?? streamed,
+    inputChars: options.tracking?.inputChars ?? countMessageChars(options.messages)
+  }
+}
+
+async function startRequestLog(
+  options: AiRequestOptions,
+  streamed: boolean
+): Promise<AiGenerationLogHandle | null> {
+  return await startAiGenerationLog(buildTrackingOptions(options, streamed))
+}
+
 async function doFetch(
   options: AiRequestOptions,
   stream: boolean
@@ -198,31 +243,77 @@ async function doFetch(
 }
 
 export async function callAi(options: AiRequestOptions): Promise<string> {
-  const response = await doFetch(options, false)
-  const data = await response.json()
-  const content = data.choices[0]?.message?.content || ''
-  return stripThinking(content)
+  const logHandle = await startRequestLog(options, false)
+
+  try {
+    const response = await doFetch(options, false)
+    const data = await response.json()
+    const content = data.choices[0]?.message?.content || ''
+    const cleaned = stripThinking(content)
+
+    await finishAiGenerationLog(logHandle, {
+      inputChars: countMessageChars(options.messages),
+      outputChars: cleaned.length
+    })
+
+    return cleaned
+  } catch (error: unknown) {
+    await failAiGenerationLog(logHandle, error)
+    throw error
+  }
 }
 
 export async function callAiWithUsage(
   options: AiRequestOptions
 ): Promise<AiResultWithUsage> {
-  const response = await doFetch(options, false)
-  const data = await response.json()
-  const msg = data.choices[0]?.message
-  // Prefer content; fall back to reasoning_content (some models put answer there)
-  const raw = msg?.content || msg?.reasoning_content || ''
-  return {
-    content: stripThinking(raw),
-    inputTokens: data.usage?.prompt_tokens || 0,
-    outputTokens: data.usage?.completion_tokens || 0
+  const logHandle = await startRequestLog(options, false)
+
+  try {
+    const response = await doFetch(options, false)
+    const data = await response.json()
+    const msg = data.choices[0]?.message
+    // Prefer content; fall back to reasoning_content (some models put answer there)
+    const raw = msg?.content || msg?.reasoning_content || ''
+    const content = stripThinking(raw)
+    const inputTokens = data.usage?.prompt_tokens || 0
+    const outputTokens = data.usage?.completion_tokens || 0
+
+    await finishAiGenerationLog(logHandle, {
+      tokensInput: inputTokens,
+      tokensOutput: outputTokens,
+      inputChars: countMessageChars(options.messages),
+      outputChars: content.length
+    })
+
+    return {
+      content,
+      inputTokens,
+      outputTokens
+    }
+  } catch (error: unknown) {
+    await failAiGenerationLog(logHandle, error)
+    throw error
   }
 }
 
 export async function* streamAi(
   options: AiRequestOptions
 ): AsyncGenerator<AiStreamChunk> {
-  const response = await doFetch(options, true)
+  const logHandle = await startRequestLog(options, true)
+  const inputChars = countMessageChars(options.messages)
+  let outputChars = 0
+  let inputTokens = 0
+  let outputTokens = 0
+  let firstTokenMarked = false
+  let finished = false
+  let response: Response
+
+  try {
+    response = await doFetch(options, true)
+  } catch (error: unknown) {
+    await failAiGenerationLog(logHandle, error)
+    throw error
+  }
 
   const reader = response.body!.getReader()
   const decoder = new TextDecoder()
@@ -230,6 +321,26 @@ export async function* streamAi(
   let insideThink = false
   let thinkBuffer = ''
   let hasContent = false
+
+  const markContent = async (content: string) => {
+    if (!content) return
+    outputChars += content.length
+    if (!firstTokenMarked) {
+      firstTokenMarked = true
+      await markFirstToken(logHandle)
+    }
+  }
+
+  const finishLog = async () => {
+    if (finished) return
+    finished = true
+    await finishAiGenerationLog(logHandle, {
+      tokensInput: inputTokens,
+      tokensOutput: outputTokens,
+      inputChars,
+      outputChars
+    })
+  }
 
   try {
     while (true) {
@@ -268,6 +379,10 @@ export async function* streamAi(
           let delta = parsed.choices?.[0]?.delta?.content || ''
           const finishReason = parsed.choices?.[0]?.finish_reason
           const usage = parsed.usage
+          if (usage) {
+            inputTokens = usage.prompt_tokens || inputTokens
+            outputTokens = usage.completion_tokens || outputTokens
+          }
 
           if (delta) {
             // Skip content moderation messages from API providers
@@ -289,16 +404,20 @@ export async function* streamAi(
                 const afterClose =
                   thinkBuffer.split(/<\/think>|<\|\/think\|>/).pop() || ''
                 thinkBuffer = ''
-                if (afterClose.trim())
+                if (afterClose.trim()) {
+                  await markContent(afterClose)
                   yield { content: afterClose, done: false, usage }
+                }
               }
             } else if (
               delta.includes('<think>') ||
               delta.includes('<|think|>')
             ) {
               const beforeOpen = delta.split(/<think>|<\|think\|>/)[0] || ''
-              if (beforeOpen.trim())
+              if (beforeOpen.trim()) {
+                await markContent(beforeOpen)
                 yield { content: beforeOpen, done: false, usage }
+              }
               insideThink = true
               const afterOpen = delta
                 .split(/<think>|<\|think\|>/)
@@ -313,15 +432,19 @@ export async function* streamAi(
                 const afterClose =
                   thinkBuffer.split(/<\/think>|<\|\/think\|>/).pop() || ''
                 thinkBuffer = ''
-                if (afterClose.trim())
+                if (afterClose.trim()) {
+                  await markContent(afterClose)
                   yield { content: afterClose, done: false, usage }
+                }
               }
             } else {
+              await markContent(delta)
               yield { content: delta, done: false, usage }
             }
           }
           if (finishReason === 'stop' || finishReason === 'length') {
             if (!hasContent) break
+            await finishLog()
             yield {
               content: '',
               done: true,
@@ -333,6 +456,9 @@ export async function* streamAi(
         } catch {}
       }
     }
+  } catch (error: unknown) {
+    await failAiGenerationLog(logHandle, error)
+    throw error
   } finally {
     reader.cancel().catch(() => {})
   }
@@ -344,7 +470,10 @@ export async function* streamAi(
     const content = fallbackData.choices?.[0]?.message?.content || ''
     const usage = fallbackData.usage
     const cleaned = stripThinking(content)
+    inputTokens = usage?.prompt_tokens || 0
+    outputTokens = usage?.completion_tokens || 0
     if (cleaned) {
+      await markContent(cleaned)
       yield {
         content: cleaned,
         done: false,
@@ -354,6 +483,7 @@ export async function* streamAi(
         }
       }
     }
+    await finishLog()
     yield {
       content: '',
       done: true,

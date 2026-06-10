@@ -462,7 +462,17 @@ export async function extractCharacterStateChangesForChapter(
       maxTokens: dynamicMaxTokens(estimateTokens(chapter.content) * 0.4, {
         floor: 1800,
         cap: 5000
-      })
+      }),
+      tracking: {
+        userId: input.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'extraction',
+        scenario: 'character_state_extract',
+        source: 'service',
+        novelId: input.novelId,
+        chapterId: input.chapterId
+      }
     })
   )) {
     if (chunk.content) aiContent += chunk.content

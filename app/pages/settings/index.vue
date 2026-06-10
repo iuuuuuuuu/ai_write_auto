@@ -79,6 +79,30 @@ const { t } = useI18n()
           </div>
         </NTabPane>
         <NTabPane
+          name="generation-logs"
+          tab="生成记录"
+        >
+          <div class="mt-4">
+            <NuxtLink
+              to="/settings/ai-generation-logs"
+              class="liquid-panel flex items-center justify-between p-4 transition-colors hover:bg-(--ui-bg-muted)"
+            >
+              <div>
+                <p class="text-sm font-medium text-(--ui-text-highlighted)">
+                  查看我的生成记录
+                </p>
+                <p class="mt-1 text-xs text-(--ui-text-muted)">
+                  包含模型、用途、token、耗时和失败原因。
+                </p>
+              </div>
+              <Icon
+                icon="lucide:arrow-right"
+                class="size-4 text-(--ui-text-dimmed)"
+              />
+            </NuxtLink>
+          </div>
+        </NTabPane>
+        <NTabPane
           name="openapi"
           tab="Open API"
         >

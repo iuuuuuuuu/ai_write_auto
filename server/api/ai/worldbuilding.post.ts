@@ -16,7 +16,12 @@ export default defineEventHandler(async (event) => {
   const data = worldbuildingSchema.parse(body)
   const em = useEm(event)
 
-  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'generation', data.aiConfigId)
+  const aiConfig = await resolveUserAiConfig(
+    em,
+    auth.userId,
+    'generation',
+    data.aiConfigId
+  )
 
   const messages = [
     {
@@ -35,11 +40,24 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  return createStreamResponse(event, {
-    ...toAiOptions(aiConfig, {
-      messages,
-      temperature: 0.85,
-      maxTokens: 1500
-    }),
-  }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
+  return createStreamResponse(
+    event,
+    {
+      ...toAiOptions(aiConfig, {
+        messages,
+        temperature: 0.85,
+        maxTokens: 1500,
+        tracking: {
+          userId: auth.userId,
+          configId: aiConfig.configId,
+          modelId: aiConfig.modelId,
+          purpose: 'generation',
+          scenario: 'worldbuilding_generate',
+          source: 'api_route',
+          endpoint: '/api/ai/worldbuilding'
+        }
+      })
+    },
+    { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
+  )
 })

@@ -15,16 +15,21 @@ export default defineEventHandler(async (event) => {
   const em = useEm(event)
   const novelId = parseIntParam(event, 'id')
 
-  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: novelId,
+    user: auth.userId
+  })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
   const body = await readBody(event)
-  const { count, promptTemplateId } = z.object({
-    count: z.number().int().min(1).max(20),
-    promptTemplateId: z.number().int().optional()
-  }).parse(body)
+  const { count, promptTemplateId } = z
+    .object({
+      count: z.number().int().min(1).max(20),
+      promptTemplateId: z.number().int().optional()
+    })
+    .parse(body)
 
   let customPrompt: string | undefined
   if (promptTemplateId) {
@@ -40,9 +45,13 @@ export default defineEventHandler(async (event) => {
   const aiConfig = await resolveUserAiConfig(em, auth.userId, 'extraction')
 
   const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
-  const outlines = await em.find(NovelOutlineSchema, { novel: novelId }, {
-    orderBy: { chapterNumber: 'ASC' }
-  })
+  const outlines = await em.find(
+    NovelOutlineSchema,
+    { novel: novelId },
+    {
+      orderBy: { chapterNumber: 'ASC' }
+    }
+  )
 
   const messages = buildCharacterGenerationPrompt({
     novel: {
@@ -52,13 +61,13 @@ export default defineEventHandler(async (event) => {
       worldSetting: novel.worldSetting ?? undefined,
       styleGuide: novel.styleGuide ?? undefined
     },
-    existingCharacters: existingCharacters.map(c => ({
+    existingCharacters: existingCharacters.map((c) => ({
       name: c.name,
       description: c.description ?? undefined,
       traits: c.traits ?? undefined,
       currentState: c.currentState ?? undefined
     })),
-    outlines: outlines.map(o => ({
+    outlines: outlines.map((o) => ({
       chapterNumber: o.chapterNumber,
       description: o.description
     })),
@@ -66,11 +75,30 @@ export default defineEventHandler(async (event) => {
     customPrompt
   })
 
-  return createStreamResponse(event, {
-    ...toAiOptions(aiConfig, {
-      messages,
-      temperature: 0.8,
-      maxTokens: 4096
-    }),
-  }, { em, userId: auth.userId, configId: aiConfig.configId, model: aiConfig.model })
+  return createStreamResponse(
+    event,
+    {
+      ...toAiOptions(aiConfig, {
+        messages,
+        temperature: 0.8,
+        maxTokens: 4096,
+        tracking: {
+          userId: auth.userId,
+          configId: aiConfig.configId,
+          modelId: aiConfig.modelId,
+          purpose: 'extraction',
+          scenario: 'character_generate',
+          source: 'api_route',
+          endpoint: '/api/novels/[id]/characters/generate',
+          novelId
+        }
+      })
+    },
+    {
+      em,
+      userId: auth.userId,
+      configId: aiConfig.configId,
+      model: aiConfig.model
+    }
+  )
 })

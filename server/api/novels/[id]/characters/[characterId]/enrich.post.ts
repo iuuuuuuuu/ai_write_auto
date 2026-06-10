@@ -123,7 +123,18 @@ export default defineEventHandler(async (event) => {
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.7,
-      maxTokens: 2048
+      maxTokens: 2048,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'extraction',
+        scenario: 'character_enrich',
+        source: 'api_route',
+        endpoint: '/api/novels/[id]/characters/[characterId]/enrich',
+        novelId,
+        characterId
+      }
     })
   )) {
     if (chunk.content) aiResult += chunk.content

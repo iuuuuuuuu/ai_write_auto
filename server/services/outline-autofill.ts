@@ -11,7 +11,11 @@
  */
 import type { EntityManager } from '@mikro-orm/core'
 import { streamAi, toAiOptions } from '../utils/ai-client'
-import { recordUsage, estimateTokens, dynamicMaxTokens } from '../utils/ai-stream'
+import {
+  recordUsage,
+  estimateTokens,
+  dynamicMaxTokens
+} from '../utils/ai-stream'
 import { parsePartialJsonArray } from '../utils/json-salvage'
 import { buildOutlineGenerationPrompt } from '../utils/ai-prompts'
 import { NovelOutlineSchema } from '../database/entities'
@@ -25,7 +29,12 @@ export interface OutlineEntry {
 
 interface AutofillBase {
   em: EntityManager
-  novel: { title: string; genre?: string | null; worldSetting?: string | null; description?: string | null }
+  novel: {
+    title: string
+    genre?: string | null
+    worldSetting?: string | null
+    description?: string | null
+  }
   novelId: number
   characters: Array<{ name: string; description?: string | null }>
   /** 已有大纲数组；新补条目会被原地 push 进来，供同批后续章节作为前序参考。 */
@@ -36,16 +45,26 @@ interface AutofillBase {
 }
 
 /** 容错解析 AI 返回的大纲 JSON 数组（贪婪 → 对象包装字段 → 截断 salvage），结构非法条目丢弃。 */
-function parseOutlineArray(raw: string): Array<{ chapterNumber: number; description: string }> {
+function parseOutlineArray(
+  raw: string
+): Array<{ chapterNumber: number; description: string }> {
   return parsePartialJsonArray(raw)
     .map((o) => {
-      const item = (o && typeof o === 'object' ? o : {}) as Record<string, unknown>
+      const item = (o && typeof o === 'object' ? o : {}) as Record<
+        string,
+        unknown
+      >
       return {
         chapterNumber: Number(item.chapterNumber),
         description: String(item.description ?? '').trim()
       }
     })
-    .filter((o) => Number.isFinite(o.chapterNumber) && o.chapterNumber > 0 && o.description.length > 0)
+    .filter(
+      (o) =>
+        Number.isFinite(o.chapterNumber) &&
+        o.chapterNumber > 0 &&
+        o.description.length > 0
+    )
 }
 
 /** 调用 AI 生成 [startChapter, startChapter+chapterCount) 段的大纲并记账。 */
@@ -57,30 +76,56 @@ async function generateOutlineItems(
   const messages = buildOutlineGenerationPrompt({
     novel: base.novel,
     characters: base.characters,
-    idea: base.direction || base.novel.description || `请为第 ${startChapter} 章起的剧情做出合理且连贯的推进规划`,
+    idea:
+      base.direction ||
+      base.novel.description ||
+      `请为第 ${startChapter} 章起的剧情做出合理且连贯的推进规划`,
     chapterCount,
     startChapter,
-    existingOutlines: base.existingOutlines.map((o) => ({ chapterNumber: o.chapterNumber, description: o.description }))
+    existingOutlines: base.existingOutlines.map((o) => ({
+      chapterNumber: o.chapterNumber,
+      description: o.description
+    }))
   })
 
   let content = ''
   let inputTokens = 0
   let outputTokens = 0
-  for await (const chunk of streamAi(toAiOptions(base.aiConfig, {
-    messages,
-    temperature: 0.7,
-    // 按段内章数动态给上限（每章大纲约 ~200 tokens），大段补全不被固定上限截断
-    maxTokens: dynamicMaxTokens(chapterCount * 240 + 400, { floor: 1000, cap: 8000 })
-  }))) {
+  for await (const chunk of streamAi(
+    toAiOptions(base.aiConfig, {
+      messages,
+      temperature: 0.7,
+      // 按段内章数动态给上限（每章大纲约 ~200 tokens），大段补全不被固定上限截断
+      maxTokens: dynamicMaxTokens(chapterCount * 240 + 400, {
+        floor: 1000,
+        cap: 8000
+      }),
+      tracking: {
+        userId: base.userId,
+        configId: base.aiConfig.configId,
+        modelId: base.aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'outline_autofill',
+        source: 'service',
+        novelId: base.novelId
+      }
+    })
+  )) {
     if (chunk.content) content += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens
       outputTokens = chunk.usage.completion_tokens || outputTokens
     }
   }
-  if (!inputTokens && !outputTokens && content) outputTokens = estimateTokens(content)
+  if (!inputTokens && !outputTokens && content)
+    outputTokens = estimateTokens(content)
   await recordUsage(
-    { em: base.em, userId: base.userId, configId: base.aiConfig.id, model: base.aiConfig.model },
+    {
+      em: base.em,
+      userId: base.userId,
+      configId: base.aiConfig.id,
+      model: base.aiConfig.model
+    },
     inputTokens,
     outputTokens
   )
@@ -88,14 +133,22 @@ async function generateOutlineItems(
 }
 
 /** 落库一条大纲并同步进内存数组（sortOrder=chapterNumber，与 reorder 同步逻辑一致）。 */
-function persistOutline(base: AutofillBase, chapterNumber: number, description: string) {
+function persistOutline(
+  base: AutofillBase,
+  chapterNumber: number,
+  description: string
+) {
   base.em.create(NovelOutlineSchema, {
     novel: base.novelId,
     chapterNumber,
     description,
     sortOrder: chapterNumber
   })
-  base.existingOutlines.push({ chapterNumber, description, sortOrder: chapterNumber })
+  base.existingOutlines.push({
+    chapterNumber,
+    description,
+    sortOrder: chapterNumber
+  })
 }
 
 /**
@@ -105,12 +158,16 @@ export async function ensureChapterOutline(
   base: AutofillBase & { chapterNumber: number }
 ): Promise<{ description?: string; created: boolean }> {
   const { chapterNumber } = base
-  const existing = base.existingOutlines.find((o) => o.chapterNumber === chapterNumber)
-  if (existing?.description) return { description: existing.description, created: false }
+  const existing = base.existingOutlines.find(
+    (o) => o.chapterNumber === chapterNumber
+  )
+  if (existing?.description)
+    return { description: existing.description, created: false }
 
   try {
     const items = await generateOutlineItems(base, chapterNumber, 1)
-    const match = items.find((o) => o.chapterNumber === chapterNumber) || items[0]
+    const match =
+      items.find((o) => o.chapterNumber === chapterNumber) || items[0]
     if (!match?.description) return { description: undefined, created: false }
     persistOutline(base, chapterNumber, match.description)
     await base.em.flush()
@@ -128,7 +185,11 @@ export async function ensureOutlinesForRange(
   base: AutofillBase & { fromChapter: number; toChapter: number }
 ): Promise<{ filled: number[] }> {
   const { fromChapter, toChapter } = base
-  const have = new Set(base.existingOutlines.filter((o) => o.description).map((o) => o.chapterNumber))
+  const have = new Set(
+    base.existingOutlines
+      .filter((o) => o.description)
+      .map((o) => o.chapterNumber)
+  )
   const missing: number[] = []
   for (let n = fromChapter; n <= toChapter; n++) {
     if (!have.has(n)) missing.push(n)
@@ -136,7 +197,11 @@ export async function ensureOutlinesForRange(
   if (missing.length === 0) return { filled: [] }
 
   try {
-    const items = await generateOutlineItems(base, fromChapter, toChapter - fromChapter + 1)
+    const items = await generateOutlineItems(
+      base,
+      fromChapter,
+      toChapter - fromChapter + 1
+    )
     const byNumber = new Map(items.map((o) => [o.chapterNumber, o.description]))
     const filled: number[] = []
     for (const n of missing) {

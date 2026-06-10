@@ -39,6 +39,7 @@ export const MIGRATION_TABLES: Array<{ tableName: string; label: string }> = [
   { tableName: 'story_arcs', label: 'Story arcs' },
   { tableName: 'generation_tasks', label: 'Generation tasks' },
   { tableName: 'token_usage', label: 'Token usage' },
+  { tableName: 'ai_generation_logs', label: 'AI generation logs' },
   { tableName: 'prompt_templates', label: 'Prompt templates' },
   { tableName: 'writing_stats', label: 'Writing stats' },
   { tableName: 'user_preferences', label: 'User preferences' },

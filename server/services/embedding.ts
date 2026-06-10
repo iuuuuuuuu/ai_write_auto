@@ -1,6 +1,8 @@
 import { Worker } from 'node:worker_threads'
 import { resolve } from 'node:path'
 import { existsSync } from 'node:fs'
+import type { AiGenerationTracking } from '../utils/ai-generation-logs'
+import { recordEmbeddingCall } from '../utils/ai-generation-logs'
 
 const MODEL_ID = 'Xenova/bge-small-zh-v1.5'
 const EMBEDDING_DIM = 512
@@ -9,7 +11,9 @@ const MODEL_CACHE_DIR = './data/models'
 function isInChina(): boolean {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
   const lang = process.env.LANG || process.env.LANGUAGE || ''
-  return tz === 'Asia/Shanghai' || tz === 'Asia/Chongqing' || lang.startsWith('zh')
+  return (
+    tz === 'Asia/Shanghai' || tz === 'Asia/Chongqing' || lang.startsWith('zh')
+  )
 }
 
 let worker: Worker | null = null
@@ -17,8 +21,19 @@ let status: 'idle' | 'downloading' | 'ready' | 'error' = 'idle'
 let progress = 0
 let errorMessage = ''
 let embedIdCounter = 0
-const pendingEmbeds = new Map<number, { resolve: (v: Float32Array[]) => void; reject: (e: Error) => void }>()
-const readyCallbacks: Array<{ resolve: () => void; reject: (e: Error) => void }> = []
+const pendingEmbeds = new Map<
+  number,
+  { resolve: (v: Float32Array[]) => void; reject: (e: Error) => void }
+>()
+const readyCallbacks: Array<{
+  resolve: () => void
+  reject: (e: Error) => void
+}> = []
+
+export type EmbeddingTracking = Omit<
+  AiGenerationTracking,
+  'model' | 'modelType'
+>
 
 export function getEmbeddingDim(): number {
   return EMBEDDING_DIM
@@ -75,7 +90,9 @@ function spawnWorker() {
     return
   }
 
-  const remoteHost = process.env.HF_ENDPOINT || (isInChina() ? 'https://hf-mirror.com' : undefined)
+  const remoteHost =
+    process.env.HF_ENDPOINT ||
+    (isInChina() ? 'https://hf-mirror.com' : undefined)
 
   worker.postMessage({
     type: 'init',
@@ -105,7 +122,9 @@ function spawnWorker() {
       case 'ready':
         status = 'ready'
         progress = 100
-        console.log(`[embedding] ✓ Model ready (worker thread, ${msg.elapsed}s)`)
+        console.log(
+          `[embedding] ✓ Model ready (worker thread, ${msg.elapsed}s)`
+        )
         flushReadyCallbacks(null)
         break
       case 'error':
@@ -173,21 +192,42 @@ function flushReadyCallbacks(err: Error | null) {
   }
 }
 
-export async function embed(texts: string[]): Promise<Float32Array[]> {
-  if (status !== 'ready') {
-    await ensureModel()
-  }
-  if (!worker) throw new Error('Embedding worker not available')
+export async function embed(
+  texts: string[],
+  tracking: EmbeddingTracking = {}
+): Promise<Float32Array[]> {
+  return await recordEmbeddingCall({
+    ...tracking,
+    model: MODEL_ID,
+    scenario: tracking.scenario ?? 'embedding_query',
+    source: tracking.source ?? 'service',
+    inputChars:
+      tracking.inputChars ?? texts.reduce((sum, text) => sum + text.length, 0),
+    embeddingItems: tracking.embeddingItems ?? texts.length,
+    run: async () => {
+      if (status !== 'ready') {
+        await ensureModel()
+      }
+      if (!worker) throw new Error('Embedding worker not available')
 
-  const id = ++embedIdCounter
-  return new Promise<Float32Array[]>((resolve, reject) => {
-    pendingEmbeds.set(id, { resolve, reject })
-    worker!.postMessage({ type: 'embed', id, texts })
+      const id = ++embedIdCounter
+      return await new Promise<Float32Array[]>((resolve, reject) => {
+        pendingEmbeds.set(id, { resolve, reject })
+        worker!.postMessage({ type: 'embed', id, texts })
+      })
+    }
   })
 }
 
-export async function embedSingle(text: string): Promise<Float32Array> {
-  const results = await embed([text])
+export async function embedSingle(
+  text: string,
+  tracking: EmbeddingTracking = {}
+): Promise<Float32Array> {
+  const results = await embed([text], {
+    ...tracking,
+    inputChars: tracking.inputChars ?? text.length,
+    embeddingItems: tracking.embeddingItems ?? 1
+  })
   if (!results[0]) throw new Error('Embedding returned empty result')
   return results[0]
 }

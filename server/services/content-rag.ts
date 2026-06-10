@@ -29,7 +29,12 @@ export async function indexCharacterEvent(
   contentType: 'chapter_story' | 'overall_arc' | 'profile'
 ): Promise<void> {
   if (!isEmbeddingReady() || !content.trim()) return
-  const embedding = await embedSingle(content)
+  const embedding = await embedSingle(content, {
+    scenario: 'embedding_index',
+    source: 'service',
+    novelId,
+    chapterId
+  })
   await upsertVector({
     characterId,
     chapterId,
@@ -47,7 +52,12 @@ export async function indexPlotEvent(
   description: string
 ): Promise<void> {
   if (!isEmbeddingReady() || !description.trim()) return
-  const embedding = await embedSingle(description)
+  const embedding = await embedSingle(description, {
+    scenario: 'embedding_index',
+    source: 'service',
+    novelId,
+    chapterId
+  })
   await upsertVector({
     characterId: plotId,
     chapterId,
@@ -63,7 +73,11 @@ export async function indexWorldDetail(
   content: string
 ): Promise<void> {
   if (!isEmbeddingReady() || !content.trim()) return
-  const embedding = await embedSingle(content)
+  const embedding = await embedSingle(content, {
+    scenario: 'embedding_index',
+    source: 'service',
+    novelId
+  })
   await upsertVector({
     characterId: 0,
     chapterId: null,
@@ -81,7 +95,12 @@ export async function indexForeshadowing(
   content: string
 ): Promise<void> {
   if (!isEmbeddingReady() || !content.trim()) return
-  const embedding = await embedSingle(content)
+  const embedding = await embedSingle(content, {
+    scenario: 'embedding_index',
+    source: 'service',
+    novelId,
+    chapterId
+  })
   await upsertVector({
     characterId: foreshadowingId,
     chapterId,
@@ -98,7 +117,12 @@ export async function indexChapterSummary(
   summary: string
 ): Promise<void> {
   if (!isEmbeddingReady() || !summary.trim()) return
-  const embedding = await embedSingle(summary)
+  const embedding = await embedSingle(summary, {
+    scenario: 'embedding_index',
+    source: 'service',
+    novelId,
+    chapterId
+  })
   await upsertVector({
     characterId: 0,
     chapterId,
@@ -116,7 +140,11 @@ export async function retrieveRelevant(
   contentType?: string | string[]
 ): Promise<ContentContext[]> {
   if (!isEmbeddingReady() || !query.trim()) return []
-  const queryEmbedding = await embedSingle(query)
+  const queryEmbedding = await embedSingle(query, {
+    scenario: 'embedding_query',
+    source: 'service',
+    novelId
+  })
   const results = await searchVectors(
     queryEmbedding,
     novelId,
@@ -171,9 +199,7 @@ export async function retrieveCharacterContext(
     }))
 }
 
-export async function getActiveForeshadowing(
-  novelId: number
-): Promise<
+export async function getActiveForeshadowing(novelId: number): Promise<
   Array<{
     content: string
     description: string | null

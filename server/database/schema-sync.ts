@@ -11,7 +11,7 @@ import {
   getKnownBuiltinModelNames
 } from '../utils/ai-model-capabilities'
 
-export const DATABASE_SCHEMA_VERSION = '2026.06.10.003'
+export const DATABASE_SCHEMA_VERSION = '2026.06.10.004'
 
 export interface DatabaseSchemaSyncResult {
   version: string

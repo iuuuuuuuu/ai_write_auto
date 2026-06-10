@@ -396,6 +396,72 @@ export interface TokenUsage {
   createdAt: Date
 }
 
+export interface AiGenerationLog {
+  [OptionalProps]?:
+    | 'id'
+    | 'user'
+    | 'aiConfig'
+    | 'aiModel'
+    | 'providerName'
+    | 'endpoint'
+    | 'errorMessage'
+    | 'errorType'
+    | 'tokensInput'
+    | 'tokensOutput'
+    | 'estimatedCost'
+    | 'inputChars'
+    | 'outputChars'
+    | 'embeddingItems'
+    | 'firstTokenAt'
+    | 'endedAt'
+    | 'firstTokenLatencyMs'
+    | 'durationMs'
+    | 'streamed'
+    | 'requestId'
+    | 'parentRequestId'
+    | 'novel'
+    | 'chapter'
+    | 'generationTask'
+    | 'createdAt'
+  id: number
+  user: User | null
+  aiConfig: AiConfig | null
+  aiModel: AiModel | null
+  model: string
+  modelType: 'chat_completion' | 'embedding' | 'connectivity_check'
+  providerName: string | null
+  purpose: string
+  scenario: string
+  endpoint: string | null
+  source:
+    | 'api_route'
+    | 'service'
+    | 'background_task'
+    | 'startup'
+    | 'unclassified'
+  status: 'running' | 'success' | 'failed' | 'cancelled'
+  errorMessage: string | null
+  errorType: string | null
+  tokensInput: number
+  tokensOutput: number
+  estimatedCost: string | null
+  inputChars: number
+  outputChars: number
+  embeddingItems: number
+  startedAt: Date
+  firstTokenAt: Date | null
+  endedAt: Date | null
+  firstTokenLatencyMs: number | null
+  durationMs: number | null
+  streamed: boolean
+  requestId: string | null
+  parentRequestId: string | null
+  novel: Novel | null
+  chapter: Chapter | null
+  generationTask: GenerationTask | null
+  createdAt: Date
+}
+
 export interface PromptTemplate {
   [OptionalProps]?: 'id' | 'user' | 'isSystem' | 'createdAt'
   id: number
@@ -1285,6 +1351,133 @@ export const TokenUsageSchema = new EntitySchema<TokenUsage>({
   }
 })
 
+export const AiGenerationLogSchema = new EntitySchema<AiGenerationLog>({
+  name: 'AiGenerationLog',
+  tableName: 'ai_generation_logs',
+  indexes: [
+    { properties: ['user', 'startedAt'], name: 'idx_ai_logs_user_started' },
+    { properties: ['status', 'startedAt'], name: 'idx_ai_logs_status_started' },
+    {
+      properties: ['purpose', 'startedAt'],
+      name: 'idx_ai_logs_purpose_started'
+    },
+    {
+      properties: ['scenario', 'startedAt'],
+      name: 'idx_ai_logs_scenario_started'
+    },
+    { properties: ['model', 'startedAt'], name: 'idx_ai_logs_model_started' },
+    {
+      properties: ['modelType', 'startedAt'],
+      name: 'idx_ai_logs_model_type_started'
+    },
+    { properties: ['novel', 'startedAt'], name: 'idx_ai_logs_novel_started' },
+    {
+      properties: ['generationTask', 'startedAt'],
+      name: 'idx_ai_logs_task_started'
+    }
+  ],
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    user: {
+      kind: 'm:1',
+      entity: () => 'User',
+      fieldName: 'user_id',
+      nullable: true
+    },
+    aiConfig: {
+      kind: 'm:1',
+      entity: () => 'AiConfig',
+      fieldName: 'ai_config_id',
+      nullable: true
+    },
+    aiModel: {
+      kind: 'm:1',
+      entity: () => 'AiModel',
+      fieldName: 'ai_model_id',
+      nullable: true
+    },
+    model: { type: 'string' },
+    modelType: { type: 'string', fieldName: 'model_type' },
+    providerName: {
+      type: 'string',
+      fieldName: 'provider_name',
+      nullable: true
+    },
+    purpose: { type: 'string' },
+    scenario: { type: 'string' },
+    endpoint: { type: 'string', nullable: true },
+    source: { type: 'string' },
+    status: { type: 'string', default: 'running' },
+    errorMessage: {
+      type: 'string',
+      fieldName: 'error_message',
+      nullable: true
+    },
+    errorType: { type: 'string', fieldName: 'error_type', nullable: true },
+    tokensInput: { type: 'number', fieldName: 'tokens_input', default: 0 },
+    tokensOutput: { type: 'number', fieldName: 'tokens_output', default: 0 },
+    estimatedCost: {
+      type: 'string',
+      fieldName: 'estimated_cost',
+      nullable: true
+    },
+    inputChars: { type: 'number', fieldName: 'input_chars', default: 0 },
+    outputChars: { type: 'number', fieldName: 'output_chars', default: 0 },
+    embeddingItems: {
+      type: 'number',
+      fieldName: 'embedding_items',
+      default: 0
+    },
+    startedAt: { type: UnixTimestampType, fieldName: 'started_at' },
+    firstTokenAt: {
+      type: UnixTimestampType,
+      fieldName: 'first_token_at',
+      nullable: true
+    },
+    endedAt: {
+      type: UnixTimestampType,
+      fieldName: 'ended_at',
+      nullable: true
+    },
+    firstTokenLatencyMs: {
+      type: 'number',
+      fieldName: 'first_token_latency_ms',
+      nullable: true
+    },
+    durationMs: { type: 'number', fieldName: 'duration_ms', nullable: true },
+    streamed: { type: 'boolean', default: false },
+    requestId: { type: 'string', fieldName: 'request_id', nullable: true },
+    parentRequestId: {
+      type: 'string',
+      fieldName: 'parent_request_id',
+      nullable: true
+    },
+    novel: {
+      kind: 'm:1',
+      entity: () => 'Novel',
+      fieldName: 'novel_id',
+      nullable: true
+    },
+    chapter: {
+      kind: 'm:1',
+      entity: () => 'Chapter',
+      fieldName: 'chapter_id',
+      nullable: true
+    },
+    generationTask: {
+      kind: 'm:1',
+      entity: () => 'GenerationTask',
+      fieldName: 'generation_task_id',
+      nullable: true
+    },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    }
+  }
+})
+
 export const PromptTemplateSchema = new EntitySchema<PromptTemplate>({
   name: 'PromptTemplate',
   tableName: 'prompt_templates',
@@ -1560,6 +1753,7 @@ export const allEntities = [
   StoryArcSchema,
   GenerationTaskSchema,
   TokenUsageSchema,
+  AiGenerationLogSchema,
   PromptTemplateSchema,
   WritingSkillSchema,
   WritingStatSchema,

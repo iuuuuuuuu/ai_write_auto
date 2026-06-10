@@ -127,7 +127,19 @@ export default defineEventHandler(async (event) => {
         thinkingEnabled: data.thinkingEnabled,
         reasoningEffort: data.reasoningEffort,
         maxTokens: data.maxTokens || aiConfig.maxTokens || 4096,
-        extraBody: PROSE_SAMPLING
+        extraBody: PROSE_SAMPLING,
+        tracking: {
+          userId: auth.userId,
+          configId: aiConfig.configId,
+          modelId: aiConfig.modelId,
+          purpose: 'generation',
+          scenario: 'chapter_regenerate',
+          source: 'api_route',
+          endpoint: '/api/ai/regenerate',
+          novelId: data.novelId,
+          chapterId: data.chapterId || null,
+          taskId: task.id
+        }
       })
     },
     {

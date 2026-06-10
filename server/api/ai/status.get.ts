@@ -30,7 +30,17 @@ export default defineEventHandler(async (event) => {
         model: resolved.model,
         messages: [{ role: 'user', content: 'ping' }],
         temperature: 0,
-        maxTokens: 8
+        maxTokens: 8,
+        tracking: {
+          userId: auth.userId,
+          configId: resolved.configId,
+          modelId: resolved.modelId,
+          modelType: 'connectivity_check',
+          purpose: 'planning',
+          scenario: 'model_connectivity_check',
+          source: 'api_route',
+          endpoint: '/api/ai/status'
+        }
       })
     } catch {
       return {

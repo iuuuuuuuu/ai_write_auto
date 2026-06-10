@@ -14,29 +14,51 @@ export default defineEventHandler(async (event) => {
   const em = useEm(event)
   const novelId = parseIntParam(event, 'id')
 
-  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: novelId,
+    user: auth.userId
+  })
   if (!novel) {
     throw createError({ statusCode: 404, message: 'Novel not found' })
   }
 
   const body = await readBody(event)
-  const { count } = z.object({
-    count: z.number().int().min(1).max(10).default(3)
-  }).parse(body)
+  const { count } = z
+    .object({
+      count: z.number().int().min(1).max(10).default(3)
+    })
+    .parse(body)
 
-  const configEntry = await em.findOne(AiConfigSchema, { purpose: 'extraction', enabled: true }, { populate: ['aiModel', 'aiModel.provider'] })
+  const configEntry = await em.findOne(
+    AiConfigSchema,
+    { purpose: 'extraction', enabled: true },
+    { populate: ['aiModel', 'aiModel.provider'] }
+  )
   if (!configEntry || !configEntry.aiModel) {
     throw createError({ statusCode: 400, message: '未找到信息提取的 AI 配置' })
   }
   const aiModel = configEntry.aiModel as any
-  if (!aiModel.enabled) throw createError({ statusCode: 400, message: `模型「${aiModel.name}」已被禁用` })
+  if (!aiModel.enabled)
+    throw createError({
+      statusCode: 400,
+      message: `模型「${aiModel.name}」已被禁用`
+    })
   const provider = aiModel.provider
-  const aiConfig = { apiUrl: provider.apiUrl, apiKey: provider.apiKey, model: aiModel.model, modelId: aiModel.id }
+  const aiConfig = {
+    apiUrl: provider.apiUrl,
+    apiKey: provider.apiKey,
+    model: aiModel.model,
+    modelId: aiModel.id
+  }
 
   const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
-  const outlines = await em.find(NovelOutlineSchema, { novel: novelId }, {
-    orderBy: { chapterNumber: 'ASC' }
-  })
+  const outlines = await em.find(
+    NovelOutlineSchema,
+    { novel: novelId },
+    {
+      orderBy: { chapterNumber: 'ASC' }
+    }
+  )
 
   const messages = buildCharacterGenerationPrompt({
     novel: {
@@ -46,13 +68,13 @@ export default defineEventHandler(async (event) => {
       worldSetting: novel.worldSetting ?? undefined,
       styleGuide: novel.styleGuide ?? undefined
     },
-    existingCharacters: existingCharacters.map(c => ({
+    existingCharacters: existingCharacters.map((c) => ({
       name: c.name,
       description: c.description ?? undefined,
       traits: c.traits ?? undefined,
       currentState: c.currentState ?? undefined
     })),
-    outlines: outlines.map(o => ({
+    outlines: outlines.map((o) => ({
       chapterNumber: o.chapterNumber,
       description: o.description
     })),
@@ -62,11 +84,23 @@ export default defineEventHandler(async (event) => {
   let result = ''
   let inputTokens = 0
   let outputTokens = 0
-  for await (const chunk of streamAi(toAiOptions(aiConfig, {
-    messages,
-    temperature: 0.8,
-    maxTokens: 4096
-  }))) {
+  for await (const chunk of streamAi(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.8,
+      maxTokens: 4096,
+      tracking: {
+        userId: auth.userId,
+        configId: configEntry.id,
+        modelId: aiConfig.modelId,
+        purpose: 'extraction',
+        scenario: 'character_suggest',
+        source: 'api_route',
+        endpoint: '/api/novels/[id]/characters/suggest',
+        novelId
+      }
+    })
+  )) {
     if (chunk.content) result += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens
@@ -74,16 +108,31 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  await recordUsage({ em, userId: auth.userId, configId: configEntry.id, model: aiConfig.model }, inputTokens, outputTokens)
+  await recordUsage(
+    {
+      em,
+      userId: auth.userId,
+      configId: configEntry.id,
+      model: aiConfig.model
+    },
+    inputTokens,
+    outputTokens
+  )
 
-  const cleaned = result.replace(/^```(?:json|JSON)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
+  const cleaned = result
+    .replace(/^```(?:json|JSON)?\s*\n?/gm, '')
+    .replace(/\n?```\s*$/gm, '')
+    .trim()
   const parsed: unknown = JSON.parse(cleaned)
   if (!Array.isArray(parsed)) {
-    throw createError({ statusCode: 500, message: 'AI returned invalid format' })
+    throw createError({
+      statusCode: 500,
+      message: 'AI returned invalid format'
+    })
   }
 
   const suggestions = []
-  const existingNames = new Set(existingCharacters.map(c => c.name))
+  const existingNames = new Set(existingCharacters.map((c) => c.name))
 
   for (const item of parsed) {
     if (!item || typeof item !== 'object') continue
@@ -93,10 +142,13 @@ export default defineEventHandler(async (event) => {
 
     suggestions.push({
       name,
-      description: typeof source.description === 'string' ? source.description : null,
+      description:
+        typeof source.description === 'string' ? source.description : null,
       traits: typeof source.traits === 'string' ? source.traits : null,
-      relationships: typeof source.relationships === 'string' ? source.relationships : null,
-      currentState: typeof source.currentState === 'string' ? source.currentState : null,
+      relationships:
+        typeof source.relationships === 'string' ? source.relationships : null,
+      currentState:
+        typeof source.currentState === 'string' ? source.currentState : null,
       role: typeof source.role === 'string' ? source.role : 'supporting'
     })
   }

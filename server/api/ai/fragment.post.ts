@@ -113,7 +113,18 @@ ${context}
         messages,
         temperature: parseFloat(aiConfig.temperature || '0.75'),
         maxTokens: MAX_TOKENS_FRAGMENT,
-        extraBody: PROSE_SAMPLING
+        extraBody: PROSE_SAMPLING,
+        tracking: {
+          userId: auth.userId,
+          configId: aiConfig.configId,
+          modelId: aiConfig.modelId,
+          purpose: 'generation',
+          scenario: 'fragment_generate',
+          source: 'api_route',
+          endpoint: '/api/ai/fragment',
+          novelId: data.novelId,
+          chapterId: data.chapterId
+        }
       })
     },
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
