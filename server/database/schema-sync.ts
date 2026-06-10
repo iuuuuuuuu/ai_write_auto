@@ -7,7 +7,7 @@ import {
 import { syncNovelTemplateSeeds } from '../services/novel-template-seeds'
 import { syncWritingSkillSeeds } from '../services/writing-skill-seeds'
 
-export const DATABASE_SCHEMA_VERSION = '2026.06.10.001'
+export const DATABASE_SCHEMA_VERSION = '2026.06.10.002'
 
 export interface DatabaseSchemaSyncResult {
   version: string

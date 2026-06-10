@@ -15,6 +15,12 @@ import {
   type PromptStoryArc,
   type PromptForeshadowing
 } from '../utils/ai-prompts'
+import {
+  CharacterStateChangeSchema,
+  type Chapter,
+  type Character,
+  type CharacterStateChange
+} from '../database/entities'
 import { loadSkillsForGeneration } from '../utils/writing-skills'
 import { retrieveRelevant, type ContentContext } from './content-rag'
 import { isEmbeddingReady } from './embedding'
@@ -37,7 +43,11 @@ export interface GatherOptions {
   topK?: number
   contentType?: string | string[]
   // 轻量地板（供 query 规划，可选）
-  novelInfo?: { title: string; genre?: string | null; description?: string | null }
+  novelInfo?: {
+    title: string
+    genre?: string | null
+    description?: string | null
+  }
   characterNames?: string[]
   foreshadowingTitles?: string[]
   recentSummaries?: string[]
@@ -82,7 +92,9 @@ function parseQueryList(raw: string): string[] {
     const arr = JSON.parse(m?.[0] || raw)
     if (Array.isArray(arr)) {
       return arr
-        .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        .filter(
+          (x): x is string => typeof x === 'string' && x.trim().length > 0
+        )
         .map((x) => x.trim())
         .slice(0, MAX_QUERIES + 1)
     }
@@ -166,7 +178,12 @@ export async function gatherRelevantContext(
       )
       notes = groups.flat()
     } else if (opts.seed.trim()) {
-      notes = await retrieveRelevant(opts.novelId, opts.seed, topK, opts.contentType)
+      notes = await retrieveRelevant(
+        opts.novelId,
+        opts.seed,
+        topK,
+        opts.contentType
+      )
     }
   } catch {
     notes = []
@@ -208,13 +225,54 @@ export interface PrepareChapterResult {
   usage: Usage
 }
 
+async function loadAcceptedCharacterStateChanges(
+  em: EntityManager,
+  opts: {
+    novelId: number
+    currentChapterNumber?: number
+  }
+) {
+  const where: Record<string, unknown> = {
+    novel: opts.novelId,
+    status: 'accepted'
+  }
+  if (opts.currentChapterNumber) {
+    where.chapter = {
+      novel: opts.novelId,
+      chapterNumber: { $lt: opts.currentChapterNumber },
+      deletedAt: null
+    }
+  }
+
+  const changes = await em.find(CharacterStateChangeSchema, where, {
+    populate: ['chapter', 'character', 'relatedCharacter'],
+    orderBy: { id: 'ASC' },
+    limit: 80
+  })
+
+  return changes.map((change: CharacterStateChange) => {
+    const chapter = change.chapter as Chapter
+    const character = change.character as Character
+    const relatedCharacter = change.relatedCharacter as Character | null
+    return {
+      chapterNumber: chapter.chapterNumber,
+      characterName: character.name,
+      relatedCharacterName: relatedCharacter?.name ?? null,
+      changeType: change.changeType,
+      afterValue: change.afterValue,
+      evidenceQuote: change.evidenceQuote
+    }
+  })
+}
+
 /** 整章封装（仅单章/批量用）：调检索核心拿 notes，再走现有 buildGenerationPrompt 拼整章 messages。 */
 export async function prepareChapterContext(
   em: EntityManager,
   opts: PrepareChapterOptions
 ): Promise<PrepareChapterResult> {
-  const intent = opts.currentChapter
-    ? `生成第${opts.currentChapter.chapterNumber}章${opts.currentChapter.title ? `「${opts.currentChapter.title}」` : ''}`
+  const intent =
+    opts.currentChapter ?
+      `生成第${opts.currentChapter.chapterNumber}章${opts.currentChapter.title ? `「${opts.currentChapter.title}」` : ''}`
     : '生成下一章'
   const seed = [opts.currentChapter?.title, opts.outline, opts.direction]
     .filter(Boolean)
@@ -248,6 +306,11 @@ export async function prepareChapterContext(
     genre: opts.novel.genre
   })
 
+  const characterStateChanges = await loadAcceptedCharacterStateChanges(em, {
+    novelId: opts.novelId,
+    currentChapterNumber: opts.currentChapter?.chapterNumber
+  })
+
   const messages = buildGenerationPrompt({
     novel: opts.novel,
     chapters: opts.precedingChapters,
@@ -260,6 +323,7 @@ export async function prepareChapterContext(
     ragContext: gathered.retrievedNotes,
     foreshadowing: opts.foreshadowing,
     recentChapterContent: opts.recentChapterContent,
+    characterStateChanges,
     skills
   })
 

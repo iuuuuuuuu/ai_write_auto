@@ -3,7 +3,12 @@ import { streamAi, toAiOptions } from '../utils/ai-client'
 import { runConsistencyCheck } from '../utils/consistency-check'
 import { runPlotThreadExtraction } from '../utils/plot-threads'
 import { parseExtractedCharacters } from '../utils/character-extraction'
-import { recordUsage, estimateTokens, dynamicMaxTokens, type StreamContext } from '../utils/ai-stream'
+import {
+  recordUsage,
+  estimateTokens,
+  dynamicMaxTokens,
+  type StreamContext
+} from '../utils/ai-stream'
 import {
   buildSummaryPrompt,
   buildCharacterExtractionPrompt,
@@ -13,6 +18,7 @@ import {
 } from '../utils/ai-prompts'
 import { isEmbeddingReady } from './embedding'
 import { indexCharacterEvent, indexChapterSummary } from './content-rag'
+import { extractCharacterStateChangesForChapter } from './character-state-changes'
 import {
   GenerationTaskSchema,
   ChapterSchema,
@@ -39,21 +45,41 @@ async function callAiStreaming(options: Parameters<typeof streamAi>[0]) {
     }
   }
   // Strip markdown code fences that some models wrap around JSON responses
-  content = content.replace(/^```(?:json|JSON)?\s*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
+  content = content
+    .replace(/^```(?:json|JSON)?\s*\n?/gm, '')
+    .replace(/\n?```\s*$/gm, '')
+    .trim()
   return { content, inputTokens, outputTokens }
 }
 
 const MAX_RETRIES = 3
 const STALE_TASK_TIMEOUT_MS = 10 * 60 * 1000
-const POST_PROCESSING_TYPES = ['extract_summary', 'extract_characters', 'consistency_check', 'extract_plot_threads']
+const POST_PROCESSING_TYPES = [
+  'extract_summary',
+  'extract_characters',
+  'extract_character_state_changes',
+  'consistency_check',
+  'extract_plot_threads'
+]
 let isProcessing = false
 
-async function resolveConfigForPurpose(em: any, purpose: string, userId?: number): Promise<ResolvedAiConfig | null> {
+async function resolveConfigForPurpose(
+  em: any,
+  purpose: string,
+  userId?: number
+): Promise<ResolvedAiConfig | null> {
   const filter: Record<string, unknown> = { purpose, enabled: true }
   if (userId) filter.user = userId
 
-  const config = await em.findOne(AiConfigSchema, { ...filter, isDefault: true }, { populate: ['aiModel', 'aiModel.provider'] })
-    || await em.findOne(AiConfigSchema, filter, { populate: ['aiModel', 'aiModel.provider'] })
+  const config =
+    (await em.findOne(
+      AiConfigSchema,
+      { ...filter, isDefault: true },
+      { populate: ['aiModel', 'aiModel.provider'] }
+    )) ||
+    (await em.findOne(AiConfigSchema, filter, {
+      populate: ['aiModel', 'aiModel.provider']
+    }))
   if (!config || !config.aiModel) return null
   const aiModel = config.aiModel as any
   if (!aiModel.enabled) return null
@@ -94,22 +120,28 @@ async function processTask(task: GenerationTask): Promise<void> {
     let totalInputTokens = 0
     let totalOutputTokens = 0
     const novelId = getEntityId(task.novel)
-    const novelEntity = await em.findOne(NovelSchema, { id: novelId }) as any
+    const novelEntity = (await em.findOne(NovelSchema, { id: novelId })) as any
     const userId = novelEntity ? getEntityId(novelEntity.user) : undefined
 
     if (task.type === 'extract_summary' && task.chapter) {
-      const chapter = await em.findOne(ChapterSchema, {
-        id: getEntityId(task.chapter)
-      }, { populate: ['content'] })
+      const chapter = await em.findOne(
+        ChapterSchema,
+        {
+          id: getEntityId(task.chapter)
+        },
+        { populate: ['content'] }
+      )
       if (chapter?.content) {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildSummaryPrompt(chapter.content)
-          const aiResult = await callAiStreaming(toAiOptions(aiConfig, {
-            messages,
-            temperature: 0.3,
-            maxTokens: 500
-          }))
+          const aiResult = await callAiStreaming(
+            toAiOptions(aiConfig, {
+              messages,
+              temperature: 0.3,
+              maxTokens: 500
+            })
+          )
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
           totalOutputTokens += aiResult.outputTokens
@@ -120,26 +152,37 @@ async function processTask(task: GenerationTask): Promise<void> {
           )
           // Index summary for RAG retrieval
           if (isEmbeddingReady() && result) {
-            await indexChapterSummary(novelId, chapter.id, result).catch(() => {})
+            await indexChapterSummary(novelId, chapter.id, result).catch(
+              () => {}
+            )
           }
         }
       }
     }
 
     if (task.type === 'extract_characters' && task.chapter) {
-      const chapter = await em.findOne(ChapterSchema, {
-        id: getEntityId(task.chapter)
-      }, { populate: ['content'] })
+      const chapter = await em.findOne(
+        ChapterSchema,
+        {
+          id: getEntityId(task.chapter)
+        },
+        { populate: ['content'] }
+      )
       if (chapter?.content) {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildCharacterExtractionPrompt(chapter.content)
-          const aiResult = await callAiStreaming(toAiOptions(aiConfig, {
-            messages,
-            temperature: 0.2,
-            // 按正文长度动态给上限（角色清单随正文增长），避免长章节角色多被固定 2000 截断
-            maxTokens: dynamicMaxTokens(estimateTokens(chapter.content) * 0.5, { floor: 2000, cap: 6000 })
-          }))
+          const aiResult = await callAiStreaming(
+            toAiOptions(aiConfig, {
+              messages,
+              temperature: 0.2,
+              // 按正文长度动态给上限（角色清单随正文增长），避免长章节角色多被固定 2000 截断
+              maxTokens: dynamicMaxTokens(
+                estimateTokens(chapter.content) * 0.5,
+                { floor: 2000, cap: 6000 }
+              )
+            })
+          )
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
           totalOutputTokens += aiResult.outputTokens
@@ -237,13 +280,18 @@ async function processTask(task: GenerationTask): Promise<void> {
               const storyMessages = buildChapterStoryPrompt(
                 charEntity.name,
                 chapter.content,
-                appearances.map(a => ({ snippet: a.snippet, background: a.background }))
+                appearances.map((a) => ({
+                  snippet: a.snippet,
+                  background: a.background
+                }))
               )
-              const storyResult = await callAiStreaming(toAiOptions(aiConfig, {
-                messages: storyMessages,
-                temperature: 0.3,
-                maxTokens: 500
-              }))
+              const storyResult = await callAiStreaming(
+                toAiOptions(aiConfig, {
+                  messages: storyMessages,
+                  temperature: 0.3,
+                  maxTokens: 500
+                })
+              )
               const chapterStory = storyResult.content
               totalInputTokens += storyResult.inputTokens
               totalOutputTokens += storyResult.outputTokens
@@ -256,16 +304,21 @@ async function processTask(task: GenerationTask): Promise<void> {
                 chapterStory,
                 chapter.chapterNumber
               )
-              const arcResult = await callAiStreaming(toAiOptions(aiConfig, {
-                messages: arcMessages,
-                temperature: 0.3,
-                maxTokens: 800
-              }))
+              const arcResult = await callAiStreaming(
+                toAiOptions(aiConfig, {
+                  messages: arcMessages,
+                  temperature: 0.3,
+                  maxTokens: 800
+                })
+              )
               totalInputTokens += arcResult.inputTokens
               totalOutputTokens += arcResult.outputTokens
               charEntity.overallArc = arcResult.content
             } catch (storyErr) {
-              console.warn(`[task-queue] Failed to generate story/arc for character ${charEntity.name}:`, storyErr instanceof Error ? storyErr.message : storyErr)
+              console.warn(
+                `[task-queue] Failed to generate story/arc for character ${charEntity.name}:`,
+                storyErr instanceof Error ? storyErr.message : storyErr
+              )
             }
           }
           await em.flush()
@@ -278,10 +331,22 @@ async function processTask(task: GenerationTask): Promise<void> {
               })
               if (!charEntity) continue
               if (cc.chapterStory) {
-                await indexCharacterEvent(charEntity.id, chapter.id, novelId, cc.chapterStory, 'chapter_story').catch(() => {})
+                await indexCharacterEvent(
+                  charEntity.id,
+                  chapter.id,
+                  novelId,
+                  cc.chapterStory,
+                  'chapter_story'
+                ).catch(() => {})
               }
               if (charEntity.overallArc) {
-                await indexCharacterEvent(charEntity.id, null, novelId, charEntity.overallArc, 'overall_arc').catch(() => {})
+                await indexCharacterEvent(
+                  charEntity.id,
+                  null,
+                  novelId,
+                  charEntity.overallArc,
+                  'overall_arc'
+                ).catch(() => {})
               }
             }
           }
@@ -298,6 +363,20 @@ async function processTask(task: GenerationTask): Promise<void> {
       }
     }
 
+    if (
+      task.type === 'extract_character_state_changes' &&
+      task.chapter &&
+      userId
+    ) {
+      const r = await extractCharacterStateChangesForChapter(em, {
+        userId,
+        novelId,
+        chapterId: getEntityId(task.chapter),
+        replaceAi: true
+      })
+      result = `Character state changes: +${r.created} created, ${r.accepted} accepted, ${r.pending} pending, ${r.skipped} skipped`
+    }
+
     if (task.type === 'extract_plot_threads' && task.chapter && userId) {
       const r = await runPlotThreadExtraction(
         em,
@@ -311,11 +390,15 @@ async function processTask(task: GenerationTask): Promise<void> {
     }
 
     if (task.type === 'generate_arc') {
-      const allChapters = await em.find(ChapterSchema, {
-        novel: novelId,
-        deletedAt: null,
-        summary: { $ne: null }
-      }, { orderBy: { chapterNumber: 'ASC' } })
+      const allChapters = await em.find(
+        ChapterSchema,
+        {
+          novel: novelId,
+          deletedAt: null,
+          summary: { $ne: null }
+        },
+        { orderBy: { chapterNumber: 'ASC' } }
+      )
 
       const ARC_GROUP_SIZE = 10
       const totalChapters = allChapters.length
@@ -339,17 +422,27 @@ async function processTask(task: GenerationTask): Promise<void> {
             if (existing) continue
 
             const summaries = group
-              .filter(ch => ch.summary)
-              .map(ch => ({ chapterNumber: ch.chapterNumber, title: ch.title, summary: ch.summary! }))
+              .filter((ch) => ch.summary)
+              .map((ch) => ({
+                chapterNumber: ch.chapterNumber,
+                title: ch.title,
+                summary: ch.summary!
+              }))
 
             if (summaries.length < 3) continue
 
-            const messages = buildStoryArcPrompt(summaries, startChapter, endChapter)
-            const arcResult = await callAiStreaming(toAiOptions(aiConfig, {
-              messages,
-              temperature: 0.3,
-              maxTokens: 500
-            }))
+            const messages = buildStoryArcPrompt(
+              summaries,
+              startChapter,
+              endChapter
+            )
+            const arcResult = await callAiStreaming(
+              toAiOptions(aiConfig, {
+                messages,
+                temperature: 0.3,
+                maxTokens: 500
+              })
+            )
             const arcSummary = arcResult.content
             totalInputTokens += arcResult.inputTokens
             totalOutputTokens += arcResult.outputTokens
@@ -369,30 +462,44 @@ async function processTask(task: GenerationTask): Promise<void> {
     }
 
     if (task.type === 'style_analysis') {
-      const chapters = await em.find(ChapterSchema, {
-        novel: novelId,
-        deletedAt: null
-      }, { orderBy: { chapterNumber: 'ASC' }, limit: 5, populate: ['content'] })
+      const chapters = await em.find(
+        ChapterSchema,
+        {
+          novel: novelId,
+          deletedAt: null
+        },
+        { orderBy: { chapterNumber: 'ASC' }, limit: 5, populate: ['content'] }
+      )
 
       const sampleText = chapters
-        .filter(ch => ch.content)
-        .map(ch => ch.content!.slice(0, 1500))
+        .filter((ch) => ch.content)
+        .map((ch) => ch.content!.slice(0, 1500))
         .join('\n\n---\n\n')
 
       if (sampleText) {
-        const aiConfig = await resolveConfigForPurpose(em, 'style_analysis', userId)
-          || await resolveConfigForPurpose(em, 'extraction', userId)
+        const aiConfig =
+          (await resolveConfigForPurpose(em, 'style_analysis', userId)) ||
+          (await resolveConfigForPurpose(em, 'extraction', userId))
 
         if (aiConfig) {
           const messages = [
-            { role: 'system' as const, content: '你是一位文学评论家和写作风格分析师。请分析以下文本的写作风格，包括：叙事视角、句式特点、用词习惯、节奏感、修辞手法、情感基调。输出简洁的风格指南（200字以内），可直接用于指导 AI 续写时保持一致风格。' },
-            { role: 'user' as const, content: `请分析以下小说片段的写作风格：\n\n${sampleText}` }
+            {
+              role: 'system' as const,
+              content:
+                '你是一位文学评论家和写作风格分析师。请分析以下文本的写作风格，包括：叙事视角、句式特点、用词习惯、节奏感、修辞手法、情感基调。输出简洁的风格指南（200字以内），可直接用于指导 AI 续写时保持一致风格。'
+            },
+            {
+              role: 'user' as const,
+              content: `请分析以下小说片段的写作风格：\n\n${sampleText}`
+            }
           ]
-          const styleResult = await callAiStreaming(toAiOptions(aiConfig, {
-            messages,
-            temperature: 0.3,
-            maxTokens: 500
-          }))
+          const styleResult = await callAiStreaming(
+            toAiOptions(aiConfig, {
+              messages,
+              temperature: 0.3,
+              maxTokens: 500
+            })
+          )
           const styleGuide = styleResult.content
           totalInputTokens += styleResult.inputTokens
           totalOutputTokens += styleResult.outputTokens
@@ -419,7 +526,12 @@ async function processTask(task: GenerationTask): Promise<void> {
       const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
       if (aiConfig) {
         await recordUsage(
-          { em, userId, configId: aiConfig.id, model: aiConfig.model } as StreamContext,
+          {
+            em,
+            userId,
+            configId: aiConfig.id,
+            model: aiConfig.model
+          } as StreamContext,
           totalInputTokens,
           totalOutputTokens
         )
@@ -477,7 +589,10 @@ export async function enqueuePostProcessing(
   }
 
   // Trigger arc generation when chapter count is a multiple of 10
-  const chapterCount = await em.count(ChapterSchema, { novel: novelId, deletedAt: null })
+  const chapterCount = await em.count(ChapterSchema, {
+    novel: novelId,
+    deletedAt: null
+  })
   if (chapterCount > 0 && chapterCount % 10 === 0) {
     const existingArcTask = await em.findOne(GenerationTaskSchema, {
       novel: novelId,
@@ -514,8 +629,16 @@ export async function processPendingTasks(): Promise<void> {
     )
 
     // Check if any AI config is available before processing
-    const anyConfig = await em.findOne(AiConfigSchema, { enabled: true }, { populate: ['aiModel', 'aiModel.provider'] })
-    if (!anyConfig || !(anyConfig.aiModel as any)?.enabled || !(anyConfig.aiModel as any)?.provider?.enabled) {
+    const anyConfig = await em.findOne(
+      AiConfigSchema,
+      { enabled: true },
+      { populate: ['aiModel', 'aiModel.provider'] }
+    )
+    if (
+      !anyConfig ||
+      !(anyConfig.aiModel as any)?.enabled ||
+      !(anyConfig.aiModel as any)?.provider?.enabled
+    ) {
       return
     }
 

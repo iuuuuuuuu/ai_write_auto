@@ -1034,6 +1034,14 @@ function editDetailCharacter() {
   showCharacterDetail.value = false
 }
 
+async function refreshDetailCharacter() {
+  const currentId = detailCharacter.value?.id
+  await refreshCharacters()
+  if (!currentId) return
+  detailCharacter.value =
+    characters.value?.find((character) => character.id === currentId) ?? null
+}
+
 function getFirstFormErrorMessage(error: unknown) {
   if (Array.isArray(error)) {
     const firstError = error.flat().find((item) => item?.message)
@@ -3648,6 +3656,14 @@ async function savePlotPoint() {
             >最近出场：第{{ detailCharacter.lastAppearanceChapter }}章</span
           >
           <span>出场 {{ detailCharacter.appearances.length }} 次</span>
+        </div>
+
+        <div class="border-t border-(--ui-border) pt-3">
+          <CharacterStateTimeline
+            :novel-id="novelId"
+            :character-id="detailCharacter.id"
+            @refreshed="refreshDetailCharacter"
+          />
         </div>
 
         <div

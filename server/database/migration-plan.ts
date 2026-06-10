@@ -30,6 +30,11 @@ export const MIGRATION_TABLES: Array<{ tableName: string; label: string }> = [
   { tableName: 'characters', label: 'Characters' },
   { tableName: 'chapter_characters', label: 'Chapter characters' },
   { tableName: 'character_appearances', label: 'Character appearances' },
+  { tableName: 'character_state_changes', label: 'Character state changes' },
+  {
+    tableName: 'character_state_snapshots',
+    label: 'Character state snapshots'
+  },
   { tableName: 'plot_points', label: 'Plot points' },
   { tableName: 'story_arcs', label: 'Story arcs' },
   { tableName: 'generation_tasks', label: 'Generation tasks' },

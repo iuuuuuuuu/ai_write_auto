@@ -251,6 +251,57 @@ export interface CharacterAppearance {
   createdAt: Date
 }
 
+export interface CharacterStateChange {
+  [OptionalProps]?:
+    | 'id'
+    | 'relatedCharacter'
+    | 'beforeValue'
+    | 'reason'
+    | 'evidenceQuote'
+    | 'confidence'
+    | 'status'
+    | 'source'
+    | 'contentHash'
+    | 'chapterUpdatedAtSnapshot'
+    | 'createdAt'
+    | 'updatedAt'
+  id: number
+  novel: Novel
+  chapter: Chapter
+  character: Character
+  relatedCharacter: Character | null
+  changeType: string
+  beforeValue: string | null
+  afterValue: string
+  reason: string | null
+  evidenceQuote: string | null
+  confidence: string | null
+  status: 'pending' | 'accepted' | 'rejected' | 'reverted'
+  source: 'ai' | 'manual'
+  contentHash: string | null
+  chapterUpdatedAtSnapshot: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface CharacterStateSnapshot {
+  [OptionalProps]?:
+    | 'id'
+    | 'sourceChangeIds'
+    | 'contentHash'
+    | 'createdAt'
+    | 'updatedAt'
+  id: number
+  novel: Novel
+  chapter: Chapter
+  character: Character
+  stateJson: string
+  sourceChangeIds: string | null
+  contentHash: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface PlotPoint {
   [OptionalProps]?: 'id' | 'chapter' | 'status' | 'createdAt'
   id: number
@@ -889,6 +940,141 @@ export const CharacterAppearanceSchema = new EntitySchema<CharacterAppearance>({
   }
 })
 
+export const CharacterStateChangeSchema =
+  new EntitySchema<CharacterStateChange>({
+    name: 'CharacterStateChange',
+    tableName: 'character_state_changes',
+    indexes: [
+      {
+        properties: ['novel', 'chapter'],
+        name: 'idx_character_state_changes_novel_chapter'
+      },
+      {
+        properties: ['character', 'status'],
+        name: 'idx_character_state_changes_character_status'
+      },
+      {
+        properties: ['novel', 'contentHash'],
+        name: 'idx_character_state_changes_novel_hash'
+      }
+    ],
+    properties: {
+      id: { type: 'number', primary: true, autoincrement: true },
+      novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+      chapter: {
+        kind: 'm:1',
+        entity: () => 'Chapter',
+        fieldName: 'chapter_id'
+      },
+      character: {
+        kind: 'm:1',
+        entity: () => 'Character',
+        fieldName: 'character_id'
+      },
+      relatedCharacter: {
+        kind: 'm:1',
+        entity: () => 'Character',
+        fieldName: 'related_character_id',
+        nullable: true
+      },
+      changeType: { type: 'string', fieldName: 'change_type' },
+      beforeValue: {
+        type: 'string',
+        nullable: true,
+        fieldName: 'before_value'
+      },
+      afterValue: { type: 'string', fieldName: 'after_value' },
+      reason: { type: 'string', nullable: true },
+      evidenceQuote: {
+        type: 'string',
+        nullable: true,
+        fieldName: 'evidence_quote'
+      },
+      confidence: { type: 'string', nullable: true },
+      status: { type: 'string', default: 'pending' },
+      source: { type: 'string', default: 'ai' },
+      contentHash: {
+        type: 'string',
+        nullable: true,
+        fieldName: 'content_hash'
+      },
+      chapterUpdatedAtSnapshot: {
+        type: UnixTimestampType,
+        nullable: true,
+        fieldName: 'chapter_updated_at_snapshot'
+      },
+      createdAt: {
+        type: UnixTimestampType,
+        fieldName: 'created_at',
+        onCreate: () => new Date()
+      },
+      updatedAt: {
+        type: UnixTimestampType,
+        fieldName: 'updated_at',
+        onCreate: () => new Date(),
+        onUpdate: () => new Date()
+      }
+    }
+  })
+
+export const CharacterStateSnapshotSchema =
+  new EntitySchema<CharacterStateSnapshot>({
+    name: 'CharacterStateSnapshot',
+    tableName: 'character_state_snapshots',
+    indexes: [
+      {
+        properties: ['novel', 'chapter'],
+        name: 'idx_character_state_snapshots_novel_chapter'
+      },
+      {
+        properties: ['character', 'chapter'],
+        name: 'idx_character_state_snapshots_character_chapter'
+      }
+    ],
+    uniques: [
+      {
+        properties: ['character', 'chapter'],
+        name: 'uq_character_state_snapshots_character_chapter'
+      }
+    ],
+    properties: {
+      id: { type: 'number', primary: true, autoincrement: true },
+      novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+      chapter: {
+        kind: 'm:1',
+        entity: () => 'Chapter',
+        fieldName: 'chapter_id'
+      },
+      character: {
+        kind: 'm:1',
+        entity: () => 'Character',
+        fieldName: 'character_id'
+      },
+      stateJson: { type: 'string', fieldName: 'state_json' },
+      sourceChangeIds: {
+        type: 'string',
+        nullable: true,
+        fieldName: 'source_change_ids'
+      },
+      contentHash: {
+        type: 'string',
+        nullable: true,
+        fieldName: 'content_hash'
+      },
+      createdAt: {
+        type: UnixTimestampType,
+        fieldName: 'created_at',
+        onCreate: () => new Date()
+      },
+      updatedAt: {
+        type: UnixTimestampType,
+        fieldName: 'updated_at',
+        onCreate: () => new Date(),
+        onUpdate: () => new Date()
+      }
+    }
+  })
+
 export const PlotPointSchema = new EntitySchema<PlotPoint>({
   name: 'PlotPoint',
   tableName: 'plot_points',
@@ -1266,6 +1452,8 @@ export const allEntities = [
   CharacterSchema,
   ChapterCharacterSchema,
   CharacterAppearanceSchema,
+  CharacterStateChangeSchema,
+  CharacterStateSnapshotSchema,
   PlotPointSchema,
   StoryArcSchema,
   GenerationTaskSchema,

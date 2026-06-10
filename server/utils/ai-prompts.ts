@@ -35,6 +35,21 @@ export interface PromptCharacter {
   overallArc?: string | null
 }
 
+export interface PromptCharacterStateChangeExtractionContext {
+  novel: PromptNovel
+  chapter: PromptChapter & { content: string }
+  characters: Array<PromptCharacter & { id: number }>
+}
+
+export interface PromptCharacterStateChange {
+  chapterNumber: number
+  characterName: string
+  relatedCharacterName?: string | null
+  changeType: string
+  afterValue: string
+  evidenceQuote?: string | null
+}
+
 function formatPromptCharacterProfile(character: PromptCharacter): string {
   const parts = [
     character.realName ? `本名：${character.realName}` : '',
@@ -233,6 +248,7 @@ export function buildGenerationPrompt(context: {
     title: string
     content: string
   }>
+  characterStateChanges?: PromptCharacterStateChange[]
   skills?: PromptWritingSkill[]
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const {
@@ -246,7 +262,8 @@ export function buildGenerationPrompt(context: {
     storyArcs,
     ragContext,
     foreshadowing,
-    recentChapterContent
+    recentChapterContent,
+    characterStateChanges
   } = context
 
   let systemPrompt = `你是一位专业的小说作家。根据提供的上下文，续写本章正文。
@@ -357,6 +374,19 @@ ${buildProseProtocolRules(novel)}
     userPrompt += charScoped.length ? `\n## 其他角色档案\n` : `\n## 角色档案\n`
     for (const char of characterList) {
       userPrompt += `- ${formatPromptCharacterProfile(char)}\n`
+    }
+  }
+
+  if (characterStateChanges?.length) {
+    userPrompt += `\n## 已确认角色变化（仅限当前章之前）\n`
+    for (const change of characterStateChanges.slice(-30)) {
+      const relation =
+        change.relatedCharacterName ?
+          `；关联角色：${change.relatedCharacterName}`
+        : ''
+      const evidence =
+        change.evidenceQuote ? `；证据：「${change.evidenceQuote}」` : ''
+      userPrompt += `- 第${change.chapterNumber}章，${change.characterName} [${change.changeType}]：${change.afterValue}${relation}${evidence}\n`
     }
   }
 
@@ -647,6 +677,73 @@ export function buildCharacterExtractionPrompt(
 ]`
     },
     { role: 'user', content: chapterContent }
+  ]
+}
+
+export function buildCharacterStateChangeExtractionPrompt(
+  context: PromptCharacterStateChangeExtractionContext
+): Array<{ role: 'system' | 'user'; content: string }> {
+  const { novel, chapter, characters } = context
+  const characterList = characters
+    .map(
+      (character) =>
+        `- ID ${character.id}：${formatPromptCharacterProfile(character)}`
+    )
+    .join('\n')
+
+  const systemPrompt = `你是一位严谨的小说角色状态编辑。请从当前章节正文中抽取“角色状态变化事实”，用于维护角色时间线。
+
+只抽取章节中有明确原文证据的变化，不要根据常识、未来剧情或脑补补全角色资料。
+
+changeType 只能使用以下值：
+- description：身份、背景、角色简介发生明确补充或修正
+- traits：性格、做事风格、长期行为特征发生明确变化
+- relationships：与其他角色的关系、亲疏、阵营、敌友发生明确变化
+- currentState：当前处境、状态、伤病、情绪、目标、位置发生明确变化
+- realName：本名被揭示或修正
+- displayTitle：称呼、位分、头衔发生明确变化
+- rolePosition：身份定位、阶层、阵营、职能发生明确变化
+- storyRole：剧情作用发生明确变化
+- overallArc：角色长期弧线出现重要转折
+
+输出要求：
+- 返回严格 JSON 数组，不要 Markdown，不要解释。
+- characterId 必须来自下方角色清单；不能确定具体角色时不要输出。
+- relatedCharacterId 仅在 relationships 变化且能确定对方角色时填写，否则为 null。
+- evidenceQuote 必须逐字摘录当前章节原文，10-80 字；没有原文证据的条目不要输出。
+- confidence 是 0 到 1 的小数；证据直接清楚可给 0.8 以上，推断性较强应低于 0.8。
+- afterValue 写成可直接进入角色档案的一句话；不要写“可能”“疑似”。
+
+字段固定：
+[{
+  "characterId": 1,
+  "characterName": "角色名",
+  "relatedCharacterId": null,
+  "relatedCharacterName": null,
+  "changeType": "currentState",
+  "beforeValue": null,
+  "afterValue": "角色在本章后的新状态",
+  "reason": "为什么这是变化",
+  "evidenceQuote": "当前章节原文摘录",
+  "confidence": 0.85
+}]
+
+没有可抽取的变化时返回 []。`
+
+  let userPrompt = `## 小说信息\n标题：${novel.title}\n`
+  if (novel.genre) userPrompt += `类型：${novel.genre}\n`
+  if (novel.description) userPrompt += `简介：${novel.description}\n`
+  if (novel.worldSetting)
+    userPrompt += `\n## 世界观设定\n${novel.worldSetting.slice(0, CONTEXT_TRUNCATE_WORLD)}\n`
+
+  userPrompt += `\n## 角色清单\n${characterList || '（暂无已知角色，返回 []）'}\n`
+  userPrompt += `\n## 当前章节\n第${chapter.chapterNumber}章「${chapter.title}」\n`
+  if (chapter.summary) userPrompt += `章节摘要：${chapter.summary}\n`
+  userPrompt += `\n## 当前章节正文\n${chapter.content.slice(0, CONTEXT_TRUNCATE_FULL)}`
+
+  return [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
   ]
 }
 

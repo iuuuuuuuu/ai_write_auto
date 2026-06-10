@@ -1042,6 +1042,23 @@ type CharacterListItem = {
   storyRole: string | null
 }
 
+type CharacterStateChangeItem = {
+  id: number
+  chapterNumber: number
+  chapterTitle: string
+  characterId: number
+  characterName: string
+  relatedCharacterName: string | null
+  changeType: string
+  afterValue: string
+  reason: string | null
+  evidenceQuote: string | null
+  confidence: string | null
+  status: 'pending' | 'accepted' | 'rejected' | 'reverted'
+  source: 'ai' | 'manual'
+  isStale: boolean
+}
+
 const { data: allCharacters, refresh: refreshAllCharacters } = await useFetch<
   Array<CharacterListItem>
 >(`/api/novels/${novelId.value}/characters`)
@@ -1051,6 +1068,7 @@ const extractingChars = ref(false)
 const selectedCharacterIds = ref<Set<number>>(new Set())
 const savingChapterCharacters = ref(false)
 const aiExtractingCharacters = ref(false)
+const extractingCharacterStateChanges = ref(false)
 const enrichingCharacterIds = ref<Set<number>>(new Set())
 let detectTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -1072,6 +1090,15 @@ const { data: chapterCharacters, refresh: refreshChapterCharacters } =
     }>
   >(
     () => `/api/novels/${novelId.value}/chapters/${chapterId.value}/characters`,
+    {
+      default: () => []
+    }
+  )
+
+const { data: characterStateChanges, refresh: refreshCharacterStateChanges } =
+  await useFetch<CharacterStateChangeItem[]>(
+    () =>
+      `/api/novels/${novelId.value}/chapters/${chapterId.value}/character-state-changes`,
     {
       default: () => []
     }
@@ -1167,6 +1194,34 @@ const selectedChapterCharacters = computed(() => {
   })
 })
 
+const visibleCharacterStateChanges = computed(() => {
+  return (characterStateChanges.value || []).filter((change) => {
+    return change.status === 'pending' || change.status === 'accepted'
+  })
+})
+
+const pendingCharacterStateChangeCount = computed(() => {
+  return visibleCharacterStateChanges.value.filter(
+    (change) => change.status === 'pending'
+  ).length
+})
+
+const characterStateChangeLabels: Record<string, string> = {
+  description: '简介',
+  traits: '性格',
+  relationships: '关系',
+  currentState: '状态',
+  realName: '本名',
+  displayTitle: '称呼',
+  rolePosition: '身份',
+  storyRole: '作用',
+  overallArc: '弧线'
+}
+
+function getCharacterStateChangeLabel(changeType: string) {
+  return characterStateChangeLabels[changeType] || changeType
+}
+
 function syncSelectedCharactersFromServer() {
   selectedCharacterIds.value = new Set(
     chapterCharacters.value.map((item) => item.characterId)
@@ -1257,6 +1312,30 @@ async function extractCharactersWithAi() {
     detectCharactersFromContent()
   } finally {
     aiExtractingCharacters.value = false
+  }
+}
+
+async function extractCharacterStateChanges() {
+  if (extractingCharacterStateChanges.value) return
+  extractingCharacterStateChanges.value = true
+  try {
+    await saveContent()
+    const result = await apiPost<{
+      created: number
+      accepted: number
+      pending: number
+      skipped: number
+    }>(
+      `/api/novels/${novelId.value}/chapters/${chapterId.value}/character-state-changes/extract`,
+      { replaceAi: true },
+      { successMessage: '人物变化分析完成' }
+    )
+    await Promise.all([refreshCharacterStateChanges(), refreshAllCharacters()])
+    message.info(
+      `新增 ${result.created} 条，自动确认 ${result.accepted} 条，待确认 ${result.pending} 条`
+    )
+  } finally {
+    extractingCharacterStateChanges.value = false
   }
 }
 
@@ -3359,6 +3438,81 @@ onBeforeUnmount(() => {
                 class="mt-2 text-[10px] text-(--ui-text-dimmed)"
               >
                 在下方勾选角色后点击「应用」添加到本章
+              </p>
+            </div>
+
+            <div
+              class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) p-2"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <div class="min-w-0">
+                  <p class="text-[10px] font-medium text-(--ui-text-muted)">
+                    本章人物变化
+                  </p>
+                  <p
+                    v-if="pendingCharacterStateChangeCount"
+                    class="mt-0.5 text-[10px] text-amber-500"
+                  >
+                    {{ pendingCharacterStateChangeCount }} 条待确认
+                  </p>
+                </div>
+                <button
+                  class="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[10px] text-(--ui-text-muted) hover:bg-(--ui-bg-elevated)/70 hover:text-(--ui-text) transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  :disabled="extractingCharacterStateChanges"
+                  @click="extractCharacterStateChanges"
+                >
+                  <Icon
+                    :icon="
+                      extractingCharacterStateChanges ? 'lucide:loader-2' : (
+                        'lucide:activity'
+                      )
+                    "
+                    class="w-3 h-3"
+                    :class="{
+                      'animate-spin': extractingCharacterStateChanges
+                    }"
+                  />
+                  {{ extractingCharacterStateChanges ? '分析中...' : '分析' }}
+                </button>
+              </div>
+
+              <div
+                v-if="visibleCharacterStateChanges.length"
+                class="mt-2 space-y-1.5"
+              >
+                <div
+                  v-for="change in visibleCharacterStateChanges.slice(0, 5)"
+                  :key="change.id"
+                  class="rounded-lg bg-(--ui-bg-elevated)/70 px-2 py-1.5"
+                >
+                  <div class="flex items-center gap-1.5">
+                    <NTag
+                      size="tiny"
+                      :type="
+                        change.status === 'pending' ? 'warning' : 'success'
+                      "
+                    >
+                      {{ change.status === 'pending' ? '待确认' : '已确认' }}
+                    </NTag>
+                    <span
+                      class="truncate text-[10px] text-(--ui-text-highlighted)"
+                    >
+                      {{ change.characterName }} ·
+                      {{ getCharacterStateChangeLabel(change.changeType) }}
+                    </span>
+                  </div>
+                  <p
+                    class="mt-1 line-clamp-2 text-[10px] leading-snug text-(--ui-text-muted)"
+                  >
+                    {{ change.afterValue }}
+                  </p>
+                </div>
+              </div>
+              <p
+                v-else
+                class="mt-2 text-[10px] text-(--ui-text-dimmed)"
+              >
+                保存正文后点击「分析」，抽取本章中角色状态、关系和身份变化。
               </p>
             </div>
 

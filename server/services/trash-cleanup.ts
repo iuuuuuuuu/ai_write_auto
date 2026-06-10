@@ -62,6 +62,8 @@ export async function runTrashCleanup(orm: MikroORM): Promise<number> {
     await em.nativeDelete('ChapterCharacter', { chapter: { novel: novel.id } })
     await em.nativeDelete('ConsistencyIssue', { chapter: { novel: novel.id } })
     await em.nativeDelete('CharacterAppearance', { novel: novel.id })
+    await em.nativeDelete('CharacterStateSnapshot', { novel: novel.id })
+    await em.nativeDelete('CharacterStateChange', { novel: novel.id })
     await em.nativeDelete('PlotPoint', { novel: novel.id })
     await em.nativeDelete('StoryArc', { novel: novel.id })
     await em.nativeDelete('NovelOutline', { novel: novel.id })
@@ -78,6 +80,8 @@ export async function runTrashCleanup(orm: MikroORM): Promise<number> {
     await em.nativeDelete('ChapterCharacter', { chapter: chapter.id })
     await em.nativeDelete('ConsistencyIssue', { chapter: chapter.id })
     await em.nativeDelete('CharacterAppearance', { chapter: chapter.id })
+    await em.nativeDelete('CharacterStateSnapshot', { chapter: chapter.id })
+    await em.nativeDelete('CharacterStateChange', { chapter: chapter.id })
     await em.removeAndFlush(chapter)
     cleaned++
   }
@@ -92,7 +96,9 @@ export function startTrashCleanup(orm: MikroORM) {
     try {
       const cleaned = await runTrashCleanup(orm)
       if (cleaned > 0) {
-        console.log(`[trash-cleanup] Permanently deleted ${cleaned} expired items`)
+        console.log(
+          `[trash-cleanup] Permanently deleted ${cleaned} expired items`
+        )
       }
     } catch (e) {
       console.error('[trash-cleanup] Failed:', e)

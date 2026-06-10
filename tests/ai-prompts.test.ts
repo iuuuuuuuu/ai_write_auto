@@ -12,6 +12,7 @@ import {
   buildChapterPlanGenerationPrompt,
   buildCharacterEnrichPrompt,
   buildCharacterExtractionPrompt,
+  buildCharacterStateChangeExtractionPrompt,
   buildStoryArcPrompt,
   buildQueryPlanningPrompt,
   buildPlotThreadExtractionPrompt
@@ -259,6 +260,58 @@ describe('ai-prompts', () => {
       expect(result[1].content).toContain('请生成第7章')
     })
 
+    it('includes accepted character state changes before current chapter', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试' },
+        chapters: [],
+        characters: [{ name: '林美人', currentState: '初入宫中' }],
+        plotPoints: [],
+        currentChapter: { title: '风起', chapterNumber: 3 },
+        characterStateChanges: [
+          {
+            chapterNumber: 2,
+            characterName: '林美人',
+            changeType: 'currentState',
+            afterValue: '林美人已经被皇帝注意，处境更危险',
+            evidenceQuote: '皇帝的目光在她身上停了一瞬'
+          }
+        ]
+      })
+
+      expect(result[1].content).toContain('已确认角色变化')
+      expect(result[1].content).toContain('仅限当前章之前')
+      expect(result[1].content).toContain('林美人已经被皇帝注意')
+      expect(result[1].content).toContain('皇帝的目光在她身上停了一瞬')
+    })
+
+    describe('buildCharacterStateChangeExtractionPrompt', () => {
+      it('requires character ids, evidence quotes and confidence', () => {
+        const result = buildCharacterStateChangeExtractionPrompt({
+          novel: { title: '后宫试探', worldSetting: '古代宫廷' },
+          chapter: {
+            title: '暗潮',
+            chapterNumber: 2,
+            content: '小桃垂首道：“林小主，皇上方才问起您了。”'
+          },
+          characters: [
+            {
+              id: 1,
+              name: '林美人',
+              displayTitle: '林美人',
+              rolePosition: '后宫嫔妃'
+            }
+          ]
+        })
+
+        expect(result[0].content).toContain('characterId 必须来自下方角色清单')
+        expect(result[0].content).toContain('evidenceQuote 必须逐字摘录')
+        expect(result[0].content).toContain('confidence')
+        expect(result[0].content).toContain('currentState')
+        expect(result[1].content).toContain('ID 1')
+        expect(result[1].content).toContain('林美人')
+        expect(result[1].content).toContain('小桃垂首')
+      })
+    })
     it('does not force AI to stick to a placeholder title', () => {
       const result = buildGenerationPrompt({
         novel: { title: '测试' },
