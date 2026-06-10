@@ -14,7 +14,7 @@
  */
 
 /** 任一 seed 内容变化时 bump，syncWritingSkillSeeds 会据此「补建缺失 + 更新已存在的系统包」。 */
-export const WRITING_SKILL_SEED_VERSION = '2026.06.09.003'
+export const WRITING_SKILL_SEED_VERSION = '2026.06.10.001'
 
 export interface WritingSkillFewShot {
   /** 范文场景标签，如「开篇钩子」「对话推进」 */
@@ -37,7 +37,8 @@ export interface WritingSkillSeed {
 /** 通用「爆款叙事核心」——任何题材都建议挂载。 */
 const UNIVERSAL_CORE: WritingSkillSeed = {
   name: '爆款叙事核心',
-  description: '通用的受欢迎小说写作要素：开篇钩子、爽点、节奏、代入感、人物、章节钩子。',
+  description:
+    '通用的受欢迎小说写作要素：开篇钩子、爽点、节奏、代入感、人物、章节钩子。',
   genre: null,
   appliesTo: ['generation', 'rewrite'],
   systemAddon: `【爆款叙事核心】
@@ -161,6 +162,8 @@ const GENRE_SKILLS: WritingSkillSeed[] = [
     appliesTo: ['generation'],
     systemAddon: `【历史厚重与代入】
 - 用具体的时代细节（器物、称谓、礼制、市井声响、物价）营造真实，但服务于剧情，不做考据陈列。
+    - 称谓必须随身份、位分、官阶、主仆关系和场合变化；下位者不可用现代平等口吻直呼上位者，私下提及也要保留基本尊卑。
+    - 若写宫廷/后宫场景：宣旨可用正式位号（如「某宫某美人」），太监、宫女、丫鬟当面对嫔妃称「小主」或高位「娘娘」，不可随意直呼其名或用轻慢称呼。
 - 大时代落到小人物命运上：让历史的重量，压在一个具体的人能感知的选择与代价里。
 - 对白贴合身份与时代语感，避免现代腔与网络词；又要让现代读者读得懂，把握分寸。
 - 权谋/战争重「局」与「势」：交代清楚各方利害与信息差，让博弈可被读者跟上。
@@ -168,6 +171,7 @@ const GENRE_SKILLS: WritingSkillSeed[] = [
 - 价值观注意分寸：呈现时代局限而不美化，主角的选择要能让现代读者共情。`,
     checklist: [
       '时代细节是否服务于剧情，而非考据堆砌？',
+      '称谓是否符合人物身份、主仆尊卑、位分官阶和当下场合？',
       '大背景是否落到了具体人物的命运/选择上？',
       '对白语感是否贴合身份与时代，又不晦涩？',
       '权谋/冲突的利害关系是否交代清楚、可跟上？'

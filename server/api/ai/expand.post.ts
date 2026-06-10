@@ -12,6 +12,7 @@ import {
   CharacterSchema
 } from '../../database/entities'
 import { gatherRelevantContext } from '../../services/chapter-context'
+import { buildProseProtocolRules } from '../../utils/ai-prompts'
 
 const expandSchema = z.object({
   novelId: z.number().int().positive(),
@@ -99,8 +100,14 @@ export default defineEventHandler(async (event) => {
 
   const messages = [
     {
+      role: 'system' as const,
+      content: `你是一位专业的小说作家。请扩写用户选中的小说段落，使其更加丰富、具体，并保持原有情节走向、人物关系、叙事口吻和段落换行。只返回扩写后的正文，不要解释。
+
+${buildProseProtocolRules(novel)}${novel?.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
+    },
+    {
       role: 'user' as const,
-      content: `小说：${novel?.title || '未命名'}${novel?.genre ? `（${novel.genre}）` : ''}\n章节：第${chapter?.chapterNumber || '?'}章「${chapter?.title || ''}」${characterContext}\n${ragContextSection}\n章节上下文（选中位置前后）：\n${contextWindow}\n\n需要扩写的段落：\n${data.selectedText}${data.direction ? `\n\n扩写方向：${data.direction}` : ''}${novel?.styleGuide ? `\n\n风格指南：${novel.styleGuide}` : ''}\n\n请将选中的文本进行扩写，使其更加丰富、生动、细腻。保持原有的风格和语气，不要改变情节走向。必须使用自然的段落换行（用空行分段），不要生成一整段没有换行的文字。只返回扩写后的内容，不要其他说明。`
+      content: `小说：${novel?.title || '未命名'}${novel?.genre ? `（${novel.genre}）` : ''}\n章节：第${chapter?.chapterNumber || '?'}章「${chapter?.title || ''}」${characterContext}\n${ragContextSection}\n章节上下文（选中位置前后）：\n${contextWindow}\n\n需要扩写的段落：\n${data.selectedText}${data.direction ? `\n\n扩写方向：${data.direction}` : ''}`
     }
   ]
 

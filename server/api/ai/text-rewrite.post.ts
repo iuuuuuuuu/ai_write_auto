@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
 import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
+import { buildTextProtocolRules } from '../../utils/ai-prompts'
 
 const schema = z.object({
   text: z.string().min(1),
@@ -24,6 +25,12 @@ export default defineEventHandler(async (event) => {
   )
 
   const messages = [
+    {
+      role: 'system' as const,
+      content: `你是一位专业的文本改写助手。请保持原文核心含义、语气和上下文关系，只输出改写后的文本，不要解释。
+
+${buildTextProtocolRules()}`
+    },
     {
       role: 'user' as const,
       content:

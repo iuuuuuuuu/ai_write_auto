@@ -2,9 +2,17 @@ import { z } from 'zod'
 import { createInlineStreamResponse } from '../../utils/ai-stream'
 import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
-import { MAX_TOKENS_ACTION, CONTEXT_TRUNCATE_INLINE } from '../../utils/ai-constants'
-import { ChapterSchema, NovelSchema, CharacterSchema } from '../../database/entities'
+import {
+  MAX_TOKENS_ACTION,
+  CONTEXT_TRUNCATE_INLINE
+} from '../../utils/ai-constants'
+import {
+  ChapterSchema,
+  NovelSchema,
+  CharacterSchema
+} from '../../database/entities'
 import { gatherRelevantContext } from '../../services/chapter-context'
+import { buildProseProtocolRules } from '../../utils/ai-prompts'
 
 const rewriteSchema = z.object({
   novelId: z.number().int().positive(),
@@ -21,19 +29,31 @@ export default defineEventHandler(async (event) => {
   const data = rewriteSchema.parse(body)
   const em = useEm(event)
 
-  const aiConfig = await resolveNovelAiConfig(em, auth.userId, data.novelId, 'generation', data.aiConfigId)
+  const aiConfig = await resolveNovelAiConfig(
+    em,
+    auth.userId,
+    data.novelId,
+    'generation',
+    data.aiConfigId
+  )
 
-  const novel = await em.findOne(NovelSchema, { id: data.novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: data.novelId,
+    user: auth.userId
+  })
   if (!novel) throw createError({ statusCode: 404, message: '小说不存在' })
-  const chapter = await em.findOne(ChapterSchema, {
-    id: data.chapterId,
-    novel: { user: auth.userId },
-    deletedAt: null,
-  }, { populate: ['content'] })
+  const chapter = await em.findOne(
+    ChapterSchema,
+    {
+      id: data.chapterId,
+      novel: { user: auth.userId },
+      deletedAt: null
+    },
+    { populate: ['content'] }
+  )
   if (!chapter) throw createError({ statusCode: 404, message: '章节不存在' })
   const characters = await em.find(CharacterSchema, { novel: data.novelId })
 
-  
   // RAG: 按需检索（query-only，廉价模型产 query；失败回落 seed-only）
   const { retrievedNotes } = await gatherRelevantContext(em, {
     novelId: data.novelId,
@@ -53,16 +73,26 @@ export default defineEventHandler(async (event) => {
   }
 
   const chapterContent = chapter?.content || ''
-  const characterContext = characters.length > 0
-    ? `\n角色：${characters.slice(0, 8).map(c => `${c.name}${c.traits ? `(${c.traits})` : ''}`).join('、')}`
+  const characterContext =
+    characters.length > 0 ?
+      `\n角色：${characters
+        .slice(0, 8)
+        .map((c) => `${c.name}${c.traits ? `(${c.traits})` : ''}`)
+        .join('、')}`
     : ''
 
   // Extract context around the selection, not from the beginning
   const selIdx = chapterContent.indexOf(data.selectedText)
   let contextWindow = ''
   if (selIdx >= 0) {
-    const before = chapterContent.slice(Math.max(0, selIdx - CONTEXT_TRUNCATE_INLINE), selIdx)
-    const after = chapterContent.slice(selIdx + data.selectedText.length, selIdx + data.selectedText.length + CONTEXT_TRUNCATE_INLINE)
+    const before = chapterContent.slice(
+      Math.max(0, selIdx - CONTEXT_TRUNCATE_INLINE),
+      selIdx
+    )
+    const after = chapterContent.slice(
+      selIdx + data.selectedText.length,
+      selIdx + data.selectedText.length + CONTEXT_TRUNCATE_INLINE
+    )
     contextWindow = `...${before}【选中部分：${data.selectedText}】${after}...`
   } else {
     contextWindow = chapterContent.slice(0, CONTEXT_TRUNCATE_INLINE * 2)
@@ -71,8 +101,9 @@ export default defineEventHandler(async (event) => {
   const messages = [
     {
       role: 'system' as const,
-      content:
-        `你是一位专业的小说作家。请将用户选中的文本进行重写，使其质量更高。保持原有的情节走向和关键信息，但可以改变表达方式、句式结构和描写手法。必须使用自然的段落换行（用空行分段），不要生成一整段没有换行的文字。只返回重写后的内容，不要其他说明。${novel?.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
+      content: `你是一位专业的小说作家。请将用户选中的文本进行重写，使其质量更高。保持原有的情节走向和关键信息，但可以改变表达方式、句式结构和描写手法。必须使用自然的段落换行（用空行分段），不要生成一整段没有换行的文字。只返回重写后的内容，不要其他说明。
+
+      ${buildProseProtocolRules(novel)}${novel?.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
     },
     {
       role: 'user' as const,
@@ -80,12 +111,16 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  return createInlineStreamResponse(event, {
-    ...toAiOptions(aiConfig, {
-      messages,
-      temperature: parseFloat(aiConfig.temperature || '0.7'),
-      maxTokens: MAX_TOKENS_ACTION,
-      extraBody: PROSE_SAMPLING,
-    }),
-  }, { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model })
+  return createInlineStreamResponse(
+    event,
+    {
+      ...toAiOptions(aiConfig, {
+        messages,
+        temperature: parseFloat(aiConfig.temperature || '0.7'),
+        maxTokens: MAX_TOKENS_ACTION,
+        extraBody: PROSE_SAMPLING
+      })
+    },
+    { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
+  )
 })

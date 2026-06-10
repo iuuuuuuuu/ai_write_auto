@@ -11,6 +11,7 @@ import {
   NovelSchema,
   CharacterSchema
 } from '../../database/entities'
+import { buildProseProtocolRules } from '../../utils/ai-prompts'
 
 const fragmentSchema = z.object({
   novelId: z.number().int().positive(),
@@ -88,14 +89,18 @@ export default defineEventHandler(async (event) => {
 
   const messages = [
     {
+      role: 'system' as const,
+      content: `${systemPrompt}
+
+${buildProseProtocolRules(novel)}${novel?.styleGuide ? `\n\n## 风格指南\n${novel.styleGuide}` : ''}`
+    },
+    {
       role: 'user' as const,
       content: `小说：${novel?.title || '未命名'}
 章节：${chapter.title}${characterContext}
 
 上下文（光标前的内容）：
 ${context}
-
-${systemPrompt}${novel?.styleGuide ? `\n\n风格指南：${novel.styleGuide}` : ''}
 
 请生成一段${typeLabel}，直接在此处接续上下文。保持与原文一致的风格和语气。`
     }

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
+  buildProseProtocolRules,
+  buildTextProtocolRules,
   buildGenerationPrompt,
   buildRegenerationPrompt,
   buildSummaryPrompt,
@@ -14,6 +16,44 @@ import {
 } from '../server/utils/ai-prompts'
 
 describe('ai-prompts', () => {
+  describe('protocol rules', () => {
+    it('adds court protocol details for palace context', () => {
+      const result = buildProseProtocolRules({
+        title: '恶魔皇帝异世宠妃',
+        genre: 'historical',
+        worldSetting: '古代后宫，女主是林美人，身边有丫鬟和传旨太监。'
+      })
+
+      expect(result).toContain('称呼礼仪')
+      expect(result).toContain('小主')
+      expect(result).toContain('娘娘')
+      expect(result).toContain('宣旨')
+      expect(result).toContain('太监')
+    })
+
+    it('keeps non-palace contexts free of court-specific terms', () => {
+      const result = buildProseProtocolRules({
+        title: '都市加班日记',
+        genre: 'urban',
+        worldSetting: '现代都市职场。'
+      })
+
+      expect(result).toContain('社会规范')
+      expect(result).not.toContain('小主')
+      expect(result).not.toContain('娘娘')
+      expect(result).not.toContain('宣旨')
+    })
+
+    it('text tools preserve the original address system without forcing palace rules', () => {
+      const result = buildTextProtocolRules()
+
+      expect(result).toContain('时代背景')
+      expect(result).toContain('称谓体系')
+      expect(result).not.toContain('小主')
+      expect(result).not.toContain('娘娘')
+    })
+  })
+
   describe('buildGenerationPrompt', () => {
     it('returns system and user messages', () => {
       const result = buildGenerationPrompt({
@@ -41,6 +81,23 @@ describe('ai-prompts', () => {
       expect(sys).toContain('潜台词')
       expect(sys).toContain('升华式')
       expect(sys).not.toContain('使用生动的描写和自然的对话')
+    })
+
+    it('palace generation prompt includes executable court address rules', () => {
+      const result = buildGenerationPrompt({
+        novel: {
+          title: '后宫试探',
+          worldSetting: '古代宫廷，主角是林美人，身边有丫鬟小桃。'
+        },
+        chapters: [],
+        characters: [],
+        plotPoints: []
+      })
+
+      expect(result[0].content).toContain('社会规范与称谓')
+      expect(result[0].content).toContain('小主')
+      expect(result[0].content).toContain('娘娘')
+      expect(result[0].content).toContain('太监')
     })
 
     it('includes character info when provided', () => {
@@ -241,6 +298,25 @@ describe('ai-prompts', () => {
       expect(result[0].content).toContain('避免「AI 腔」')
       expect(result[0].content).toContain('潜台词')
     })
+
+    it('palace regeneration prompt keeps court address rules', () => {
+      const result = buildRegenerationPrompt({
+        novel: {
+          title: '宫廷重生',
+          worldSetting: '后宫嫔妃、太监传旨、宫女侍奉。'
+        },
+        chapters: [],
+        characters: [],
+        plotPoints: [],
+        previousResult: '太监说：“林美人，请吧。”',
+        feedback: '修正称谓礼制'
+      })
+
+      expect(result[0].content).toContain('社会规范与称谓')
+      expect(result[0].content).toContain('小主')
+      expect(result[0].content).toContain('宣旨')
+      expect(result[0].content).toContain('下人')
+    })
   })
 
   describe('buildSummaryPrompt', () => {
@@ -266,7 +342,9 @@ describe('ai-prompts', () => {
       const result = buildConsistencyCheckPrompt({
         characters: [{ name: '李四', description: '配角', traits: '狡猾' }],
         recentSummaries: [{ chapterNumber: 1, summary: '李四出场' }],
-        priorPassages: [{ chapterNumber: 1, label: '李四', content: '李四左手握剑' }],
+        priorPassages: [
+          { chapterNumber: 1, label: '李四', content: '李四左手握剑' }
+        ],
         targetChapter: { chapterNumber: 2, content: '李四再次出现' }
       })
       expect(result[1].content).toContain('李四')

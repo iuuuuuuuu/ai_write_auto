@@ -132,6 +132,69 @@ function getRagContextLabel(contentType: string) {
   return labels[contentType] || contentType
 }
 
+function includesAny(text: string, keywords: string[]) {
+  return keywords.some((keyword) => text.includes(keyword))
+}
+
+export function shouldUseCourtProtocol(novel?: PromptNovel | null) {
+  if (!novel) {
+    return false
+  }
+
+  const source = [
+    novel.title,
+    novel.genre,
+    novel.description,
+    novel.worldSetting,
+    novel.styleGuide,
+    novel.aiExtraPrompt
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  return includesAny(source, [
+    '古代',
+    '宫廷',
+    '后宫',
+    '宫斗',
+    '皇帝',
+    '嫔妃',
+    '妃嫔',
+    '皇后',
+    '贵妃',
+    '婕妤',
+    '美人',
+    '才人',
+    '小主',
+    '娘娘',
+    '陛下',
+    '太监',
+    '宫女',
+    '丫鬟'
+  ])
+}
+
+export function buildProseProtocolRules(novel?: PromptNovel | null) {
+  let rules = `## 社会规范与称谓
+- 严格遵守世界观里的社会规范、等级体系、身份差序和称呼礼仪；人物说话必须符合其身份、地位、亲疏关系与当下场合。
+- 保持同一人物、同一身份关系下的称谓一致；不要让下位者用现代平等口吻称呼上位者，不要随意直呼尊长、上级或主子。`
+
+  if (shouldUseCourtProtocol(novel)) {
+    rules += `
+- 涉及古代宫廷、后宫、帝王或嫔妃场景时，必须使用宫廷称谓：正式宣旨可称完整位号，如「漪澜苑林美人」；太监、宫女、丫鬟当面对嫔妃应称「小主」「林小主」「婕妤小主」或对高位称「娘娘」，不得用轻慢、现代或平辈口吻。
+- 丫鬟/宫女私下向自家主子提及其他嫔妃，也应称「张小主」「孙小主」「赵小主」「皇后娘娘」「贵妃娘娘」等；不要直呼其名，也不要让下人随意直称「张婕妤」「孙美人」来替代礼貌称谓。
+- 嫔妃之间按位分与关系称呼，可用「姐姐」「妹妹」「某位分」等，但语气要符合尊卑与试探关系；太监传话时可冷硬，但不能越过礼制。`
+  }
+
+  return rules
+}
+
+export function buildTextProtocolRules() {
+  return `## 文本一致性
+- 保持原文的时代背景、身份关系、称谓体系和人物口吻；扩写或改写时不要把古代语境改成现代口吻，也不要改变上下级、主仆、官阶或亲疏关系。
+- 若原文已有尊称、位号、官称、辈分称呼或主仆称谓，后续文本必须沿用同一套规则，不要随意直呼其名。`
+}
+
 export function buildGenerationPrompt(context: {
   novel: PromptNovel
   chapters: PromptChapter[]
@@ -169,8 +232,9 @@ export function buildGenerationPrompt(context: {
 ## 叙事要求
 - 保持与已有章节一致的写作风格、人称与时态
 - 角色言行符合其性格与当前处境；推进剧情，不重复已有内容
-- **严格遵守世界观设定中的社会规范、等级体系、称呼礼仪**（如古代宫廷需用「小主」「娘娘」「陛下」等，现代都市用「你」「您」等，武侠江湖用「掌门」「前辈」等）
 - 注意伏笔的铺设与回收
+
+${buildProseProtocolRules(novel)}
 
 ## 文字要求（避免「AI 腔」）
 - 用具体的动作、对话、感官细节去「呈现」情绪与情节，不要用形容词和抽象议论去「告诉」读者人物的心情
@@ -640,6 +704,8 @@ export function buildRegenerationPrompt(context: {
 - 保留原文中用户没有提出异议的优秀部分
 - 确保角色性格和行为的连贯性
 - 必须在一个完整的段落结尾处停止，不要在句子中间截断
+
+${buildProseProtocolRules(novel)}
 
 ## 文字要求（避免「AI 腔」）
 - 用具体的动作、对话、感官细节去「呈现」情绪与情节，不要用形容词和抽象议论去「告诉」读者人物的心情
