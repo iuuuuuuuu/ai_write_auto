@@ -18,7 +18,14 @@ export interface SiteConfig {
 }
 
 export interface AiProvider {
-  [OptionalProps]?: 'id' | 'enabled' | 'lastCheckAt' | 'lastCheckAvailable' | 'lastCheckReason' | 'createdAt' | 'updatedAt'
+  [OptionalProps]?:
+    | 'id'
+    | 'enabled'
+    | 'lastCheckAt'
+    | 'lastCheckAvailable'
+    | 'lastCheckReason'
+    | 'createdAt'
+    | 'updatedAt'
   id: number
   user: User
   name: string
@@ -33,7 +40,14 @@ export interface AiProvider {
 }
 
 export interface AiModel {
-  [OptionalProps]?: 'id' | 'enabled' | 'lastCheckAt' | 'lastCheckAvailable' | 'lastCheckReason' | 'createdAt' | 'updatedAt'
+  [OptionalProps]?:
+    | 'id'
+    | 'enabled'
+    | 'lastCheckAt'
+    | 'lastCheckAvailable'
+    | 'lastCheckReason'
+    | 'createdAt'
+    | 'updatedAt'
   id: number
   user: User
   provider: AiProvider | null
@@ -60,7 +74,12 @@ export interface AiConfig {
   id: number
   user: User
   aiModel: AiModel
-  purpose: 'generation' | 'extraction' | 'consistency_check' | 'style_analysis' | 'planning'
+  purpose:
+    | 'generation'
+    | 'extraction'
+    | 'consistency_check'
+    | 'style_analysis'
+    | 'planning'
   temperature: string | null
   isDefault: boolean
   enabled: boolean
@@ -177,6 +196,10 @@ export interface Character {
     | 'traits'
     | 'relationships'
     | 'currentState'
+    | 'realName'
+    | 'displayTitle'
+    | 'rolePosition'
+    | 'storyRole'
     | 'firstAppearanceChapter'
     | 'lastAppearanceChapter'
     | 'overallArc'
@@ -188,6 +211,10 @@ export interface Character {
   traits: string | null
   relationships: string | null
   currentState: string | null
+  realName: string | null
+  displayTitle: string | null
+  rolePosition: string | null
+  storyRole: string | null
   firstAppearanceChapter: number | null
   lastAppearanceChapter: number | null
   overallArc: string | null
@@ -260,7 +287,13 @@ export interface GenerationTask {
   novel: Novel
   chapter: Chapter | null
   type: string
-  status: 'pending' | 'running' | 'paused' | 'cancelled' | 'completed' | 'failed'
+  status:
+    | 'pending'
+    | 'running'
+    | 'paused'
+    | 'cancelled'
+    | 'completed'
+    | 'failed'
   result: string | null
   error: string | null
   retryCount: number | null
@@ -382,7 +415,15 @@ export interface ModelCostRate {
 }
 
 export interface ConsistencyIssue {
-  [OptionalProps]?: 'id' | 'dismissed' | 'createdAt' | 'quote' | 'priorQuote' | 'priorChapter' | 'confidence' | 'signature'
+  [OptionalProps]?:
+    | 'id'
+    | 'dismissed'
+    | 'createdAt'
+    | 'quote'
+    | 'priorQuote'
+    | 'priorChapter'
+    | 'confidence'
+    | 'signature'
   id: number
   chapter: Chapter
   type: string
@@ -446,9 +487,24 @@ export const AiProviderSchema = new EntitySchema<AiProvider>({
     apiUrl: { type: 'string', fieldName: 'api_url' },
     apiKey: { type: 'string', fieldName: 'api_key' },
     enabled: { type: 'boolean', default: true },
-    lastCheckAt: { type: UnixTimestampType, fieldName: 'last_check_at', nullable: true, default: null },
-    lastCheckAvailable: { type: 'boolean', fieldName: 'last_check_available', nullable: true, default: null },
-    lastCheckReason: { type: 'string', fieldName: 'last_check_reason', nullable: true, default: null },
+    lastCheckAt: {
+      type: UnixTimestampType,
+      fieldName: 'last_check_at',
+      nullable: true,
+      default: null
+    },
+    lastCheckAvailable: {
+      type: 'boolean',
+      fieldName: 'last_check_available',
+      nullable: true,
+      default: null
+    },
+    lastCheckReason: {
+      type: 'string',
+      fieldName: 'last_check_reason',
+      nullable: true,
+      default: null
+    },
     createdAt: {
       type: UnixTimestampType,
       fieldName: 'created_at',
@@ -469,14 +525,34 @@ export const AiModelSchema = new EntitySchema<AiModel>({
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
-    provider: { kind: 'm:1', entity: () => 'AiProvider', fieldName: 'provider_id', nullable: true },
+    provider: {
+      kind: 'm:1',
+      entity: () => 'AiProvider',
+      fieldName: 'provider_id',
+      nullable: true
+    },
     name: { type: 'string' },
     model: { type: 'string' },
     maxTokens: { type: 'number', fieldName: 'max_tokens', default: 4096 },
     enabled: { type: 'boolean', default: true },
-    lastCheckAt: { type: UnixTimestampType, fieldName: 'last_check_at', nullable: true, default: null },
-    lastCheckAvailable: { type: 'boolean', fieldName: 'last_check_available', nullable: true, default: null },
-    lastCheckReason: { type: 'string', fieldName: 'last_check_reason', nullable: true, default: null },
+    lastCheckAt: {
+      type: UnixTimestampType,
+      fieldName: 'last_check_at',
+      nullable: true,
+      default: null
+    },
+    lastCheckAvailable: {
+      type: 'boolean',
+      fieldName: 'last_check_available',
+      nullable: true,
+      default: null
+    },
+    lastCheckReason: {
+      type: 'string',
+      fieldName: 'last_check_reason',
+      nullable: true,
+      default: null
+    },
     createdAt: {
       type: UnixTimestampType,
       fieldName: 'created_at',
@@ -627,7 +703,10 @@ export const ChapterSchema = new EntitySchema<Chapter>({
   tableName: 'chapters',
   indexes: [
     { properties: ['novel', 'deletedAt'], name: 'idx_chapters_novel_deleted' },
-    { properties: ['novel', 'chapterNumber'], name: 'idx_chapters_novel_number' }
+    {
+      properties: ['novel', 'chapterNumber'],
+      name: 'idx_chapters_novel_number'
+    }
   ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
@@ -703,9 +782,7 @@ export const ChapterNoteSchema = new EntitySchema<ChapterNote>({
 export const CharacterSchema = new EntitySchema<Character>({
   name: 'Character',
   tableName: 'characters',
-  indexes: [
-    { properties: ['novel'], name: 'idx_characters_novel' }
-  ],
+  indexes: [{ properties: ['novel'], name: 'idx_characters_novel' }],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
@@ -717,6 +794,22 @@ export const CharacterSchema = new EntitySchema<Character>({
       type: 'string',
       nullable: true,
       fieldName: 'current_state'
+    },
+    realName: { type: 'string', nullable: true, fieldName: 'real_name' },
+    displayTitle: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'display_title'
+    },
+    rolePosition: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'role_position'
+    },
+    storyRole: {
+      type: 'string',
+      nullable: true,
+      fieldName: 'story_role'
     },
     firstAppearanceChapter: {
       type: 'number',
@@ -765,7 +858,10 @@ export const CharacterAppearanceSchema = new EntitySchema<CharacterAppearance>({
   name: 'CharacterAppearance',
   tableName: 'character_appearances',
   indexes: [
-    { properties: ['novel', 'character'], name: 'idx_char_appearances_novel_character' }
+    {
+      properties: ['novel', 'character'],
+      name: 'idx_char_appearances_novel_character'
+    }
   ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
@@ -833,7 +929,10 @@ export const GenerationTaskSchema = new EntitySchema<GenerationTask>({
   name: 'GenerationTask',
   tableName: 'generation_tasks',
   indexes: [
-    { properties: ['novel', 'status'], name: 'idx_generation_tasks_novel_status' }
+    {
+      properties: ['novel', 'status'],
+      name: 'idx_generation_tasks_novel_status'
+    }
   ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
@@ -902,7 +1001,10 @@ export const PromptTemplateSchema = new EntitySchema<PromptTemplate>({
   name: 'PromptTemplate',
   tableName: 'prompt_templates',
   indexes: [
-    { properties: ['user', 'isSystem'], name: 'idx_prompt_templates_user_system' }
+    {
+      properties: ['user', 'isSystem'],
+      name: 'idx_prompt_templates_user_system'
+    }
   ],
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
@@ -1070,8 +1172,16 @@ export const ModelCostRateSchema = new EntitySchema<ModelCostRate>({
     id: { type: 'number', primary: true, autoincrement: true },
     user: { kind: 'm:1', entity: () => 'User', fieldName: 'user_id' },
     model: { type: 'string' },
-    inputCostPer1k: { type: 'string', fieldName: 'input_cost_per_1k', default: '0' },
-    outputCostPer1k: { type: 'string', fieldName: 'output_cost_per_1k', default: '0' },
+    inputCostPer1k: {
+      type: 'string',
+      fieldName: 'input_cost_per_1k',
+      default: '0'
+    },
+    outputCostPer1k: {
+      type: 'string',
+      fieldName: 'output_cost_per_1k',
+      default: '0'
+    },
     createdAt: {
       type: UnixTimestampType,
       fieldName: 'created_at',
@@ -1097,7 +1207,11 @@ export const ConsistencyIssueSchema = new EntitySchema<ConsistencyIssue>({
     description: { type: 'string' },
     quote: { type: 'string', nullable: true },
     priorQuote: { type: 'string', fieldName: 'prior_quote', nullable: true },
-    priorChapter: { type: 'number', fieldName: 'prior_chapter', nullable: true },
+    priorChapter: {
+      type: 'number',
+      fieldName: 'prior_chapter',
+      nullable: true
+    },
     confidence: { type: 'string', nullable: true },
     signature: { type: 'string', nullable: true },
     dismissed: { type: 'boolean', default: false },
@@ -1115,11 +1229,20 @@ export const ForeshadowingSchema = new EntitySchema<Foreshadowing>({
   properties: {
     id: { type: 'number', primary: true, autoincrement: true },
     novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
-    chapter: { kind: 'm:1', entity: () => 'Chapter', fieldName: 'chapter_id', nullable: true },
+    chapter: {
+      kind: 'm:1',
+      entity: () => 'Chapter',
+      fieldName: 'chapter_id',
+      nullable: true
+    },
     content: { type: 'string' },
     description: { type: 'string', nullable: true },
     status: { type: 'string', default: 'active' },
-    resolvedAtChapter: { type: 'number', nullable: true, fieldName: 'resolved_at_chapter' },
+    resolvedAtChapter: {
+      type: 'number',
+      nullable: true,
+      fieldName: 'resolved_at_chapter'
+    },
     createdAt: {
       type: UnixTimestampType,
       fieldName: 'created_at',

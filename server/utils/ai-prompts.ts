@@ -28,7 +28,29 @@ export interface PromptCharacter {
   traits?: string | null
   relationships?: string | null
   currentState?: string | null
+  realName?: string | null
+  displayTitle?: string | null
+  rolePosition?: string | null
+  storyRole?: string | null
   overallArc?: string | null
+}
+
+function formatPromptCharacterProfile(character: PromptCharacter): string {
+  const parts = [
+    character.realName ? `本名：${character.realName}` : '',
+    character.displayTitle ? `称呼/位分：${character.displayTitle}` : '',
+    character.rolePosition ? `身份：${character.rolePosition}` : '',
+    character.storyRole ? `作用：${character.storyRole}` : '',
+    character.description ? `简介：${character.description}` : '',
+    character.traits ? `性格：${character.traits}` : '',
+    character.relationships ? `关系：${character.relationships}` : '',
+    character.currentState ? `当前状态：${character.currentState}` : '',
+    character.overallArc ? `整体弧线：${character.overallArc}` : ''
+  ].filter(Boolean)
+
+  return parts.length ?
+      `${character.name}（${parts.join('；')}）`
+    : character.name
 }
 
 export interface PromptPlotPoint {
@@ -317,11 +339,7 @@ ${buildProseProtocolRules(novel)}
     for (const [name, items] of grouped) {
       const char = characters.find((c) => c.name === name)
       userPrompt += `\n### ${name}\n`
-      if (char?.description) userPrompt += `简介：${char.description}\n`
-      if (char?.traits) userPrompt += `性格：${char.traits}\n`
-      if (char?.relationships) userPrompt += `关系：${char.relationships}\n`
-      if (char?.currentState) userPrompt += `当前状态：${char.currentState}\n`
-      if (char?.overallArc) userPrompt += `整体弧线：${char.overallArc}\n`
+      if (char) userPrompt += `${formatPromptCharacterProfile(char)}\n`
       const stories = items.filter((i) => i.contentType === 'chapter_story')
       if (stories.length) {
         userPrompt += `相关章节经历：\n`
@@ -338,13 +356,7 @@ ${buildProseProtocolRules(novel)}
   if (characterList.length > 0) {
     userPrompt += charScoped.length ? `\n## 其他角色档案\n` : `\n## 角色档案\n`
     for (const char of characterList) {
-      userPrompt += `- ${char.name}`
-      if (char.description) userPrompt += `：${char.description}`
-      if (char.traits) userPrompt += `（性格：${char.traits}）`
-      if (char.relationships) userPrompt += `（关系：${char.relationships}）`
-      if (char.currentState) userPrompt += `【当前状态：${char.currentState}】`
-      if (char.overallArc) userPrompt += `【整体弧线：${char.overallArc}】`
-      userPrompt += '\n'
+      userPrompt += `- ${formatPromptCharacterProfile(char)}\n`
     }
   }
 
@@ -735,11 +747,7 @@ ${buildProseProtocolRules(novel)}
   } else if (characters.length > 0) {
     userPrompt += `\n## 角色档案\n`
     for (const char of characters.slice(0, 10)) {
-      userPrompt += `- ${char.name}`
-      if (char.description) userPrompt += `：${char.description}`
-      if (char.traits) userPrompt += `（性格：${char.traits}）`
-      if (char.relationships) userPrompt += `（关系：${char.relationships}）`
-      userPrompt += '\n'
+      userPrompt += `- ${formatPromptCharacterProfile(char)}\n`
     }
   }
 
@@ -985,6 +993,96 @@ export function buildOutlineGenerationPrompt(context: {
   ]
 }
 
+export function buildChapterPlanGenerationPrompt(context: {
+  novel: {
+    title: string
+    genre?: string | null
+    worldSetting?: string | null
+    styleGuide?: string | null
+  }
+  chapter: { title: string; chapterNumber: number }
+  chapterOutline: string
+  characters: Array<{
+    name: string
+    description?: string | null
+    traits?: string | null
+    relationships?: string | null
+    currentState?: string | null
+    realName?: string | null
+    displayTitle?: string | null
+    rolePosition?: string | null
+    storyRole?: string | null
+  }>
+  outlines: Array<{ chapterNumber: number; description: string }>
+  existingPlan?: Partial<{
+    goal: string
+    mustInclude: string
+    avoid: string
+    pacing: string
+    protocol: string
+  }>
+}): Array<{ role: 'system' | 'user'; content: string }> {
+  const { novel, chapter, chapterOutline, characters, outlines, existingPlan } =
+    context
+
+  const worldContext =
+    novel.worldSetting ?
+      `\n世界观设定：${novel.worldSetting.slice(0, CONTEXT_TRUNCATE_WORLD)}`
+    : ''
+  const styleContext =
+    novel.styleGuide ? `\n写作风格：${novel.styleGuide.slice(0, 800)}` : ''
+  const characterContext =
+    characters.length ?
+      `\n已确认出场角色：\n${characters
+        .slice(0, 12)
+        .map((character) => `- ${formatPromptCharacterProfile(character)}`)
+        .join('\n')}`
+    : '\n已确认出场角色：未选择，请按大纲自然规划，不要硬塞无关角色。'
+  const nearbyOutlines = outlines
+    .filter((outline) => {
+      return Math.abs(outline.chapterNumber - chapter.chapterNumber) <= 2
+    })
+    .map((outline) => `第${outline.chapterNumber}章：${outline.description}`)
+    .join('\n')
+  const outlineContext =
+    nearbyOutlines ? `\n邻近章节大纲：\n${nearbyOutlines}` : ''
+  const existingPlanContext =
+    existingPlan ?
+      `\n用户已填剧情要求：\n${[
+        ['本章目标', existingPlan.goal],
+        ['必须出现', existingPlan.mustInclude],
+        ['避免出现', existingPlan.avoid],
+        ['情绪/节奏', existingPlan.pacing],
+        ['称谓或设定补充', existingPlan.protocol]
+      ]
+        .map(([label, value]) => {
+          const text = String(value || '').trim()
+          return text ? `${label}：${text}` : ''
+        })
+        .filter(Boolean)
+        .join('\n')}`
+    : ''
+
+  return [
+    {
+      role: 'system',
+      content: `你是一位专业的小说章节策划师。请根据已确认的本章大纲和角色，生成「大致剧情」草案。
+
+要求：
+- 只做剧情规划，不要写正文，不要写章节标题，不要输出解释。
+- 草案要服务本章大纲，避免加入与大纲无关的新支线。
+- 必须尊重角色身份、上下级关系、时代背景和称谓礼制；宫廷/古言场景尤其注意太监、宫女、嫔妃、皇帝之间的称谓边界。
+- 如果用户已有填写内容，在不违背大纲的前提下吸收并优化。
+- 返回严格 JSON 对象，不要 markdown，不要代码块，字段固定为：
+{"goal":"本章要推进的核心目标","mustInclude":"必须出现的人物、事件、物件","avoid":"需要避免提前揭露或避免出场的内容","pacing":"情绪与节奏要求","protocol":"称谓、身份、礼制或设定补充"}`
+    },
+    {
+      role: 'user',
+      content: `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}${worldContext}${styleContext}\n章节：第${chapter.chapterNumber}章「${chapter.title}」\n本章大纲：${chapterOutline}${characterContext}${outlineContext}${existingPlanContext}`
+    }
+  ]
+}
+
 export function buildCharacterEnrichPrompt(context: {
   novel: {
     title: string
@@ -998,12 +1096,22 @@ export function buildCharacterEnrichPrompt(context: {
     description?: string
     traits?: string
     relationships?: string
+    currentState?: string
+    realName?: string
+    displayTitle?: string
+    rolePosition?: string
+    storyRole?: string
   }
   existingCharacters: Array<{
     name: string
     description?: string
     traits?: string
     relationships?: string
+    currentState?: string
+    realName?: string
+    displayTitle?: string
+    rolePosition?: string
+    storyRole?: string
   }>
   outlines: Array<{ chapterNumber: number; description: string }>
   fieldsToEnrich: string[]
@@ -1014,7 +1122,15 @@ export function buildCharacterEnrichPrompt(context: {
   const fieldDescriptions: Record<string, string> = {
     description: '简介（角色的身份、背景、定位，50-150字）',
     traits: '性格特征（用顿号分隔的性格关键词或短语，3-8个）',
-    relationships: '人物关系（与其他角色的关系描述，每段关系用分号分隔）'
+    relationships: '人物关系（与其他角色的关系描述，每段关系用分号分隔）',
+    currentState:
+      '当前状态（写清本章前的处境、身份状态、立场或近期目标，30-100字）',
+    realName:
+      '本名（能从设定推断才填写；不能确定时填“本名待定”，不要硬编完整姓名）',
+    displayTitle: '称呼/位分（如林美人、赵才人、张婕妤；不是本名）',
+    rolePosition: '身份定位（写清阶层、阵营、职能或社会身份，20-60字）',
+    storyRole:
+      '剧情作用（写清这个角色在当前剧情中的独特用途，避免和其他配角重复，20-80字）'
   }
 
   const fieldsInstruction = fieldsToEnrich
@@ -1027,6 +1143,10 @@ export function buildCharacterEnrichPrompt(context: {
 - 只生成用户指定的空白字段
 - 生成内容要与小说的世界观、风格和已有角色保持一致
 - 如果有其他角色信息，关系描述应与他们产生关联
+- 如果角色名像「孙美人」「赵才人」「张婕妤」这类称谓/位分，不要把称谓当成本名；简介和当前状态必须写清“这是称呼/位分，以及真实身份或待定本名”
+- 宫廷/古代语境下要区分本名、称呼、位分、主仆关系和尊卑边界
+- realName 与 displayTitle 必须分开：称谓/位分只能放 displayTitle；不能确定真实姓名时 realName 填“本名待定”，不要为了完整而硬编
+- 同类配角必须差异化：rolePosition、storyRole、traits 不要与已有角色重复；要明确她与其他同位分/同阵营角色的不同作用
 - 返回严格 JSON 对象，只包含需要填充的字段
 - 不要包含 Markdown 代码块标记，直接返回 JSON`
 
@@ -1039,18 +1159,32 @@ export function buildCharacterEnrichPrompt(context: {
     userPrompt += `\n## 风格指南\n${novel.styleGuide.slice(0, 1000)}\n`
 
   userPrompt += `\n## 当前角色\n名字：${character.name}\n`
+  if (character.realName) userPrompt += `已有本名：${character.realName}\n`
+  if (character.displayTitle)
+    userPrompt += `已有称呼/位分：${character.displayTitle}\n`
+  if (character.rolePosition)
+    userPrompt += `已有身份定位：${character.rolePosition}\n`
+  if (character.storyRole)
+    userPrompt += `已有剧情作用：${character.storyRole}\n`
   if (character.description)
     userPrompt += `已有简介：${character.description}\n`
   if (character.traits) userPrompt += `已有性格：${character.traits}\n`
   if (character.relationships)
     userPrompt += `已有关系：${character.relationships}\n`
+  if (character.currentState)
+    userPrompt += `已有当前状态：${character.currentState}\n`
 
   if (existingCharacters.length > 0) {
     userPrompt += `\n## 其他角色\n`
     for (const c of existingCharacters.slice(0, 15)) {
       userPrompt += `- ${c.name}`
+      if (c.realName) userPrompt += `（本名：${c.realName}）`
+      if (c.displayTitle) userPrompt += `（称呼/位分：${c.displayTitle}）`
       if (c.description) userPrompt += `：${c.description}`
       if (c.traits) userPrompt += `（${c.traits}）`
+      if (c.currentState) userPrompt += `；当前：${c.currentState}`
+      if (c.rolePosition) userPrompt += `；身份：${c.rolePosition}`
+      if (c.storyRole) userPrompt += `；作用：${c.storyRole}`
       userPrompt += '\n'
     }
   }

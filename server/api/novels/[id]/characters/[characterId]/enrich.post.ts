@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { NovelSchema, CharacterSchema, NovelOutlineSchema } from '~~/server/database/entities'
+import {
+  NovelSchema,
+  CharacterSchema,
+  NovelOutlineSchema
+} from '~~/server/database/entities'
 import { streamAi, toAiOptions } from '~~/server/utils/ai-client'
 import { recordUsage } from '~~/server/utils/ai-stream'
 import { resolveNovelAiConfig } from '~~/server/utils/ai-configs'
@@ -9,7 +13,12 @@ const bodySchema = z.object({
   name: z.string().min(1),
   description: z.string().optional(),
   traits: z.string().optional(),
-  relationships: z.string().optional()
+  relationships: z.string().optional(),
+  currentState: z.string().optional(),
+  realName: z.string().optional(),
+  displayTitle: z.string().optional(),
+  rolePosition: z.string().optional(),
+  storyRole: z.string().optional()
 })
 
 export default defineEventHandler(async (event) => {
@@ -18,11 +27,18 @@ export default defineEventHandler(async (event) => {
   const novelId = parseIntParam(event, 'id')
   const characterId = parseIntParam(event, 'characterId')
 
-  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: novelId,
+    user: auth.userId
+  })
   if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
 
-  const character = await em.findOne(CharacterSchema, { id: characterId, novel: novelId })
-  if (!character) throw createError({ statusCode: 404, message: 'Character not found' })
+  const character = await em.findOne(CharacterSchema, {
+    id: characterId,
+    novel: novelId
+  })
+  if (!character)
+    throw createError({ statusCode: 404, message: 'Character not found' })
 
   const body = await readBody(event)
   const result = bodySchema.safeParse(body)
@@ -35,17 +51,31 @@ export default defineEventHandler(async (event) => {
   if (!formData.description?.trim()) emptyFields.push('description')
   if (!formData.traits?.trim()) emptyFields.push('traits')
   if (!formData.relationships?.trim()) emptyFields.push('relationships')
+  if (!formData.currentState?.trim()) emptyFields.push('currentState')
+  if (!formData.realName?.trim()) emptyFields.push('realName')
+  if (!formData.displayTitle?.trim()) emptyFields.push('displayTitle')
+  if (!formData.rolePosition?.trim()) emptyFields.push('rolePosition')
+  if (!formData.storyRole?.trim()) emptyFields.push('storyRole')
 
   if (emptyFields.length === 0) {
     return { enriched: {} }
   }
 
-  const aiConfig = await resolveNovelAiConfig(em, auth.userId, novelId, 'extraction')
+  const aiConfig = await resolveNovelAiConfig(
+    em,
+    auth.userId,
+    novelId,
+    'extraction'
+  )
 
   const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
-  const outlines = await em.find(NovelOutlineSchema, { novel: novelId }, {
-    orderBy: { chapterNumber: 'ASC' }
-  })
+  const outlines = await em.find(
+    NovelOutlineSchema,
+    { novel: novelId },
+    {
+      orderBy: { chapterNumber: 'ASC' }
+    }
+  )
 
   const messages = buildCharacterEnrichPrompt({
     novel: {
@@ -59,17 +89,27 @@ export default defineEventHandler(async (event) => {
       name: formData.name,
       description: formData.description?.trim() || undefined,
       traits: formData.traits?.trim() || undefined,
-      relationships: formData.relationships?.trim() || undefined
+      relationships: formData.relationships?.trim() || undefined,
+      currentState: formData.currentState?.trim() || undefined,
+      realName: formData.realName?.trim() || undefined,
+      displayTitle: formData.displayTitle?.trim() || undefined,
+      rolePosition: formData.rolePosition?.trim() || undefined,
+      storyRole: formData.storyRole?.trim() || undefined
     },
     existingCharacters: existingCharacters
-      .filter(c => c.id !== characterId)
-      .map(c => ({
+      .filter((c) => c.id !== characterId)
+      .map((c) => ({
         name: c.name,
         description: c.description ?? undefined,
         traits: c.traits ?? undefined,
-        relationships: c.relationships ?? undefined
+        relationships: c.relationships ?? undefined,
+        currentState: c.currentState ?? undefined,
+        realName: c.realName ?? undefined,
+        displayTitle: c.displayTitle ?? undefined,
+        rolePosition: c.rolePosition ?? undefined,
+        storyRole: c.storyRole ?? undefined
       })),
-    outlines: outlines.map(o => ({
+    outlines: outlines.map((o) => ({
       chapterNumber: o.chapterNumber,
       description: o.description
     })),
@@ -79,11 +119,13 @@ export default defineEventHandler(async (event) => {
   let aiResult = ''
   let inputTokens = 0
   let outputTokens = 0
-  for await (const chunk of streamAi(toAiOptions(aiConfig, {
-    messages,
-    temperature: 0.7,
-    maxTokens: 2048
-  }))) {
+  for await (const chunk of streamAi(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.7,
+      maxTokens: 2048
+    })
+  )) {
     if (chunk.content) aiResult += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens
@@ -91,7 +133,16 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  await recordUsage({ em, userId: auth.userId, configId: aiConfig.configId, model: aiConfig.model }, inputTokens, outputTokens)
+  await recordUsage(
+    {
+      em,
+      userId: auth.userId,
+      configId: aiConfig.configId,
+      model: aiConfig.model
+    },
+    inputTokens,
+    outputTokens
+  )
 
   let parsed: Record<string, string>
   try {

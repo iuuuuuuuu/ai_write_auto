@@ -9,6 +9,8 @@ import {
   buildConsistencyCheckPrompt,
   buildSuggestionPrompt,
   buildOutlineGenerationPrompt,
+  buildChapterPlanGenerationPrompt,
+  buildCharacterEnrichPrompt,
   buildCharacterExtractionPrompt,
   buildStoryArcPrompt,
   buildQueryPlanningPrompt,
@@ -319,6 +321,44 @@ describe('ai-prompts', () => {
     })
   })
 
+  describe('buildChapterPlanGenerationPrompt', () => {
+    it('builds a strict JSON planning prompt from outline and characters', () => {
+      const result = buildChapterPlanGenerationPrompt({
+        novel: {
+          title: '后宫求生',
+          genre: '古言',
+          worldSetting: '古代宫廷，嫔妃、宫女、太监各有身份边界。'
+        },
+        chapter: { title: '初醒冷宫', chapterNumber: 1 },
+        chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
+        characters: [
+          {
+            name: '林晚',
+            description: '刚穿越的女主',
+            traits: '谨慎、敏锐'
+          },
+          { name: '小桃', description: '贴身宫女' }
+        ],
+        outlines: [
+          { chapterNumber: 1, description: '林晚冷宫醒来。' },
+          { chapterNumber: 2, description: '皇帝第一次召见。' }
+        ]
+      })
+
+      expect(result).toHaveLength(2)
+      expect(result[0].content).toContain('严格 JSON 对象')
+      expect(result[0].content).toContain('不要写正文')
+      expect(result[0].content).toContain('goal')
+      expect(result[0].content).toContain('mustInclude')
+      expect(result[0].content).toContain('protocol')
+      expect(result[0].content).toContain('称谓礼制')
+      expect(result[1].content).toContain('林晚醒来后发现自己成了炮灰嫔妃')
+      expect(result[1].content).toContain('林晚')
+      expect(result[1].content).toContain('小桃')
+      expect(result[1].content).toContain('第2章')
+    })
+  })
+
   describe('buildSummaryPrompt', () => {
     it('returns correct structure', () => {
       const result = buildSummaryPrompt('章节内容文本')
@@ -452,6 +492,51 @@ describe('ai-prompts', () => {
       const sys = buildCharacterExtractionPrompt('内容')[0].content
       expect(sys).toContain('本名')
       expect(sys).toContain('跨章节必须用同一个 name')
+    })
+  })
+
+  describe('buildCharacterEnrichPrompt', () => {
+    it('supports currentState and warns that title-like names are not real names', () => {
+      const result = buildCharacterEnrichPrompt({
+        novel: {
+          title: '后宫求生',
+          genre: '古言',
+          worldSetting: '宫廷后院，嫔妃、宫女和太监尊卑分明。'
+        },
+        character: { name: '孙美人' },
+        existingCharacters: [
+          {
+            name: '林晚',
+            description: '女主，低位嫔妃',
+            realName: '林晚',
+            displayTitle: '林美人',
+            rolePosition: '低位妃嫔',
+            storyRole: '主视角求生者'
+          }
+        ],
+        outlines: [{ chapterNumber: 1, description: '孙美人第一次出现。' }],
+        fieldsToEnrich: [
+          'realName',
+          'displayTitle',
+          'rolePosition',
+          'storyRole',
+          'description',
+          'currentState'
+        ]
+      })
+
+      expect(result[0].content).toContain('称谓/位分')
+      expect(result[0].content).toContain('不要把称谓当成本名')
+      expect(result[0].content).toContain('本名')
+      expect(result[0].content).toContain('realName 与 displayTitle 必须分开')
+      expect(result[0].content).toContain('同类配角必须差异化')
+      expect(result[1].content).toContain('realName')
+      expect(result[1].content).toContain('displayTitle')
+      expect(result[1].content).toContain('rolePosition')
+      expect(result[1].content).toContain('storyRole')
+      expect(result[1].content).toContain('currentState')
+      expect(result[1].content).toContain('当前状态')
+      expect(result[1].content).toContain('孙美人')
     })
   })
 

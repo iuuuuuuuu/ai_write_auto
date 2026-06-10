@@ -20,7 +20,7 @@ const { t } = useI18n()
 const route = useRoute()
 const message = useMessage()
 const dialog = useDialog()
-const { put: apiPut } = useApi()
+const { put: apiPut, post: apiPost } = useApi()
 const novelId = computed(() => Number(route.params.id))
 const chapterId = computed(() => Number(route.params.chapterId))
 const { updateActiveTabTitle } = useTabs('user')
@@ -529,6 +529,25 @@ type AiStreamPayload = Partial<{
   error: string
 }>
 
+interface OutlineItem {
+  id: number
+  chapterNumber: number
+  description: string
+  sortOrder: number
+}
+
+interface ChapterPlanForm {
+  goal: string
+  mustInclude: string
+  avoid: string
+  pacing: string
+  protocol: string
+}
+
+interface ChapterPlanResponse {
+  plan: Partial<ChapterPlanForm>
+}
+
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败，请稍后重试'
 }
@@ -577,6 +596,11 @@ const { data: preferences } = await useFetch<Record<string, string>>(
     default: () => ({})
   }
 )
+const { data: novelOutlines, refresh: refreshNovelOutlines } = await useFetch<
+  OutlineItem[]
+>(() => `/api/novels/${novelId.value}/outlines`, {
+  default: () => []
+})
 const { aiStatus, refreshAiStatus, isRefreshing } = useAiConnectivity()
 const { recordReading } = useReadingHistory()
 
@@ -595,9 +619,7 @@ watch(
     if (ch) {
       const prefix = novel?.title ? `${novel.title} · ` : ''
       const t = stripChapterNumberPrefix(ch.title)
-      updateActiveTabTitle(
-        `${prefix}Ch.${ch.chapterNumber}${t ? ` ${t}` : ''}`
-      )
+      updateActiveTabTitle(`${prefix}Ch.${ch.chapterNumber}${t ? ` ${t}` : ''}`)
     }
     if (ch && novel) {
       recordReading({
@@ -623,6 +645,19 @@ const generateDirection = ref('')
 const selectedAiConfigId = ref<number | undefined>()
 const generateTemperature = ref<number>(0.7)
 const generateMaxTokens = ref<number>(4096)
+const generateWizardStep = ref(1)
+const chapterOutlineDraft = ref('')
+const outlineIdea = ref('')
+const generatingChapterOutline = ref(false)
+const savingChapterOutline = ref(false)
+const generatingChapterPlan = ref(false)
+const chapterPlanForm = reactive<ChapterPlanForm>({
+  goal: '',
+  mustInclude: '',
+  avoid: '',
+  pacing: '',
+  protocol: ''
+})
 const zenMode = ref(false)
 const zenFontSize = ref(Number(preferences.value?.zen_font_size || 18))
 const zenFontFamily = ref(preferences.value?.zen_font_family || 'serif')
@@ -984,13 +1019,31 @@ watch(
 )
 
 /* ─────────────── 角色 ─────────────── */
+type CharacterProfileField =
+  | 'description'
+  | 'traits'
+  | 'relationships'
+  | 'currentState'
+  | 'realName'
+  | 'displayTitle'
+  | 'rolePosition'
+  | 'storyRole'
+
+type CharacterListItem = {
+  id: number
+  name: string
+  description: string | null
+  traits: string | null
+  relationships: string | null
+  currentState: string | null
+  realName: string | null
+  displayTitle: string | null
+  rolePosition: string | null
+  storyRole: string | null
+}
+
 const { data: allCharacters, refresh: refreshAllCharacters } = await useFetch<
-  Array<{
-    id: number
-    name: string
-    description: string | null
-    traits: string | null
-  }>
+  Array<CharacterListItem>
 >(`/api/novels/${novelId.value}/characters`)
 
 const detectedCharacterIds = ref<Set<number>>(new Set())
@@ -998,6 +1051,7 @@ const extractingChars = ref(false)
 const selectedCharacterIds = ref<Set<number>>(new Set())
 const savingChapterCharacters = ref(false)
 const aiExtractingCharacters = ref(false)
+const enrichingCharacterIds = ref<Set<number>>(new Set())
 let detectTimeout: ReturnType<typeof setTimeout> | null = null
 
 const { data: chapterCharacters, refresh: refreshChapterCharacters } =
@@ -1047,6 +1101,30 @@ function normalizeCharacterMatchText(value: string) {
     .normalize('NFKC')
     .toLocaleLowerCase()
     .replace(/[\s\p{P}\p{S}]/gu, '')
+}
+
+function hasMissingCharacterProfile(character: CharacterListItem) {
+  return (
+    !character.realName?.trim() ||
+    !character.displayTitle?.trim() ||
+    !character.rolePosition?.trim() ||
+    !character.storyRole?.trim() ||
+    !character.description?.trim() ||
+    !character.traits?.trim() ||
+    !character.relationships?.trim() ||
+    !character.currentState?.trim()
+  )
+}
+
+function isEnrichingCharacter(characterId: number) {
+  return enrichingCharacterIds.value.has(characterId)
+}
+
+function setCharacterEnriching(characterId: number, loading: boolean) {
+  const next = new Set(enrichingCharacterIds.value)
+  if (loading) next.add(characterId)
+  else next.delete(characterId)
+  enrichingCharacterIds.value = next
 }
 
 onMounted(detectCharactersFromContent)
@@ -1179,6 +1257,62 @@ async function extractCharactersWithAi() {
     detectCharactersFromContent()
   } finally {
     aiExtractingCharacters.value = false
+  }
+}
+
+async function enrichChapterCharacter(character: CharacterListItem) {
+  if (isEnrichingCharacter(character.id)) return
+  if (!hasMissingCharacterProfile(character)) {
+    message.info('该角色资料已完整，无需补全')
+    return
+  }
+
+  setCharacterEnriching(character.id, true)
+  try {
+    const result = await apiPost<{
+      enriched: Partial<Record<CharacterProfileField, string>>
+    }>(`/api/novels/${novelId.value}/characters/${character.id}/enrich`, {
+      name: character.name,
+      description: character.description || undefined,
+      traits: character.traits || undefined,
+      relationships: character.relationships || undefined,
+      currentState: character.currentState || undefined,
+      realName: character.realName || undefined,
+      displayTitle: character.displayTitle || undefined,
+      rolePosition: character.rolePosition || undefined,
+      storyRole: character.storyRole || undefined
+    })
+
+    const updates: Partial<Record<CharacterProfileField, string>> = {}
+    for (const field of [
+      'realName',
+      'displayTitle',
+      'rolePosition',
+      'storyRole',
+      'description',
+      'traits',
+      'relationships',
+      'currentState'
+    ] as const) {
+      if (result.enriched[field] && !character[field]?.trim()) {
+        updates[field] = result.enriched[field]
+      }
+    }
+
+    if (!Object.keys(updates).length) {
+      message.info('AI 没有返回可补充字段')
+      return
+    }
+
+    await apiPut(
+      `/api/novels/${novelId.value}/characters/${character.id}`,
+      updates,
+      { successMessage: '角色资料已补全' }
+    )
+    await refreshAllCharacters()
+    detectCharactersFromContent()
+  } finally {
+    setCharacterEnriching(character.id, false)
   }
 }
 
@@ -1333,6 +1467,308 @@ function cyclePreset() {
 const estimatedContextTokens = computed(() =>
   Math.round(currentWordCount.value * 1.5)
 )
+
+const sortedNovelOutlines = computed(() =>
+  [...novelOutlines.value].sort((left, right) => {
+    return (
+      left.chapterNumber - right.chapterNumber ||
+      left.sortOrder - right.sortOrder
+    )
+  })
+)
+
+const currentChapterOutline = computed(() => {
+  const number = chapter.value?.chapterNumber
+  if (!number) return null
+  return (
+    sortedNovelOutlines.value.find(
+      (outline) => outline.chapterNumber === number
+    ) || null
+  )
+})
+
+const recommendedCharactersByOutline = computed(() => {
+  const outline = normalizeCharacterMatchText(chapterOutlineDraft.value)
+  if (!outline || !allCharacters.value) return []
+  return allCharacters.value.filter((character) => {
+    const name = normalizeCharacterMatchText(character.name)
+    if (name && outline.includes(name)) return true
+    const description = normalizeCharacterMatchText(
+      `${character.description || ''}${character.traits || ''}${character.relationships || ''}${character.currentState || ''}${character.realName || ''}${character.displayTitle || ''}${character.rolePosition || ''}${character.storyRole || ''}`
+    )
+    return description.length >= 2 && outline.includes(description.slice(0, 8))
+  })
+})
+
+function isTitleLikeCharacterName(name: string) {
+  return /(美人|才人|婕妤|贵人|嫔|妃|贵妃|皇后|娘娘|小主)$/.test(name)
+}
+
+function getCharacterNote(character: {
+  name: string
+  description: string | null
+  traits: string | null
+  relationships?: string | null
+  currentState?: string | null
+  realName?: string | null
+  displayTitle?: string | null
+  rolePosition?: string | null
+  storyRole?: string | null
+}) {
+  const identityParts = [
+    character.realName ? `本名：${character.realName}` : '',
+    character.displayTitle ? `称呼/位分：${character.displayTitle}` : '',
+    character.rolePosition ? `身份：${character.rolePosition}` : '',
+    character.storyRole ? `作用：${character.storyRole}` : ''
+  ]
+    .map((item) => item.trim())
+    .filter(Boolean)
+  const parts = [
+    identityParts.join('；'),
+    character.description,
+    character.traits ? `特征：${character.traits}` : '',
+    character.relationships ? `关系：${character.relationships}` : '',
+    character.currentState ? `当前：${character.currentState}` : ''
+  ]
+    .map((item) => item?.trim())
+    .filter(Boolean)
+
+  if (parts.length) return parts.join('；')
+  if (isTitleLikeCharacterName(character.name)) {
+    return '疑似称谓/位分，建议补充本名、身份和与主角关系'
+  }
+  return '缺少角色备注，建议补充身份和剧情作用'
+}
+
+const chapterPlanDirection = computed(() => {
+  return [
+    ['本章目标', chapterPlanForm.goal],
+    ['必须出现', chapterPlanForm.mustInclude],
+    ['避免出现', chapterPlanForm.avoid],
+    ['情绪/节奏', chapterPlanForm.pacing],
+    ['称谓或设定补充', chapterPlanForm.protocol]
+  ]
+    .map(([label, value]) => {
+      const text = String(value || '').trim()
+      return text ? `${label}：${text}` : ''
+    })
+    .filter(Boolean)
+    .join('\n')
+})
+
+const generationContextSummary = computed(() => {
+  const direction = [generateDirection.value, chapterPlanDirection.value]
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+  return [
+    {
+      label: '本章大纲',
+      value: chapterOutlineDraft.value.trim() || '未填写'
+    },
+    {
+      label: '推荐角色',
+      value: `${recommendedCharactersByOutline.value.length} 个`
+    },
+    {
+      label: '已选角色',
+      value: `${selectedChapterCharacters.value.length} 个`
+    },
+    {
+      label: '剧情要求',
+      value: direction ? '已填写' : '未填写，将按大纲生成'
+    },
+    {
+      label: '当前正文',
+      value: `${currentWordCount.value} 字 / 约 ${estimatedContextTokens.value} tokens`
+    }
+  ]
+})
+
+function openGenerateWizard() {
+  generateWizardStep.value = 1
+  chapterOutlineDraft.value = currentChapterOutline.value?.description || ''
+  outlineIdea.value = generateDirection.value.trim()
+  showGenerateDialog.value = true
+}
+
+function applyRecommendedCharacters() {
+  const next = new Set(selectedCharacterIds.value)
+  for (const character of recommendedCharactersByOutline.value) {
+    next.add(character.id)
+  }
+  selectedCharacterIds.value = next
+}
+
+function buildFinalGenerateDirection() {
+  return [generateDirection.value.trim(), chapterPlanDirection.value]
+    .filter(Boolean)
+    .join('\n\n')
+}
+
+async function nextGenerateWizardStep() {
+  if (generateWizardStep.value === 1) {
+    if (!chapterOutlineDraft.value.trim()) {
+      message.warning('请先确认本章大纲')
+      return
+    }
+    applyRecommendedCharacters()
+  }
+  if (generateWizardStep.value === 2) {
+    await saveChapterCharacters()
+  }
+  generateWizardStep.value = Math.min(generateWizardStep.value + 1, 4)
+}
+
+function prevGenerateWizardStep() {
+  generateWizardStep.value = Math.max(generateWizardStep.value - 1, 1)
+}
+
+function parseOutlineResult(raw: string) {
+  try {
+    const match = raw.match(/\[[\s\S]*\]/)
+    const parsed = JSON.parse(match ? match[0] : raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .map((item) => {
+        const record =
+          item && typeof item === 'object' ?
+            (item as Record<string, unknown>)
+          : {}
+        return {
+          chapterNumber: Number(record.chapterNumber),
+          description: String(record.description || '').trim()
+        }
+      })
+      .filter((item) => item.chapterNumber > 0 && item.description)
+  } catch {
+    return []
+  }
+}
+
+async function generateSingleChapterOutline() {
+  if (!chapter.value) return
+  generatingChapterOutline.value = true
+  try {
+    const response = await fetch('/api/ai/generate-outline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        novelId: novelId.value,
+        idea:
+          outlineIdea.value.trim() ||
+          chapterOutlineDraft.value.trim() ||
+          `请按小说设定规划第 ${chapter.value.chapterNumber} 章`,
+        chapterCount: 3,
+        startChapter: chapter.value.chapterNumber,
+        existingOutlines: sortedNovelOutlines.value.map((outline) => ({
+          chapterNumber: outline.chapterNumber,
+          description: outline.description
+        })),
+        aiConfigId: selectedAiConfigId.value
+      })
+    })
+    if (!response.ok) throw new Error(`生成大纲失败：${response.status}`)
+    const text = await response.text()
+    const items = parseOutlineResult(text)
+    const matched =
+      items.find(
+        (item) => item.chapterNumber === chapter.value?.chapterNumber
+      ) || items[0]
+    if (!matched?.description) {
+      message.warning('AI 未返回可用的本章大纲')
+      return
+    }
+    chapterOutlineDraft.value = matched.description
+    applyRecommendedCharacters()
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
+  } finally {
+    generatingChapterOutline.value = false
+  }
+}
+
+async function saveCurrentChapterOutline() {
+  const outline = chapterOutlineDraft.value.trim()
+  if (!chapter.value || !outline) {
+    message.warning('请先确认本章大纲')
+    return
+  }
+  savingChapterOutline.value = true
+  try {
+    const chapterNumber = chapter.value.chapterNumber
+    const merged = [
+      ...sortedNovelOutlines.value.filter(
+        (item) => item.chapterNumber !== chapterNumber
+      ),
+      {
+        id: currentChapterOutline.value?.id || 0,
+        chapterNumber,
+        description: outline,
+        sortOrder: chapterNumber
+      }
+    ]
+      .sort((left, right) => left.chapterNumber - right.chapterNumber)
+      .map((item, index) => ({
+        chapterNumber: item.chapterNumber,
+        description: item.description,
+        sortOrder: index
+      }))
+    await $fetch(`/api/novels/${novelId.value}/outlines`, {
+      method: 'PUT',
+      body: { outlines: merged }
+    })
+    await refreshNovelOutlines()
+    message.success('本章大纲已保存')
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
+  } finally {
+    savingChapterOutline.value = false
+  }
+}
+
+async function generateChapterPlan() {
+  const outline = chapterOutlineDraft.value.trim()
+  if (!outline) {
+    message.warning('请先确认本章大纲')
+    return
+  }
+  generatingChapterPlan.value = true
+  try {
+    const response = await $fetch<ChapterPlanResponse>(
+      '/api/ai/generate-chapter-plan',
+      {
+        method: 'POST',
+        body: {
+          novelId: novelId.value,
+          chapterId: chapterId.value,
+          chapterOutline: outline,
+          characterIds: Array.from(selectedCharacterIds.value),
+          existingPlan: { ...chapterPlanForm },
+          aiConfigId: selectedAiConfigId.value
+        }
+      }
+    )
+    const plan = response.plan || {}
+    for (const key of [
+      'goal',
+      'mustInclude',
+      'avoid',
+      'pacing',
+      'protocol'
+    ] as const) {
+      const value = plan[key]
+      if (typeof value === 'string' && value.trim()) {
+        chapterPlanForm[key] = value.trim()
+      }
+    }
+    message.success('已生成大致剧情草案')
+  } catch (error: unknown) {
+    message.error(getErrorMessage(error))
+  } finally {
+    generatingChapterPlan.value = false
+  }
+}
 
 // 一致性检查是后台异步任务，保存/生成后分几个时间点重试刷新结果（替代写死的单次延时）
 let consistencyRefreshTimers: ReturnType<typeof setTimeout>[] = []
@@ -1766,6 +2202,8 @@ function forceSaveContent() {
 async function generateChapter() {
   if (!selectedAiConfigId.value) return
 
+  const finalDirection = buildFinalGenerateDirection()
+
   generating.value = true
   generatedContent.value = ''
   showGenerateDialog.value = false
@@ -1786,7 +2224,8 @@ async function generateChapter() {
       body: JSON.stringify({
         novelId: novelId.value,
         chapterId: chapterId.value,
-        direction: generateDirection.value || undefined,
+        chapterOutline: chapterOutlineDraft.value.trim() || undefined,
+        direction: finalDirection || undefined,
         aiConfigId: selectedAiConfigId.value,
         temperature: generateTemperature.value,
         maxTokens: generateMaxTokens.value,
@@ -2355,7 +2794,7 @@ onBeforeUnmount(() => {
           :loading="generating"
           :disabled="!aiStatus.available"
           title="AI 生成"
-          @click="showGenerateDialog = true"
+          @click="openGenerateWizard"
         >
           <template #icon>
             <Icon icon="lucide:sparkles" />
@@ -2533,7 +2972,7 @@ onBeforeUnmount(() => {
           :loading="generating"
           :disabled="!aiStatus.available"
           title="AI 生成"
-          @click="showGenerateDialog = true"
+          @click="openGenerateWizard"
         >
           <template #icon><Icon icon="lucide:sparkles" /></template>
           生成
@@ -3697,182 +4136,443 @@ onBeforeUnmount(() => {
       style="max-width: 480px"
     >
       <div class="space-y-4">
-        <NFormItem label="Prompt 模板">
-          <div class="w-full space-y-2">
-            <div class="flex gap-2">
-              <NSelect
-                v-model:value="selectedTemplateId"
-                :options="
-                  promptTemplates.map((t) => ({
-                    label: t.name + (t.isSystem ? ' (系统)' : ''),
-                    value: t.id
-                  }))
-                "
-                placeholder="选择已保存的模板"
-                clearable
-                class="flex-1"
-                @update:value="applyTemplate"
-              />
-              <NButton
-                size="small"
-                quaternary
-                @click="
-                  selectedTemplateId ? deleteTemplate(selectedTemplateId) : null
-                "
-                :disabled="
-                  !selectedTemplateId ||
-                  promptTemplates.find((t) => t.id === selectedTemplateId)
-                    ?.isSystem
-                "
-              >
-                <template #icon><Icon icon="lucide:trash-2" /></template>
-              </NButton>
-            </div>
-            <div class="flex justify-end">
-              <NButton
-                size="tiny"
-                quaternary
-                :disabled="!selectedTemplateId"
-                @click="saveTemplateAsNovelDefault"
-              >
-                设为本书默认
-              </NButton>
-            </div>
-          </div>
-        </NFormItem>
-        <NFormItem label="写作技能">
-          <div class="w-full space-y-2">
-            <NSelect
-              v-model:value="selectedSkillIds"
-              :options="skillOptions"
-              multiple
-              clearable
-              placeholder="选择写作技能包（可多选，注入写作手法与范文）"
-              max-tag-count="responsive"
-            />
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-gray-400">
-                生成时注入所选技能包的写作手法与范文
-              </span>
-              <NButton
-                size="tiny"
-                quaternary
-                :loading="savingNovelDefault"
-                @click="saveSkillsAsNovelDefault"
-              >
-                设为本书默认
-              </NButton>
-            </div>
-          </div>
-        </NFormItem>
-        <NFormItem :label="t('chapter.generateDialog.direction')">
-          <div class="w-full space-y-2">
+        <NSteps
+          :current="generateWizardStep"
+          size="small"
+        >
+          <NStep title="本章大纲" />
+          <NStep title="推荐角色" />
+          <NStep title="大致剧情" />
+          <NStep title="生成正文" />
+        </NSteps>
+        <NAlert
+          type="info"
+          :show-icon="false"
+        >
+          先确认本章大纲，再按大纲推荐角色，最后补充剧情要求后生成正文。
+        </NAlert>
+        <div
+          v-show="generateWizardStep === 1"
+          class="space-y-4"
+        >
+          <NFormItem label="本章大纲">
             <NInput
-              v-model:value="generateDirection"
+              v-model:value="chapterOutlineDraft"
               type="textarea"
-              :placeholder="t('chapter.generateDialog.directionPlaceholder')"
-              :rows="3"
+              placeholder="确认或修改本章大纲"
+              :rows="4"
             />
-            <div class="flex justify-end">
-              <template v-if="!showSaveTemplateInput">
+          </NFormItem>
+          <NFormItem label="大纲生成提示词">
+            <NInput
+              v-model:value="outlineIdea"
+              type="textarea"
+              placeholder="可选：给 AI 一个本章规划方向"
+              :rows="2"
+            />
+          </NFormItem>
+          <div class="flex flex-wrap justify-end gap-2">
+            <NButton
+              type="primary"
+              :loading="generatingChapterOutline"
+              :disabled="!aiStatus.available"
+              @click="generateSingleChapterOutline"
+            >
+              生成/重拟大纲
+            </NButton>
+            <NButton
+              secondary
+              type="primary"
+              :loading="savingChapterOutline"
+              :disabled="!chapterOutlineDraft.trim()"
+              @click="saveCurrentChapterOutline"
+            >
+              保存大纲
+            </NButton>
+          </div>
+        </div>
+
+        <div
+          v-show="generateWizardStep === 2"
+          class="space-y-4"
+        >
+          <NFormItem label="本章角色">
+            <div class="w-full space-y-2">
+              <div
+                class="flex items-center justify-between gap-3 text-xs text-gray-400"
+              >
+                <span
+                  >按大纲推荐
+                  {{ recommendedCharactersByOutline.length }} 个，已选
+                  {{ selectedCharacterIds.size }} 个</span
+                >
                 <NButton
                   size="tiny"
                   quaternary
-                  :disabled="!generateDirection.trim()"
-                  @click="showSaveTemplateInput = true"
+                  :disabled="!recommendedCharactersByOutline.length"
+                  @click="applyRecommendedCharacters"
                 >
-                  <template #icon
-                    ><Icon icon="lucide:bookmark-plus"
-                  /></template>
-                  保存为模板
+                  应用推荐
                 </NButton>
-              </template>
-              <template v-else>
-                <div class="flex gap-1 items-center">
-                  <NInput
-                    v-model:value="newTemplateName"
-                    size="tiny"
-                    placeholder="模板名称"
-                    style="width: 140px"
-                    @keyup.enter="saveAsTemplate"
-                  />
-                  <NButton
-                    size="tiny"
-                    type="primary"
-                    @click="saveAsTemplate"
-                    >保存</NButton
-                  >
+              </div>
+              <div
+                class="max-h-56 overflow-auto rounded-lg border border-gray-100 p-2 dark:border-gray-800"
+              >
+                <NCheckbox
+                  v-for="character in allCharacters || []"
+                  :key="character.id"
+                  :checked="selectedCharacterIds.has(character.id)"
+                  class="w-full py-1"
+                  @update:checked="toggleChapterCharacter(character.id)"
+                >
+                  <div class="min-w-0 space-y-1">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <span class="text-sm text-gray-800 dark:text-gray-100">{{
+                        character.name
+                      }}</span>
+                      <NTag
+                        v-if="
+                          recommendedCharactersByOutline.some(
+                            (item) => item.id === character.id
+                          )
+                        "
+                        size="small"
+                        type="success"
+                        :bordered="false"
+                      >
+                        大纲推荐
+                      </NTag>
+                      <NTag
+                        v-if="
+                          !character.description &&
+                          isTitleLikeCharacterName(character.name)
+                        "
+                        size="small"
+                        type="warning"
+                        :bordered="false"
+                      >
+                        疑似称谓
+                      </NTag>
+                      <NButton
+                        v-if="hasMissingCharacterProfile(character)"
+                        size="tiny"
+                        secondary
+                        :loading="isEnrichingCharacter(character.id)"
+                        @click.stop.prevent="enrichChapterCharacter(character)"
+                      >
+                        <template #icon>
+                          <Icon
+                            icon="lucide:sparkles"
+                            class="size-3"
+                          />
+                        </template>
+                        AI 补全资料
+                      </NButton>
+                    </div>
+                    <div class="text-xs leading-relaxed text-gray-500">
+                      {{ getCharacterNote(character) }}
+                    </div>
+                  </div>
+                </NCheckbox>
+              </div>
+              <div class="flex justify-end">
+                <NButton
+                  size="tiny"
+                  quaternary
+                  :loading="savingChapterCharacters"
+                  @click="saveChapterCharacters"
+                >
+                  保存角色绑定
+                </NButton>
+              </div>
+            </div>
+          </NFormItem>
+        </div>
+
+        <div
+          v-show="generateWizardStep === 3"
+          class="space-y-4"
+        >
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="text-xs text-gray-400">
+              根据已确认大纲和角色生成可编辑的剧情草案
+            </span>
+            <NButton
+              type="primary"
+              secondary
+              :loading="generatingChapterPlan"
+              :disabled="!aiStatus.available || !chapterOutlineDraft.trim()"
+              @click="generateChapterPlan"
+            >
+              AI 生成大致剧情
+            </NButton>
+          </div>
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <NFormItem label="本章目标">
+              <NInput
+                v-model:value="chapterPlanForm.goal"
+                type="textarea"
+                placeholder="这一章要推进什么"
+                :rows="2"
+              />
+            </NFormItem>
+            <NFormItem label="必须出现">
+              <NInput
+                v-model:value="chapterPlanForm.mustInclude"
+                type="textarea"
+                placeholder="必须写到的人物、事件、物件"
+                :rows="2"
+              />
+            </NFormItem>
+            <NFormItem label="避免出现">
+              <NInput
+                v-model:value="chapterPlanForm.avoid"
+                type="textarea"
+                placeholder="不要提前揭露、不要让谁出场"
+                :rows="2"
+              />
+            </NFormItem>
+            <NFormItem label="情绪/节奏">
+              <NInput
+                v-model:value="chapterPlanForm.pacing"
+                type="textarea"
+                placeholder="紧张、克制、暧昧、压迫感等"
+                :rows="2"
+              />
+            </NFormItem>
+          </div>
+          <NFormItem label="称谓或设定补充">
+            <NInput
+              v-model:value="chapterPlanForm.protocol"
+              type="textarea"
+              placeholder="例如：太监称女主为小主，丫鬟不可直呼其他嫔妃姓名"
+              :rows="2"
+            />
+          </NFormItem>
+        </div>
+
+        <div
+          v-show="generateWizardStep === 4"
+          class="space-y-4"
+        >
+          <NFormItem label="Prompt 模板">
+            <div class="w-full space-y-2">
+              <div class="flex gap-2">
+                <NSelect
+                  v-model:value="selectedTemplateId"
+                  :options="
+                    promptTemplates.map((t) => ({
+                      label: t.name + (t.isSystem ? ' (系统)' : ''),
+                      value: t.id
+                    }))
+                  "
+                  placeholder="选择已保存的模板"
+                  clearable
+                  class="flex-1"
+                  @update:value="applyTemplate"
+                />
+                <NButton
+                  size="small"
+                  quaternary
+                  @click="
+                    selectedTemplateId ?
+                      deleteTemplate(selectedTemplateId)
+                    : null
+                  "
+                  :disabled="
+                    !selectedTemplateId ||
+                    promptTemplates.find((t) => t.id === selectedTemplateId)
+                      ?.isSystem
+                  "
+                >
+                  <template #icon><Icon icon="lucide:trash-2" /></template>
+                </NButton>
+              </div>
+              <div class="flex justify-end">
+                <NButton
+                  size="tiny"
+                  quaternary
+                  :disabled="!selectedTemplateId"
+                  @click="saveTemplateAsNovelDefault"
+                >
+                  设为本书默认
+                </NButton>
+              </div>
+            </div>
+          </NFormItem>
+          <NFormItem label="写作技能">
+            <div class="w-full space-y-2">
+              <NSelect
+                v-model:value="selectedSkillIds"
+                :options="skillOptions"
+                multiple
+                clearable
+                placeholder="选择写作技能包（可多选，注入写作手法与范文）"
+                max-tag-count="responsive"
+              />
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-gray-400">
+                  生成时注入所选技能包的写作手法与范文
+                </span>
+                <NButton
+                  size="tiny"
+                  quaternary
+                  :loading="savingNovelDefault"
+                  @click="saveSkillsAsNovelDefault"
+                >
+                  设为本书默认
+                </NButton>
+              </div>
+            </div>
+          </NFormItem>
+          <NFormItem :label="t('chapter.generateDialog.direction')">
+            <div class="w-full space-y-2">
+              <NInput
+                v-model:value="generateDirection"
+                type="textarea"
+                :placeholder="t('chapter.generateDialog.directionPlaceholder')"
+                :rows="3"
+              />
+              <div class="flex justify-end">
+                <template v-if="!showSaveTemplateInput">
                   <NButton
                     size="tiny"
                     quaternary
-                    @click="showSaveTemplateInput = false"
-                    >取消</NButton
+                    :disabled="!generateDirection.trim()"
+                    @click="showSaveTemplateInput = true"
                   >
-                </div>
-              </template>
+                    <template #icon
+                      ><Icon icon="lucide:bookmark-plus"
+                    /></template>
+                    保存为模板
+                  </NButton>
+                </template>
+                <template v-else>
+                  <div class="flex gap-1 items-center">
+                    <NInput
+                      v-model:value="newTemplateName"
+                      size="tiny"
+                      placeholder="模板名称"
+                      style="width: 140px"
+                      @keyup.enter="saveAsTemplate"
+                    />
+                    <NButton
+                      size="tiny"
+                      type="primary"
+                      @click="saveAsTemplate"
+                      >保存</NButton
+                    >
+                    <NButton
+                      size="tiny"
+                      quaternary
+                      @click="showSaveTemplateInput = false"
+                      >取消</NButton
+                    >
+                  </div>
+                </template>
+              </div>
             </div>
-          </div>
-        </NFormItem>
-        <NFormItem
-          :label="t('chapter.generateDialog.model')"
-          required
-        >
-          <NSelect
-            v-model:value="selectedAiConfigId"
-            :options="generationModelOptions"
-            placeholder="选择用于生成的模型"
-          />
-        </NFormItem>
-        <NFormItem :label="t('chapter.generateDialog.temperature')">
-          <div class="w-full space-y-1">
-            <NSlider
-              v-model:value="generateTemperature"
-              :min="0"
-              :max="2"
-              :step="0.1"
-              :tooltip="true"
+          </NFormItem>
+          <NFormItem
+            :label="t('chapter.generateDialog.model')"
+            required
+          >
+            <NSelect
+              v-model:value="selectedAiConfigId"
+              :options="generationModelOptions"
+              placeholder="选择用于生成的模型"
             />
-            <div class="flex justify-between text-xs text-gray-400">
-              <span>{{ t('chapter.generateDialog.temperatureHint') }}</span>
-              <span>{{ generateTemperature }}</span>
+          </NFormItem>
+          <NFormItem :label="t('chapter.generateDialog.temperature')">
+            <div class="w-full space-y-1">
+              <NSlider
+                v-model:value="generateTemperature"
+                :min="0"
+                :max="2"
+                :step="0.1"
+                :tooltip="true"
+              />
+              <div class="flex justify-between text-xs text-gray-400">
+                <span>{{ t('chapter.generateDialog.temperatureHint') }}</span>
+                <span>{{ generateTemperature }}</span>
+              </div>
             </div>
-          </div>
-        </NFormItem>
-        <NFormItem :label="t('chapter.generateDialog.maxTokens')">
-          <NInputNumber
-            v-model:value="generateMaxTokens"
-            :min="512"
-            :max="128000"
-            :step="256"
-            class="w-full"
-          />
-          <template #feedback>
-            <span class="text-xs text-gray-400">{{
-              t('chapter.generateDialog.maxTokensHint')
-            }}</span>
-          </template>
-        </NFormItem>
-        <NAlert
-          v-if="!generationModelOptions.length"
-          type="warning"
-          title="还没有可用的内容生成模型"
-        >
-          请先到设置页创建并启用一个内容生成模型。
-        </NAlert>
+          </NFormItem>
+          <NFormItem :label="t('chapter.generateDialog.maxTokens')">
+            <NInputNumber
+              v-model:value="generateMaxTokens"
+              :min="512"
+              :max="128000"
+              :step="256"
+              class="w-full"
+            />
+            <template #feedback>
+              <span class="text-xs text-gray-400">{{
+                t('chapter.generateDialog.maxTokensHint')
+              }}</span>
+            </template>
+          </NFormItem>
+          <NAlert
+            v-if="!generationModelOptions.length"
+            type="warning"
+            title="还没有可用的内容生成模型"
+          >
+            请先到设置页创建并启用一个内容生成模型。
+          </NAlert>
+          <NAlert
+            type="info"
+            :show-icon="false"
+          >
+            <div class="grid grid-cols-1 gap-1 text-xs text-gray-500">
+              <div
+                v-for="item in generationContextSummary"
+                :key="item.label"
+                class="flex gap-2"
+              >
+                <span class="shrink-0 text-gray-400">{{ item.label }}：</span>
+                <span class="min-w-0 truncate">{{ item.value }}</span>
+              </div>
+            </div>
+          </NAlert>
+        </div>
       </div>
       <template #footer>
-        <div class="flex justify-end gap-2">
+        <div class="flex justify-between gap-2">
           <NButton @click="showGenerateDialog = false">{{
             t('common.cancel')
           }}</NButton>
-          <NButton
-            type="primary"
-            :disabled="!selectedAiConfigId || !aiStatus.available"
-            @click="generateChapter"
-          >
-            <template #icon><Icon icon="lucide:sparkles" /></template>
-            {{ t('chapter.generate') }}
-          </NButton>
+          <div class="flex gap-2">
+            <NButton
+              :disabled="generateWizardStep <= 1"
+              @click="prevGenerateWizardStep"
+            >
+              上一步
+            </NButton>
+            <NButton
+              v-if="generateWizardStep < 4"
+              type="primary"
+              :disabled="
+                generateWizardStep === 1 && !chapterOutlineDraft.trim()
+              "
+              :loading="generateWizardStep === 2 && savingChapterCharacters"
+              @click="nextGenerateWizardStep"
+            >
+              下一步
+            </NButton>
+            <NButton
+              v-else
+              type="primary"
+              :disabled="
+                !selectedAiConfigId ||
+                !aiStatus.available ||
+                !chapterOutlineDraft.trim()
+              "
+              @click="generateChapter"
+            >
+              <template #icon><Icon icon="lucide:sparkles" /></template>
+              {{ t('chapter.generate') }}
+            </NButton>
+          </div>
         </div>
       </template>
     </NModal>

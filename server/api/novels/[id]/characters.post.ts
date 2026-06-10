@@ -7,6 +7,10 @@ const characterSchema = z.object({
   traits: z.string().optional(),
   relationships: z.string().optional(),
   currentState: z.string().optional(),
+  realName: z.string().optional(),
+  displayTitle: z.string().optional(),
+  rolePosition: z.string().optional(),
+  storyRole: z.string().optional(),
   firstAppearanceChapter: z.number().int().nullable().optional(),
   lastAppearanceChapter: z.number().int().nullable().optional()
 })
@@ -33,6 +37,10 @@ export default defineEventHandler(async (event) => {
     traits: data.traits || null,
     relationships: data.relationships || null,
     currentState: data.currentState || null,
+    realName: data.realName || null,
+    displayTitle: data.displayTitle || null,
+    rolePosition: data.rolePosition || null,
+    storyRole: data.storyRole || null,
     firstAppearanceChapter: data.firstAppearanceChapter || null,
     lastAppearanceChapter: data.lastAppearanceChapter || null
   })

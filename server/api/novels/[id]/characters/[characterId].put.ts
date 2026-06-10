@@ -7,6 +7,10 @@ const updateSchema = z.object({
   traits: z.string().optional(),
   relationships: z.string().optional(),
   currentState: z.string().optional(),
+  realName: z.string().optional(),
+  displayTitle: z.string().optional(),
+  rolePosition: z.string().optional(),
+  storyRole: z.string().optional(),
   firstAppearanceChapter: z.number().int().nullable().optional(),
   lastAppearanceChapter: z.number().int().nullable().optional()
 })
@@ -17,22 +21,40 @@ export default defineEventHandler(async (event) => {
   const characterId = parseIntParam(event, 'characterId')
   const em = useEm(event)
 
-  const novel = await em.findOne(NovelSchema, { id: novelId, user: auth.userId })
+  const novel = await em.findOne(NovelSchema, {
+    id: novelId,
+    user: auth.userId
+  })
   if (!novel) throw createError({ statusCode: 404, message: 'Novel not found' })
 
-  const character = await em.findOne(CharacterSchema, { id: characterId, novel: novelId })
-  if (!character) throw createError({ statusCode: 404, message: 'Character not found' })
+  const character = await em.findOne(CharacterSchema, {
+    id: characterId,
+    novel: novelId
+  })
+  if (!character)
+    throw createError({ statusCode: 404, message: 'Character not found' })
 
   const body = await readBody(event)
   const data = updateSchema.parse(body)
 
   if (data.name !== undefined) character.name = data.name
-  if (data.description !== undefined) character.description = data.description || null
+  if (data.description !== undefined)
+    character.description = data.description || null
   if (data.traits !== undefined) character.traits = data.traits || null
-  if (data.relationships !== undefined) character.relationships = data.relationships || null
-  if (data.currentState !== undefined) character.currentState = data.currentState || null
-  if (data.firstAppearanceChapter !== undefined) character.firstAppearanceChapter = data.firstAppearanceChapter
-  if (data.lastAppearanceChapter !== undefined) character.lastAppearanceChapter = data.lastAppearanceChapter
+  if (data.relationships !== undefined)
+    character.relationships = data.relationships || null
+  if (data.currentState !== undefined)
+    character.currentState = data.currentState || null
+  if (data.realName !== undefined) character.realName = data.realName || null
+  if (data.displayTitle !== undefined)
+    character.displayTitle = data.displayTitle || null
+  if (data.rolePosition !== undefined)
+    character.rolePosition = data.rolePosition || null
+  if (data.storyRole !== undefined) character.storyRole = data.storyRole || null
+  if (data.firstAppearanceChapter !== undefined)
+    character.firstAppearanceChapter = data.firstAppearanceChapter
+  if (data.lastAppearanceChapter !== undefined)
+    character.lastAppearanceChapter = data.lastAppearanceChapter
 
   await em.flush()
   return character

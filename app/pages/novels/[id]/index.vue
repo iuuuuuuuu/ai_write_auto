@@ -70,6 +70,10 @@ interface CharacterItem {
   traits: string | null
   relationships: string | null
   currentState: string | null
+  realName: string | null
+  displayTitle: string | null
+  rolePosition: string | null
+  storyRole: string | null
   overallArc: string | null
   firstAppearanceChapter: number | null
   lastAppearanceChapter: number | null
@@ -79,6 +83,10 @@ interface CharacterItem {
 
 type CharacterFormModel = Partial<{
   name: string
+  realName: string
+  displayTitle: string
+  rolePosition: string
+  storyRole: string
   description: string
   traits: string
   relationships: string
@@ -322,6 +330,10 @@ const expandedCharacterIds = shallowRef<number[]>([])
 const characterViewMode = shallowRef<'cards' | 'graph'>('cards')
 const characterForm = reactive<CharacterFormModel>({
   name: '',
+  realName: '',
+  displayTitle: '',
+  rolePosition: '',
+  storyRole: '',
   description: '',
   traits: '',
   relationships: ''
@@ -946,7 +958,7 @@ const filteredCharacters = computed(() => {
       })
       .join(' ')
     const searchable = normalizeSearchText(
-      `${character.name} ${character.description || ''} ${character.traits || ''} ${character.currentState || ''} ${character.relationships || ''} ${character.firstAppearanceChapter || ''} ${character.lastAppearanceChapter || ''} ${appearancesText}`
+      `${character.name} ${character.realName || ''} ${character.displayTitle || ''} ${character.rolePosition || ''} ${character.storyRole || ''} ${character.description || ''} ${character.traits || ''} ${character.currentState || ''} ${character.relationships || ''} ${character.firstAppearanceChapter || ''} ${character.lastAppearanceChapter || ''} ${appearancesText}`
     )
     return searchable.includes(query)
   })
@@ -981,6 +993,10 @@ const editingCharacterData = computed(() => {
 function resetCharacterForm() {
   editingCharacterId.value = null
   characterForm.name = ''
+  characterForm.realName = ''
+  characterForm.displayTitle = ''
+  characterForm.rolePosition = ''
+  characterForm.storyRole = ''
   characterForm.description = ''
   characterForm.traits = ''
   characterForm.relationships = ''
@@ -994,6 +1010,10 @@ function openCreateCharacterDialog() {
 function openEditCharacterDialog(character: CharacterItem) {
   editingCharacterId.value = character.id
   characterForm.name = character.name
+  characterForm.realName = character.realName || ''
+  characterForm.displayTitle = character.displayTitle || ''
+  characterForm.rolePosition = character.rolePosition || ''
+  characterForm.storyRole = character.storyRole || ''
   characterForm.description = character.description || ''
   characterForm.traits = character.traits || ''
   characterForm.relationships = character.relationships || ''
@@ -1025,6 +1045,10 @@ function getFirstFormErrorMessage(error: unknown) {
 function getCharacterPayload() {
   return {
     name: characterForm.name?.trim() || '',
+    realName: characterForm.realName?.trim() || undefined,
+    displayTitle: characterForm.displayTitle?.trim() || undefined,
+    rolePosition: characterForm.rolePosition?.trim() || undefined,
+    storyRole: characterForm.storyRole?.trim() || undefined,
     description: characterForm.description?.trim() || undefined,
     traits: characterForm.traits?.trim() || undefined,
     relationships: characterForm.relationships?.trim() || undefined
@@ -1070,6 +1094,10 @@ async function enrichCharacter() {
   }
 
   const hasEmptyFields =
+    !characterForm.realName?.trim() ||
+    !characterForm.displayTitle?.trim() ||
+    !characterForm.rolePosition?.trim() ||
+    !characterForm.storyRole?.trim() ||
     !characterForm.description?.trim() ||
     !characterForm.traits?.trim() ||
     !characterForm.relationships?.trim()
@@ -1085,12 +1113,28 @@ async function enrichCharacter() {
       `/api/novels/${novelId.value}/characters/${editingCharacterId.value}/enrich`,
       {
         name: characterForm.name,
+        realName: characterForm.realName,
+        displayTitle: characterForm.displayTitle,
+        rolePosition: characterForm.rolePosition,
+        storyRole: characterForm.storyRole,
         description: characterForm.description,
         traits: characterForm.traits,
         relationships: characterForm.relationships
       }
     )
 
+    if (result.enriched.realName && !characterForm.realName?.trim()) {
+      characterForm.realName = result.enriched.realName
+    }
+    if (result.enriched.displayTitle && !characterForm.displayTitle?.trim()) {
+      characterForm.displayTitle = result.enriched.displayTitle
+    }
+    if (result.enriched.rolePosition && !characterForm.rolePosition?.trim()) {
+      characterForm.rolePosition = result.enriched.rolePosition
+    }
+    if (result.enriched.storyRole && !characterForm.storyRole?.trim()) {
+      characterForm.storyRole = result.enriched.storyRole
+    }
     if (result.enriched.description && !characterForm.description?.trim()) {
       characterForm.description = result.enriched.description
     }
@@ -2078,7 +2122,9 @@ async function savePlotPoint() {
                     quaternary
                     @click="toggleChapterSelectMode"
                   >
-                    <template #icon><Icon icon="lucide:list-checks" /></template>
+                    <template #icon
+                      ><Icon icon="lucide:list-checks"
+                    /></template>
                     批量
                   </NButton>
                   <NButton
@@ -2233,7 +2279,9 @@ async function savePlotPoint() {
                       <p
                         class="min-w-0 truncate text-sm font-medium text-(--ui-text-highlighted)"
                       >
-                        {{ stripChapterNumberPrefix(chapter.title) || '未命名' }}
+                        {{
+                          stripChapterNumberPrefix(chapter.title) || '未命名'
+                        }}
                       </p>
                       <NTag
                         size="tiny"
@@ -2501,6 +2549,53 @@ async function savePlotPoint() {
 
                 <div
                   v-if="
+                    character.realName ||
+                    character.displayTitle ||
+                    character.rolePosition ||
+                    character.storyRole
+                  "
+                  class="mt-3 grid gap-2 text-xs sm:grid-cols-2"
+                >
+                  <div
+                    v-if="character.realName"
+                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                  >
+                    <p class="text-[10px] text-(--ui-text-dimmed)">本名</p>
+                    <p class="mt-0.5 leading-relaxed text-(--ui-text-muted)">
+                      {{ character.realName }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="character.displayTitle"
+                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                  >
+                    <p class="text-[10px] text-(--ui-text-dimmed)">称呼/位分</p>
+                    <p class="mt-0.5 leading-relaxed text-(--ui-text-muted)">
+                      {{ character.displayTitle }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="character.rolePosition"
+                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                  >
+                    <p class="text-[10px] text-(--ui-text-dimmed)">身份</p>
+                    <p class="mt-0.5 leading-relaxed text-(--ui-text-muted)">
+                      {{ character.rolePosition }}
+                    </p>
+                  </div>
+                  <div
+                    v-if="character.storyRole"
+                    class="rounded-md bg-(--ui-bg-elevated)/65 px-2 py-1.5"
+                  >
+                    <p class="text-[10px] text-(--ui-text-dimmed)">作用</p>
+                    <p class="mt-0.5 leading-relaxed text-(--ui-text-muted)">
+                      {{ character.storyRole }}
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  v-if="
                     character.traits ||
                     character.currentState ||
                     character.relationships
@@ -2763,6 +2858,32 @@ async function savePlotPoint() {
               placeholder="角色背景、身份或定位"
             />
           </NFormItem>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <NFormItem label="本名">
+              <NInput
+                v-model:value="characterForm.realName"
+                placeholder="未知时可填：本名待定"
+              />
+            </NFormItem>
+            <NFormItem label="称呼/位分">
+              <NInput
+                v-model:value="characterForm.displayTitle"
+                placeholder="例如：孙美人、张婕妤"
+              />
+            </NFormItem>
+            <NFormItem label="身份定位">
+              <NInput
+                v-model:value="characterForm.rolePosition"
+                placeholder="例如：皇后派中低阶妃嫔"
+              />
+            </NFormItem>
+            <NFormItem label="剧情作用">
+              <NInput
+                v-model:value="characterForm.storyRole"
+                placeholder="例如：负责引出皇后派试探"
+              />
+            </NFormItem>
+          </div>
           <NFormItem label="性格特征">
             <NInput
               v-model:value="characterForm.traits"
@@ -3428,6 +3549,53 @@ async function savePlotPoint() {
           <p class="text-sm leading-relaxed text-(--ui-text)">
             {{ detailCharacter.description }}
           </p>
+        </div>
+
+        <div
+          v-if="
+            detailCharacter.realName ||
+            detailCharacter.displayTitle ||
+            detailCharacter.rolePosition ||
+            detailCharacter.storyRole
+          "
+          class="grid gap-3 sm:grid-cols-2"
+        >
+          <div
+            v-if="detailCharacter.realName"
+            class="space-y-1"
+          >
+            <p class="text-xs font-medium text-(--ui-text-dimmed)">本名</p>
+            <p class="text-sm leading-relaxed text-(--ui-text)">
+              {{ detailCharacter.realName }}
+            </p>
+          </div>
+          <div
+            v-if="detailCharacter.displayTitle"
+            class="space-y-1"
+          >
+            <p class="text-xs font-medium text-(--ui-text-dimmed)">称呼/位分</p>
+            <p class="text-sm leading-relaxed text-(--ui-text)">
+              {{ detailCharacter.displayTitle }}
+            </p>
+          </div>
+          <div
+            v-if="detailCharacter.rolePosition"
+            class="space-y-1"
+          >
+            <p class="text-xs font-medium text-(--ui-text-dimmed)">身份定位</p>
+            <p class="text-sm leading-relaxed text-(--ui-text)">
+              {{ detailCharacter.rolePosition }}
+            </p>
+          </div>
+          <div
+            v-if="detailCharacter.storyRole"
+            class="space-y-1"
+          >
+            <p class="text-xs font-medium text-(--ui-text-dimmed)">剧情作用</p>
+            <p class="text-sm leading-relaxed text-(--ui-text)">
+              {{ detailCharacter.storyRole }}
+            </p>
+          </div>
         </div>
 
         <div
