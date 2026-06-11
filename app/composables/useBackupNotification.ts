@@ -11,7 +11,10 @@ interface BackupListResponse {
 
 export function useBackupNotification() {
   const message = useMessage()
-  const lastNotifiedAt = useState<string | null>('backup-last-notified-at', () => null)
+  const lastNotifiedAt = useState<string | null>(
+    'backup-last-notified-at',
+    () => null
+  )
   const { addNotification } = useNotificationCenter()
 
   function notifyIfNeeded(settings: BackupSettings) {
@@ -27,8 +30,8 @@ export function useBackupNotification() {
       type: 'error',
       title: '定时备份失败',
       message: errorMessage,
-      link: '/settings',
-      linkLabel: '查看设置'
+      link: '/settings/database',
+      linkLabel: '查看备份设置'
     })
   }
 

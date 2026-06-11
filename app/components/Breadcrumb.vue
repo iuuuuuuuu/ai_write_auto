@@ -18,6 +18,12 @@ const labelMap: Record<string, string> = {
   prompts: '提示词模板',
   templates: '小说模板',
   settings: '设置',
+  general: '通用偏好',
+  database: '数据库与备份',
+  writing: '写作目标',
+  skills: '写作技能',
+  usage: 'AI 用量与调用记录',
+  openapi: 'Open API',
   chapters: '章节',
   dashboard: '首页'
 }

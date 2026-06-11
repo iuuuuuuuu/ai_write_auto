@@ -19,9 +19,34 @@ const navItems = computed(() => [
     to: '/models'
   },
   {
-    label: t('common.settings'),
-    icon: 'lucide:settings',
-    to: '/settings'
+    label: '通用偏好',
+    icon: 'lucide:sliders-horizontal',
+    to: '/settings/general'
+  },
+  {
+    label: '数据库与备份',
+    icon: 'lucide:database',
+    to: '/settings/database'
+  },
+  {
+    label: '写作目标',
+    icon: 'lucide:target',
+    to: '/settings/writing'
+  },
+  {
+    label: '写作技能',
+    icon: 'lucide:sparkles',
+    to: '/settings/skills'
+  },
+  {
+    label: 'AI 用量',
+    icon: 'lucide:activity',
+    to: '/settings/usage'
+  },
+  {
+    label: 'Open API',
+    icon: 'lucide:key-round',
+    to: '/settings/openapi'
   },
   { label: '回收站', icon: 'lucide:trash-2', to: '/trash' }
 ])

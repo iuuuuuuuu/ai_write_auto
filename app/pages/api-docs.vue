@@ -7,7 +7,7 @@ type SwaggerUiBundle = {
   }
   plugins: {
     DownloadUrl: unknown
-  }
+  };
   (options: {
     url: string
     dom_id: string
@@ -47,7 +47,10 @@ onMounted(() => {
         url: '/api/openapi/spec',
         dom_id: '#swagger-ui',
         deepLinking: true,
-        presets: [win.SwaggerUIBundle.presets.apis, win.SwaggerUIStandalonePreset],
+        presets: [
+          win.SwaggerUIBundle.presets.apis,
+          win.SwaggerUIStandalonePreset
+        ],
         plugins: [win.SwaggerUIBundle.plugins.DownloadUrl],
         layout: 'BaseLayout'
       })
@@ -69,16 +72,14 @@ onMounted(() => {
     >
       <button
         class="flex h-8 w-8 items-center justify-center rounded-full text-(--ui-text-muted) transition-colors hover:bg-(--ui-bg-muted) hover:text-(--ui-text)"
-        @click="navigateTo('/settings')"
+        @click="navigateTo('/settings/openapi')"
       >
         <Icon
           icon="lucide:arrow-left"
           class="w-4 h-4"
         />
       </button>
-      <h1 class="text-sm font-bold text-(--ui-text-highlighted)">
-        API 文档
-      </h1>
+      <h1 class="text-sm font-bold text-(--ui-text-highlighted)">API 文档</h1>
     </div>
     <div
       id="swagger-ui"

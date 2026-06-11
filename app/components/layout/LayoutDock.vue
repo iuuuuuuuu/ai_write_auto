@@ -20,7 +20,7 @@ const isWideWorkspaceRoute = computed(() => {
   return (
     path === '/dashboard' ||
     path === '/models' ||
-    path === '/settings' ||
+    path.startsWith('/settings') ||
     path === '/trash' ||
     path.startsWith('/api-docs') ||
     path.startsWith('/admin') ||

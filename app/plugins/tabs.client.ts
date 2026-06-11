@@ -7,6 +7,13 @@ export default defineNuxtPlugin(() => {
     '/dashboard': '仪表盘',
     '/models': '模型库',
     '/settings': '设置',
+    '/settings/general': '通用偏好',
+    '/settings/database': '数据库与备份',
+    '/settings/writing': '写作目标',
+    '/settings/skills': '写作技能',
+    '/settings/usage': 'AI 用量与调用记录',
+    '/settings/ai-generation-logs': 'AI 用量与调用记录',
+    '/settings/openapi': 'Open API',
     '/trash': '回收站',
     '/admin': '管理概览',
     '/admin/users': '用户管理',
@@ -17,7 +24,7 @@ export default defineNuxtPlugin(() => {
     '/admin/writing-stats': '写作统计',
     '/admin/prompts': '提示词模板',
     '/admin/templates': '小说模板',
-    '/admin/settings': '站点设置',
+    '/admin/settings': '站点设置'
   }
 
   const CHAPTER_PATH_RE = /^\/novels\/([^/]+)\/chapters\/[^/]+$/
@@ -37,7 +44,7 @@ export default defineNuxtPlugin(() => {
   }
 
   router.afterEach((to, from) => {
-    if (SKIP_PATHS.some(p => to.path.startsWith(p))) return
+    if (SKIP_PATHS.some((p) => to.path.startsWith(p))) return
     if (to.path === '/') return
 
     const area = to.path.startsWith('/admin') ? 'admin' : 'user'
@@ -49,7 +56,7 @@ export default defineNuxtPlugin(() => {
     const toNovelId = getNovelIdFromChapterPath(to.path)
     const fromNovelId = getNovelIdFromChapterPath(from.path)
     if (toNovelId && fromNovelId && toNovelId === fromNovelId) {
-      const currentTab = tabs.value.find(t => t.path === from.path)
+      const currentTab = tabs.value.find((t) => t.path === from.path)
       if (currentTab) {
         currentTab.path = to.path
         currentTab.title = resolveTitle(to.path)
