@@ -7,6 +7,7 @@ definePageMeta({
 
 import { h } from 'vue'
 import { Icon } from '@iconify/vue'
+import GenerationContextPreview from '../../../../components/novel/GenerationContextPreview.vue'
 import { computeLineDiff, type DiffLine } from '../../../../utils/diff'
 import {
   cleanAiChapterTitle,
