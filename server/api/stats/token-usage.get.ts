@@ -1,7 +1,10 @@
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const query = getQuery(event)
-  const days = Math.min(365, Math.max(1, parseInt((query.days as string) || '30')))
+  const days = Math.min(
+    365,
+    Math.max(1, parseInt((query.days as string) || '30'))
+  )
   const granularity = query.granularity === 'hour' ? 'hour' : 'day'
   const em = useEm(event)
 
@@ -26,9 +29,9 @@ export default defineEventHandler(async (event) => {
 
   // 按天/小时聚合（本地时区），覆盖整个区间——可量化的趋势视图
   const bucketExpr =
-    granularity === 'hour'
-      ? `strftime('%Y-%m-%d %H:00', created_at, 'unixepoch', 'localtime')`
-      : `date(created_at, 'unixepoch', 'localtime')`
+    granularity === 'hour' ?
+      `strftime('%Y-%m-%d %H:00', created_at, 'unixepoch', 'localtime')`
+    : `date(created_at, 'unixepoch', 'localtime')`
   const rows = (await conn.execute(
     `SELECT ${bucketExpr} as bucket,
             COALESCE(SUM(tokens_input),0) as input,
@@ -49,6 +52,33 @@ export default defineEventHandler(async (event) => {
     calls: Number(r.calls || 0)
   }))
 
+  const modelRows = (await conn.execute(
+    `SELECT COALESCE(am.model, '未知模型') as model,
+            COALESCE(am.name, am.model, '未知模型') as model_name,
+            COALESCE(SUM(tu.tokens_input),0) as input,
+            COALESCE(SUM(tu.tokens_output),0) as output,
+            COALESCE(SUM(CASE WHEN tu.estimated_cost IS NOT NULL THEN CAST(tu.estimated_cost AS REAL) ELSE 0 END),0) as cost,
+            COUNT(*) as calls
+     FROM token_usage tu
+     LEFT JOIN ai_configs ac ON ac.id = tu.ai_config_id
+     LEFT JOIN ai_models am ON am.id = ac.ai_model_id
+     WHERE tu.user_id = ? AND tu.created_at >= ?
+     GROUP BY model, model_name
+     ORDER BY (COALESCE(SUM(tu.tokens_input),0) + COALESCE(SUM(tu.tokens_output),0)) DESC, calls DESC
+     LIMIT 12`,
+    [auth.userId, sinceTs]
+  )) as any[]
+
+  const modelUsage = modelRows.map((r) => ({
+    model: String(r.model || '未知模型'),
+    modelName: String(r.model_name || r.model || '未知模型'),
+    tokensInput: Number(r.input || 0),
+    tokensOutput: Number(r.output || 0),
+    tokensTotal: Number(r.input || 0) + Number(r.output || 0),
+    cost: Number(r.cost || 0),
+    calls: Number(r.calls || 0)
+  }))
+
   return {
     granularity,
     days,
@@ -56,8 +86,10 @@ export default defineEventHandler(async (event) => {
     totalOutput,
     totalTokens: totalInput + totalOutput,
     totalCalls,
-    totalEstimatedCost: totalEstimatedCost > 0 ? totalEstimatedCost.toFixed(4) : null,
+    totalEstimatedCost:
+      totalEstimatedCost > 0 ? totalEstimatedCost.toFixed(4) : null,
     // 前端读取的字段名为 usage（按时间正序的聚合桶）
-    usage
+    usage,
+    modelUsage
   }
 })

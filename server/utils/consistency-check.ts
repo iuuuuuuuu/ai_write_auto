@@ -10,6 +10,7 @@ import {
   NovelSchema
 } from '../database/entities'
 import { retrieveRelevant } from '../services/content-rag'
+import { parseJsonArrayLike } from './json-salvage'
 
 export interface ParsedIssue {
   type: string
@@ -50,14 +51,8 @@ export function validateConsistencyIssues(
   const targetNorm = normalizeText(targetContent)
   const priorNorm = normalizeText(priorText)
 
-  let parsed: unknown
-  try {
-    const jsonMatch = rawModelOutput.match(/\[[\s\S]*\]/)
-    parsed = JSON.parse(jsonMatch?.[0] || rawModelOutput)
-  } catch {
-    return []
-  }
-  if (!Array.isArray(parsed)) return []
+  const parsed = parseJsonArrayLike(rawModelOutput)
+  if (!parsed.length) return []
 
   const validated: ParsedIssue[] = []
   for (const raw of parsed as any[]) {
@@ -228,6 +223,7 @@ export async function runConsistencyCheck(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
+      thinkingEnabled: false,
       maxTokens: 2000,
       tracking: {
         userId,

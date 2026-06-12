@@ -8,6 +8,7 @@ import { streamAi, toAiOptions } from '~~/server/utils/ai-client'
 import { recordUsage } from '~~/server/utils/ai-stream'
 import { resolveNovelAiConfig } from '~~/server/utils/ai-configs'
 import { buildCharacterEnrichPrompt } from '~~/server/utils/ai-prompts'
+import { parseJsonObjectLike } from '~~/server/utils/json-salvage'
 
 const bodySchema = z.object({
   name: z.string().min(1),
@@ -122,7 +123,8 @@ export default defineEventHandler(async (event) => {
   for await (const chunk of streamAi(
     toAiOptions(aiConfig, {
       messages,
-      temperature: 0.7,
+      temperature: 0.5,
+      thinkingEnabled: false,
       maxTokens: 2048,
       tracking: {
         userId: auth.userId,
@@ -155,11 +157,8 @@ export default defineEventHandler(async (event) => {
     outputTokens
   )
 
-  let parsed: Record<string, string>
-  try {
-    const cleaned = aiResult.replace(/^```json?\n?|\n?```$/g, '').trim()
-    parsed = JSON.parse(cleaned)
-  } catch {
+  const parsed = parseJsonObjectLike(aiResult)
+  if (!parsed) {
     throw createError({ statusCode: 500, message: 'AI 返回格式无效，请重试' })
   }
 

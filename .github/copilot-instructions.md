@@ -62,6 +62,7 @@ This is a Nuxt 4 / Vue 3 / Nitro full-stack application for AI-assisted novel wr
 - Model resolution and runtime request parameters should flow through `server/utils/ai-configs.ts`, `server/utils/ai-model-capabilities.ts`, and `server/utils/ai-client.ts`.
 - Preserve the configuration layering: request override, novel default, user purpose config, then model capability defaults.
 - Use `toAiOptions()` so `temperature`, `top_p`, thinking controls, max tokens, model IDs, and provider credentials stay consistent.
+- Single-chapter generation must go through the chapter workflow plan gate: generate a structured plan, persist it in `chapter_workflow_plans`, accept the plan, then pass the accepted `workflowPlanId` to `/api/ai/generate`. Do not reintroduce hidden outline creation or batch正文 generation paths.
 - Chapter generation and regeneration paths should preserve task tracking, token usage recording, SSE streaming, and truncation/continuation behavior.
 - Context assembly belongs in `server/services/chapter-context.ts`, `server/services/generation-context.ts`, and related helpers. Do not bypass RAG/soft-delete filters when changing generation prompts.
 - Keep JSON salvage, thinking stripping, streaming timeout, and token accounting behavior intact unless tests and callers are updated deliberately.

@@ -11,6 +11,7 @@ const STORAGE_KEY = 'reading_history_v1'
 const MAX_HISTORY = 20
 
 function loadHistory(): ReadingHistoryItem[] {
+  if (!import.meta.client) return []
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return []
@@ -23,6 +24,7 @@ function loadHistory(): ReadingHistoryItem[] {
 }
 
 function saveHistory(list: ReadingHistoryItem[]) {
+  if (!import.meta.client) return
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
   } catch {
@@ -31,12 +33,15 @@ function saveHistory(list: ReadingHistoryItem[]) {
 }
 
 export function useReadingHistory() {
-  const history = useState<ReadingHistoryItem[]>('reading-history', () => loadHistory())
+  const history = useState<ReadingHistoryItem[]>('reading-history', () =>
+    loadHistory()
+  )
 
   const recentHistory = computed(() => {
     return history.value
-      .filter((item, index, self) =>
-        index === self.findIndex((t) => t.chapterId === item.chapterId)
+      .filter(
+        (item, index, self) =>
+          index === self.findIndex((t) => t.chapterId === item.chapterId)
       )
       .slice(0, 10)
   })
@@ -57,6 +62,18 @@ export function useReadingHistory() {
     saveHistory(updated)
   }
 
+  function removeNovelHistory(novelId: number) {
+    const updated = history.value.filter((h) => h.novelId !== novelId)
+    history.value = updated
+    saveHistory(updated)
+    if (!import.meta.client) return
+    try {
+      localStorage.removeItem(`novel_read_history_${novelId}`)
+    } catch {
+      // ignore
+    }
+  }
+
   function clearHistory() {
     history.value = []
     saveHistory([])
@@ -67,6 +84,7 @@ export function useReadingHistory() {
     recentHistory,
     recordReading,
     removeHistory,
+    removeNovelHistory,
     clearHistory
   }
 }

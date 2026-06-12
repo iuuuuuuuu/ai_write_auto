@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { h } from 'vue'
 import { NTag } from 'naive-ui'
+import {
+  AI_GENERATION_MODEL_TYPE_OPTIONS,
+  getAiGenerationScenarioLabel,
+  getAiGenerationScenarioOptions,
+  getAiGenerationTaskTypeLabel
+} from '~/utils/ai-generation-labels'
 
 definePageMeta({ layout: 'admin', middleware: 'admin' })
 
@@ -135,11 +141,10 @@ const statusOptions = [
   { label: '运行中', value: 'running' }
 ]
 
-const modelTypeOptions = [
-  { label: '全部类型', value: 'all' },
-  { label: '对话生成', value: 'chat_completion' },
-  { label: 'Embedding', value: 'embedding' },
-  { label: '连通测试', value: 'connectivity_check' }
+const modelTypeOptions = [...AI_GENERATION_MODEL_TYPE_OPTIONS]
+const scenarioOptions = [
+  { label: '全部场景', value: '' },
+  ...getAiGenerationScenarioOptions()
 ]
 
 const { data: userList } = await useFetch<
@@ -233,12 +238,6 @@ function statusTagType(status: string) {
   return 'warning'
 }
 
-function modelTypeLabel(modelType: string) {
-  if (modelType === 'embedding') return 'Embedding'
-  if (modelType === 'connectivity_check') return '连通测试'
-  return '对话生成'
-}
-
 const tableColumns = [
   {
     title: '用户',
@@ -270,18 +269,29 @@ const tableColumns = [
     }
   },
   {
-    title: '类型',
+    title: '任务类型',
     key: 'modelType',
-    width: 105,
+    width: 110,
     render(row: AiGenerationLogItem) {
-      return h('span', { class: 'text-xs' }, modelTypeLabel(row.modelType))
+      return h(
+        'span',
+        { class: 'text-xs' },
+        getAiGenerationTaskTypeLabel(row.modelType, row.scenario)
+      )
     }
   },
   {
-    title: '场景',
+    title: '具体场景',
     key: 'scenario',
-    width: 170,
-    ellipsis: { tooltip: true }
+    width: 190,
+    ellipsis: { tooltip: true },
+    render(row: AiGenerationLogItem) {
+      return h(
+        'span',
+        { class: 'text-xs', title: row.scenario },
+        getAiGenerationScenarioLabel(row.scenario)
+      )
+    }
   },
   {
     title: '模型',
@@ -375,6 +385,22 @@ const aggregateColumns = [
       return `$${row.totalCost}`
     }
   }
+]
+
+const scenarioAggregateColumns = [
+  {
+    title: '维度',
+    key: 'label',
+    ellipsis: { tooltip: true },
+    render(row: AggregateRow) {
+      return h(
+        'span',
+        { title: row.key },
+        getAiGenerationScenarioLabel(row.key)
+      )
+    }
+  },
+  ...aggregateColumns.slice(1)
 ]
 </script>
 
@@ -480,12 +506,14 @@ const aggregateColumns = [
     </div>
 
     <div class="flex shrink-0 flex-wrap items-center gap-2">
-      <NInput
+      <NSelect
         v-model:value="scenarioFilter"
+        :options="scenarioOptions"
         size="small"
         clearable
-        placeholder="筛选场景"
-        style="width: 180px"
+        filterable
+        placeholder="全部场景"
+        style="width: 240px"
       />
       <label
         class="flex cursor-pointer items-center gap-2 text-sm text-(--ui-text-muted)"
@@ -556,7 +584,7 @@ const aggregateColumns = [
           按场景
         </p>
         <NDataTable
-          :columns="aggregateColumns"
+          :columns="scenarioAggregateColumns"
           :data="byScenario"
           :bordered="false"
           size="small"

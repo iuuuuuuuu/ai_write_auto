@@ -4,14 +4,18 @@ export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
   const em = useEm(event)
 
-  const recentChapters = await em.find(ChapterSchema, {
-    novel: { user: auth.userId },
-    deletedAt: null,
-  }, {
-    limit: 5,
-    orderBy: { updatedAt: 'DESC' },
-    populate: ['novel'],
-  })
+  const recentChapters = await em.find(
+    ChapterSchema,
+    {
+      novel: { user: auth.userId, deletedAt: null },
+      deletedAt: null
+    },
+    {
+      limit: 5,
+      orderBy: { updatedAt: 'DESC' },
+      populate: ['novel']
+    }
+  )
 
   return recentChapters.map((chapter: any) => ({
     id: chapter.id,
@@ -20,6 +24,6 @@ export default defineEventHandler(async (event) => {
     novelId: chapter.novel?.id || chapter.novel,
     novelTitle: chapter.novel?.title || '',
     updatedAt: chapter.updatedAt,
-    wordCount: chapter.wordCount,
+    wordCount: chapter.wordCount
   }))
 })

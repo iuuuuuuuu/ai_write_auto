@@ -7,49 +7,66 @@ export type Suggestion = {
   status: 'pending' | 'accepted' | 'rejected'
 }
 
-export function useSuggestionMode(novelId: Ref<number>, chapterId: Ref<number>) {
+function toSuggestionItems(value: unknown): Suggestion[] {
+  const records = Array.isArray(value) ? value : []
+  return records
+    .map((item) => {
+      const record =
+        item && typeof item === 'object' ?
+          (item as Record<string, unknown>)
+        : {}
+      return {
+        originalText:
+          typeof record.originalText === 'string' ? record.originalText : '',
+        suggestedText:
+          typeof record.suggestedText === 'string' ? record.suggestedText : '',
+        reason: typeof record.reason === 'string' ? record.reason : '',
+        status: 'pending' as const
+      }
+    })
+    .filter((item) => item.originalText && item.suggestedText)
+}
+
+export function useSuggestionMode(
+  novelId: Ref<number>,
+  chapterId: Ref<number>
+) {
   const suggestions = ref<Suggestion[]>([])
   const isActive = ref(false)
   const loading = ref(false)
   const error = ref<string | null>(null)
 
-  const pendingCount = computed(() =>
-    suggestions.value.filter(s => s.status === 'pending').length
+  const pendingCount = computed(
+    () => suggestions.value.filter((s) => s.status === 'pending').length
   )
 
   async function fetchSuggestions(aiConfigId?: number) {
     loading.value = true
     error.value = null
     try {
-      const fullContent = await consumeSSEStream({
+      let parsedSuggestions: Suggestion[] = []
+      await consumeSSEStream({
         url: '/api/ai/suggest',
         body: {
           novelId: novelId.value,
           chapterId: chapterId.value,
           aiConfigId
         },
+        onDone(_fullContent, parsedJson) {
+          parsedSuggestions = toSuggestionItems(parsedJson)
+        },
         onError(msg) {
           error.value = msg
         }
       })
 
-      try {
-        const jsonMatch = fullContent.match(/\[[\s\S]*\]/) || fullContent.match(/\{[\s\S]*\}/)
-        const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
-        const items = Array.isArray(parsed) ? parsed : (parsed.suggestions || [])
-        suggestions.value = items.map((s: any) => ({
-          originalText: s.originalText || '',
-          suggestedText: s.suggestedText || '',
-          reason: s.reason || '',
-          status: 'pending' as const
-        }))
-      } catch {
-        suggestions.value = []
+      suggestions.value = parsedSuggestions
+      if (!suggestions.value.length) {
         if (!error.value) error.value = '解析建议结果失败'
       }
       isActive.value = suggestions.value.length > 0
-    } catch (e: any) {
-      error.value = e.message || '获取建议失败'
+    } catch (e: unknown) {
+      error.value = e instanceof Error ? e.message : '获取建议失败'
       suggestions.value = []
     } finally {
       loading.value = false

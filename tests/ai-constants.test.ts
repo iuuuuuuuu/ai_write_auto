@@ -5,10 +5,9 @@ import {
   MAX_TOKENS_ACTION,
   MAX_TOKENS_FRAGMENT,
   MAX_TOKENS_SUGGEST,
-  MAX_TOKENS_WORKSPACE,
   CONTEXT_TRUNCATE_FULL,
   CONTEXT_TRUNCATE_INLINE,
-  CONTEXT_TRUNCATE_FRAGMENT,
+  CONTEXT_TRUNCATE_FRAGMENT
 } from '../server/utils/ai-constants'
 
 describe('ai-constants', () => {
@@ -20,11 +19,13 @@ describe('ai-constants', () => {
   })
 
   it('max token values are positive', () => {
-    for (const v of [MAX_TOKENS_FRAGMENT, MAX_TOKENS_ACTION, MAX_TOKENS_SUGGEST, MAX_TOKENS_WORKSPACE]) {
+    for (const v of [
+      MAX_TOKENS_FRAGMENT,
+      MAX_TOKENS_ACTION,
+      MAX_TOKENS_SUGGEST
+    ]) {
       expect(v).toBeGreaterThan(0)
     }
-    // 连续生成需要更大的输出空间以容纳长章节
-    expect(MAX_TOKENS_WORKSPACE).toBeGreaterThanOrEqual(MAX_TOKENS_ACTION)
   })
 
   it('context truncation values are ordered', () => {

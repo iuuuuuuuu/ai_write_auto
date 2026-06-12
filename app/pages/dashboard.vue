@@ -9,6 +9,7 @@ definePageMeta({ layout: 'default' })
 const { t } = useI18n()
 const { user } = useAuth()
 const { createNovel } = useNovels()
+const { removeNovelHistory } = useReadingHistory()
 const router = useRouter()
 const message = useMessage()
 const dialog = useDialog()
@@ -36,7 +37,7 @@ const { data: stats } = await useFetch<{
   totalNovels: number
   totalWords: number
 }>('/api/stats/overview')
-const { data: recentActivity } = await useFetch<
+const { data: recentActivity, refresh: refreshRecentActivity } = await useFetch<
   Array<{
     id: number
     title: string
@@ -96,10 +97,15 @@ function confirmBatchDeleteNovels() {
           apiDel(`/api/novels/${id}`, { silent: true }).catch(() => {})
         )
       )
+      ids.forEach((id) => removeNovelHistory(id))
+      recentActivity.value = (recentActivity.value || []).filter(
+        (activity) => !ids.includes(activity.novelId)
+      )
       message.success(`已删除 ${ids.length} 部小说`)
       selectionMode.value = false
       selectedNovelIds.value = []
       await refreshNovels()
+      await refreshRecentActivity()
     }
   })
 }

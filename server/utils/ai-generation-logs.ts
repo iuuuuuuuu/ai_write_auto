@@ -314,6 +314,15 @@ export async function finishAiGenerationLog(
       'embeddingItems',
       numberOrZero(options.embeddingItems)
     )
+    if (!handle.firstTokenMarked && numberOrZero(options.outputChars) > 0) {
+      setRecordValue(handle.record, 'firstTokenAt', endedAt)
+      setRecordValue(
+        handle.record,
+        'firstTokenLatencyMs',
+        elapsedMs(handle.startedAt, endedAt)
+      )
+      handle.firstTokenMarked = true
+    }
     setRecordValue(handle.record, 'endedAt', endedAt)
     setRecordValue(
       handle.record,

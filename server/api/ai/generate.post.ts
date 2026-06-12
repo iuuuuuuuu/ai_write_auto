@@ -5,6 +5,10 @@ import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { NovelSchema, GenerationTaskSchema } from '../../database/entities'
 import { prepareChapterContext } from '../../services/chapter-context'
 import { resolveChapterGenerationInputs } from '../../services/generation-context'
+import {
+  getAcceptedChapterWorkflowPlan,
+  linkChapterWorkflowPlanToTask
+} from '../../services/chapter-workflow'
 
 const contextSelectionSchema = z
   .object({
@@ -24,9 +28,33 @@ const generateSchema = z.object({
   reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
   maxTokens: z.number().int().min(256).max(128000).optional(),
   aiConfigId: z.number().int().positive().optional(),
+  workflowPlanId: z.number().int().positive().optional(),
   skillIds: z.array(z.number().int().positive()).optional(),
   contextSelection: contextSelectionSchema
 })
+
+function formatWorkflowPlanDirection(
+  plan: Awaited<ReturnType<typeof getAcceptedChapterWorkflowPlan>>
+): string {
+  if (!plan) return ''
+  const draft = plan.plan
+  return [
+    '【已验收剧情计划】',
+    draft.goal ? `本章目标：${draft.goal}` : '',
+    draft.conflict ? `核心冲突：${draft.conflict}` : '',
+    draft.turningPoint ? `关键转折：${draft.turningPoint}` : '',
+    draft.beats.length ? `剧情节拍：${draft.beats.join('；')}` : '',
+    draft.mustInclude.length ? `必须包含：${draft.mustInclude.join('；')}` : '',
+    draft.avoid.length ? `必须避免：${draft.avoid.join('；')}` : '',
+    draft.interestHooks.length ?
+      `兴趣钩子：${draft.interestHooks.join('；')}`
+    : '',
+    draft.pacing ? `节奏：${draft.pacing}` : '',
+    draft.protocol ? `称谓/设定：${draft.protocol}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -34,6 +62,13 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const data = generateSchema.parse(body)
   const em = useEm(event)
+
+  if (data.workflowPlanId && !data.chapterId) {
+    throw createError({
+      statusCode: 400,
+      message: 'workflowPlanId 必须与 chapterId 一起提交'
+    })
+  }
 
   const novel = await em.findOne(NovelSchema, {
     id: data.novelId,
@@ -51,6 +86,24 @@ export default defineEventHandler(async (event) => {
     data.aiConfigId
   )
 
+  const acceptedPlan =
+    data.chapterId ?
+      await getAcceptedChapterWorkflowPlan(em, data.novelId, data.chapterId)
+    : null
+  if (
+    data.chapterId &&
+    (!acceptedPlan || acceptedPlan.workflowPlan.id !== data.workflowPlanId)
+  ) {
+    throw createError({
+      statusCode: 409,
+      message: '请先生成并验收本章剧情计划，再生成正文'
+    })
+  }
+  const workflowDirection = formatWorkflowPlanDirection(acceptedPlan)
+  const direction = [workflowDirection, data.direction]
+    .filter(Boolean)
+    .join('\n\n')
+
   const contextInputs = await resolveChapterGenerationInputs({
     em,
     novel,
@@ -58,7 +111,7 @@ export default defineEventHandler(async (event) => {
     userId: auth.userId,
     chapterId: data.chapterId,
     chapterOutline: data.chapterOutline,
-    direction: data.direction,
+    direction,
     aiConfig,
     requestSkillIds: data.skillIds
   })
@@ -75,7 +128,7 @@ export default defineEventHandler(async (event) => {
         }
       : undefined,
     outline: contextInputs.chapterOutline,
-    direction: data.direction,
+    direction,
     precedingChapters: contextInputs.precedingChapters,
     characters: contextInputs.characters,
     plotPoints: contextInputs.plotPoints,
@@ -94,6 +147,14 @@ export default defineEventHandler(async (event) => {
     status: 'running'
   })
   await em.flush()
+  if (data.workflowPlanId) {
+    await linkChapterWorkflowPlanToTask(em, {
+      planId: data.workflowPlanId,
+      taskId: task.id,
+      novelId: data.novelId,
+      chapterId: data.chapterId!
+    })
+  }
 
   return createTrackedStreamResponse(
     event,

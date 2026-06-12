@@ -8,7 +8,11 @@ import {
   buildStyleAnalysisPrompt,
   buildConsistencyCheckPrompt,
   buildSuggestionPrompt,
+  buildChapterOutlinePrompt,
+  buildChapterPlanFieldPrompt,
   buildOutlineGenerationPrompt,
+  buildChapterPlanSectionRepairPrompt,
+  buildChapterPlanSectionPrompt,
   buildChapterPlanGenerationPrompt,
   buildCharacterEnrichPrompt,
   buildCharacterExtractionPrompt,
@@ -150,6 +154,36 @@ describe('ai-prompts', () => {
       expect(result).toContain('称谓体系')
       expect(result).not.toContain('小主')
       expect(result).not.toContain('娘娘')
+    })
+  })
+
+  describe('buildChapterOutlinePrompt', () => {
+    it('asks for one plain-text outline instead of JSON', () => {
+      const result = buildChapterOutlinePrompt({
+        novel: {
+          title: '恶魔皇帝异世宠妃',
+          genre: '古言',
+          worldSetting: '后宫与异世恶魔血脉交织。',
+          styleGuide: '节奏紧凑，情绪克制。'
+        },
+        chapter: { chapterNumber: 5, title: '冷宫试探' },
+        characters: [{ name: '林薇', description: '穿越女主' }],
+        idea: '强化女主利用现代知识破局',
+        currentOutline: '女主发现冷宫有暗线。',
+        existingOutlines: [
+          { chapterNumber: 4, description: '皇帝察觉冷宫异动。' },
+          { chapterNumber: 6, description: '女主准备反击。' }
+        ]
+      })
+
+      expect(result).toHaveLength(2)
+      expect(result[0].content).toContain('只返回一段本章大纲文本')
+      expect(result[0].content).toContain('不要 JSON')
+      expect(result[0].content).toContain('不要章节号列表')
+      expect(result[1].content).toContain('第5章')
+      expect(result[1].content).toContain('节奏紧凑')
+      expect(result[1].content).toContain('皇帝察觉冷宫异动')
+      expect(result[1].content).toContain('女主准备反击')
     })
   })
 
@@ -482,11 +516,12 @@ describe('ai-prompts', () => {
         chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
         characters: [
           {
+            id: 101,
             name: '林晚',
             description: '刚穿越的女主',
             traits: '谨慎、敏锐'
           },
-          { name: '小桃', description: '贴身宫女' }
+          { id: 102, name: '小桃', description: '贴身宫女' }
         ],
         outlines: [
           { chapterNumber: 1, description: '林晚冷宫醒来。' },
@@ -501,10 +536,200 @@ describe('ai-prompts', () => {
       expect(result[0].content).toContain('mustInclude')
       expect(result[0].content).toContain('protocol')
       expect(result[0].content).toContain('称谓礼制')
+      expect(result[0].content).toContain('"goal":""')
+      expect(result[0].content).toContain('"beats":[]')
+      expect(result[0].content).toContain('"characters":[]')
+      expect(result[0].content).toContain('禁止原样返回上面的空 JSON 形状')
+      expect(result[0].content).not.toContain('本章要推进的核心目标')
+      expect(result[0].content).not.toContain('剧情节拍1')
+      expect(result[0].content).not.toContain('"characters":[1,2]')
+      expect(result[0].content).not.toContain('"plotThreadActions":[1]')
+      expect(result[0].content).not.toContain('"foreshadowingActions":[1]')
       expect(result[1].content).toContain('林晚醒来后发现自己成了炮灰嫔妃')
+      expect(result[1].content).toContain('角色ID 101')
+      expect(result[1].content).toContain('角色ID 102')
       expect(result[1].content).toContain('林晚')
       expect(result[1].content).toContain('小桃')
       expect(result[1].content).toContain('第2章')
+    })
+
+    it('builds a core-only section prompt without unrelated plan fields', () => {
+      const result = buildChapterPlanSectionPrompt({
+        section: 'core',
+        novel: { title: '后宫求生', genre: '古言' },
+        chapter: { title: '初醒冷宫', chapterNumber: 1 },
+        chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
+        characters: [{ id: 101, name: '林晚' }],
+        outlines: [{ chapterNumber: 1, description: '林晚冷宫醒来。' }]
+      })
+
+      expect(result[0].content).toContain('剧情骨架')
+      expect(result[0].content).toContain('"goal":""')
+      expect(result[0].content).toContain('"interestHooks":[]')
+      expect(result[0].content).toContain('顶层 JSON 必须直接包含上述字段')
+      expect(result[0].content).toContain('禁止包在「剧情骨架」')
+      expect(result[0].content).toContain('第一个字符必须是 {')
+      expect(result[0].content).not.toContain('mustInclude')
+      expect(result[0].content).not.toContain('characters')
+      expect(result[0].content).toContain('禁止原样返回上面的空 JSON 形状')
+      expect(result[1].content).toContain('角色ID 101')
+    })
+
+    it('builds a field prompt that does not ask the model for json', () => {
+      const result = buildChapterPlanFieldPrompt({
+        field: 'mustInclude',
+        label: '必须出现',
+        valueKind: 'list',
+        novel: { title: '后宫求生', genre: '古言' },
+        chapter: { title: '初醒冷宫', chapterNumber: 1 },
+        chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
+        characters: [{ id: 101, name: '林晚' }],
+        outlines: [{ chapterNumber: 1, description: '林晚冷宫醒来。' }],
+        existingPartialPlan: {
+          goal: '让林晚在冷宫稳住处境',
+          conflict: '她必须隐藏异常又要自救',
+          turningPoint: '皇帝离开前的回望改变局面',
+          beats: ['醒来确认身份', '皇帝驾临试探'],
+          interestHooks: ['三日死局出现裂缝']
+        }
+      })
+
+      expect(result[0].content).toContain('只生成【必须出现】输入框的内容')
+      expect(result[0].content).toContain('每行 1 条')
+      expect(result[0].content).toContain('不要 JSON')
+      expect(result[0].content).not.toContain('严格 JSON 对象')
+      expect(result[0].content).not.toContain('{')
+      expect(result[0].content).not.toContain('}')
+      expect(result[1].content).toContain('已生成计划片段')
+      expect(result[1].content).toContain('让林晚在冷宫稳住处境')
+    })
+
+    it('keeps meta-analysis text out of field prompt existing plan context', () => {
+      const result = buildChapterPlanFieldPrompt({
+        field: 'goal',
+        label: '本章目标',
+        valueKind: 'text',
+        novel: { title: '后宫求生', genre: '古言' },
+        chapter: { title: '初醒冷宫', chapterNumber: 1 },
+        chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
+        characters: [],
+        outlines: [],
+        existingPlan: {
+          goal: '首先，用户要求我只生成【本章目标】输入框的内容。不要JSON。',
+          mustInclude: '玉佩必须出现'
+        }
+      })
+
+      expect(result[1].content).not.toContain('用户要求')
+      expect(result[1].content).not.toContain('不要JSON')
+      expect(result[1].content).toContain('必须出现：玉佩必须出现')
+    })
+
+    it('keeps meta-analysis text out of generated partial plan context', () => {
+      const result = buildChapterPlanFieldPrompt({
+        field: 'conflict',
+        label: '核心冲突',
+        valueKind: 'text',
+        novel: { title: '后宫求生', genre: '古言' },
+        chapter: { title: '初醒冷宫', chapterNumber: 1 },
+        chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
+        characters: [],
+        outlines: [],
+        existingPartialPlan: {
+          goal: '首先，用户要求我只生成【本章目标】输入框的内容。不要JSON。',
+          mustInclude: ['玉佩必须出现']
+        }
+      })
+
+      expect(result[1].content).not.toContain('用户要求')
+      expect(result[1].content).not.toContain('不要JSON')
+      expect(result[1].content).toContain('必须出现：玉佩必须出现')
+    })
+
+    it('includes user existing plan fields in section prompts', () => {
+      const result = buildChapterPlanSectionPrompt({
+        section: 'constraints',
+        novel: { title: '后宫求生', genre: '古言' },
+        chapter: { title: '初醒冷宫', chapterNumber: 1 },
+        chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
+        characters: [],
+        outlines: [],
+        existingPlan: {
+          goal: '林晚主动设局稳住冷宫局面',
+          mustInclude: '玉佩必须出现',
+          avoid: '不要提前揭露皇帝真实目的',
+          pacing: '压迫感逐步升高',
+          protocol: '嫔妃、宫女、太监称谓必须准确'
+        }
+      })
+
+      expect(result[1].content).toContain('用户已填剧情要求')
+      expect(result[1].content).toContain('本章目标：林晚主动设局稳住冷宫局面')
+      expect(result[1].content).toContain('必须出现：玉佩必须出现')
+      expect(result[1].content).toContain('避免出现：不要提前揭露皇帝真实目的')
+      expect(result[1].content).toContain('情绪/节奏：压迫感逐步升高')
+      expect(result[1].content).toContain(
+        '称谓或设定补充：嫔妃、宫女、太监称谓必须准确'
+      )
+    })
+
+    it('builds a references section prompt with only real available ids', () => {
+      const result = buildChapterPlanSectionPrompt({
+        section: 'references',
+        novel: { title: '后宫求生' },
+        chapter: { title: '初醒冷宫', chapterNumber: 1 },
+        chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
+        characters: [
+          { id: 101, name: '林晚' },
+          { id: 102, name: '小桃' }
+        ],
+        outlines: [],
+        existingPartialPlan: {
+          goal: '让林晚在冷宫稳住处境',
+          conflict: '她必须隐藏异常又要自救',
+          turningPoint: '汤药被调包',
+          beats: ['醒来确认身份'],
+          interestHooks: ['药渣指向御前人']
+        },
+        plotPoints: [{ id: 301, description: '冷宫药渣线索' }],
+        foreshadowings: [{ id: 401, content: '御前太监异常传话' }]
+      })
+
+      expect(result[0].content).toContain('引用状态')
+      expect(result[0].content).toContain('"characters":[]')
+      expect(result[0].content).toContain('"plotThreadActions":[]')
+      expect(result[0].content).toContain('"foreshadowingActions":[]')
+      expect(result[0].content).not.toContain('goal')
+      expect(result[1].content).toContain('角色ID 101')
+      expect(result[1].content).toContain('剧情线ID 301')
+      expect(result[1].content).toContain('伏笔ID 401')
+      expect(result[1].content).not.toContain('剧情线ID 1')
+    })
+
+    it('builds a repair prompt with the failed output and allowed fields', () => {
+      const result = buildChapterPlanSectionRepairPrompt({
+        section: 'core',
+        novel: { title: '后宫求生', genre: '古言' },
+        chapter: { title: '初醒冷宫', chapterNumber: 1 },
+        chapterOutline: '林晚醒来后发现自己成了炮灰嫔妃。',
+        characters: [{ id: 101, name: '林晚' }],
+        outlines: [],
+        failedOutput: '{"goal":"","beats":[]}',
+        failureReason: '剧情骨架缺少可用字段'
+      })
+
+      expect(result[0].content).toContain('修复章节计划')
+      expect(result[0].content).toContain(
+        'goal, conflict, turningPoint, beats, interestHooks'
+      )
+      expect(result[0].content).toContain('严格 JSON 对象')
+      expect(result[0].content).toContain('顶层 JSON 必须直接包含上述字段')
+      expect(result[0].content).toContain('不要输出思考过程')
+      expect(result[1].content).toContain('剧情骨架缺少可用字段')
+      expect(result[1].content).toContain('{"goal":"","beats":[]}')
+      expect(result[1].content).toContain('林晚醒来后发现自己成了炮灰嫔妃')
+      expect(result[1].content).not.toContain('mustInclude')
+      expect(result[1].content).not.toContain('characters')
     })
   })
 

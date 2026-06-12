@@ -28,138 +28,7 @@ const { data: chapters, refresh: refreshChapters } = await useFetch<
 >(`/api/novels/${novelId.value}/chapters`, { default: () => [] })
 
 if (novel.value) {
-  updateActiveTabTitle(`${novel.value.title} - AI 工作区`)
-}
-
-const activeTab = ref<'generate' | 'review'>('generate')
-
-/* ─────── Generation state ─────── */
-const fromChapter = ref(1)
-const toChapter = ref(5)
-const direction = ref('')
-const isGenerating = ref(false)
-const generationProgress = ref({ current: 0, total: 0 })
-const completedChapters = ref<number[]>([])
-const generatedChunks = ref<Map<number, string>>(new Map())
-const generatedTitles = ref<Map<number, string>>(new Map())
-let abortController: AbortController | null = null
-
-function getMaxChapter() {
-  if (!chapters.value?.length) return 1
-  return Math.max(...chapters.value.map((c) => c.chapterNumber))
-}
-
-function initDefaults() {
-  const max = getMaxChapter()
-  fromChapter.value = max + 1
-  toChapter.value = max + 5
-}
-
-initDefaults()
-
-/* ─────── Generation ─────── */
-async function startGeneration() {
-  if (isGenerating.value) return
-  if (toChapter.value - fromChapter.value + 1 > 20) {
-    message.warning('单次最多生成20章')
-    return
-  }
-
-  isGenerating.value = true
-  generationProgress.value = {
-    current: 0,
-    total: toChapter.value - fromChapter.value + 1
-  }
-  generatedChunks.value.clear()
-  generatedTitles.value.clear()
-  completedChapters.value = []
-
-  abortController = new AbortController()
-
-  try {
-    const response = await fetch('/api/ai/workspace-generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        novelId: novelId.value,
-        fromChapter: fromChapter.value,
-        toChapter: toChapter.value,
-        direction: direction.value || undefined
-      }),
-      signal: abortController.signal
-    })
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({ message: '请求失败' }))
-      throw new Error(err.message || `HTTP ${response.status}`)
-    }
-
-    const reader = response.body!.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data: ')) continue
-        try {
-          const data = JSON.parse(trimmed.slice(6))
-          if (data.type === 'outline_filled') {
-            const chs: number[] = data.chapters || []
-            if (chs.length) {
-              message.info(
-                `已自动规划第 ${Math.min(...chs)}–${Math.max(...chs)} 章大纲`
-              )
-            }
-          } else if (data.type === 'progress') {
-            generationProgress.value = {
-              current: data.completed,
-              total: data.total
-            }
-          } else if (data.type === 'chunk') {
-            const existing = generatedChunks.value.get(data.chapter) || ''
-            generatedChunks.value.set(data.chapter, existing + data.content)
-          } else if (data.type === 'title_generated') {
-            generatedTitles.value.set(data.chapter, data.title)
-          } else if (data.type === 'chapter_done') {
-            completedChapters.value.push(data.chapter)
-            if (data.title) {
-              generatedTitles.value.set(data.chapter, data.title)
-            }
-            generationProgress.value = {
-              current: data.completed,
-              total: data.total
-            }
-          } else if (data.type === 'done') {
-            message.success(`成功生成 ${data.completed} 章`)
-            await refreshChapters()
-          } else if (data.type === 'error') {
-            message.error(data.message || '生成失败')
-          } else if (data.type === 'cancelled') {
-            message.warning('生成已取消')
-          }
-        } catch {}
-      }
-    }
-  } catch (err: any) {
-    if (err.name !== 'AbortError') {
-      message.error(err.message || '生成失败')
-    }
-  } finally {
-    isGenerating.value = false
-    abortController = null
-  }
-}
-
-function cancelGeneration() {
-  abortController?.abort()
+  updateActiveTabTitle(`${novel.value.title} - AI 审核`)
 }
 
 /* ─────── Review ─────── */
@@ -488,17 +357,6 @@ function getTypeLabel(type: string) {
   return labels[type] || type
 }
 
-const progressPercent = computed(() => {
-  if (!generationProgress.value.total) return 0
-  return Math.round(
-    (generationProgress.value.current / generationProgress.value.total) * 100
-  )
-})
-
-const sortedChunks = computed(() => {
-  return [...generatedChunks.value.entries()].sort((a, b) => a[0] - b[0])
-})
-
 const issuesByChapter = computed(() => {
   const grouped: Record<number, any[]> = {}
   for (const issue of reviewIssues.value) {
@@ -537,28 +395,16 @@ const reviewPercent = computed(() => {
       </NButton>
       <div class="flex items-center gap-2">
         <Icon
-          icon="lucide:workflow"
+          icon="lucide:shield-check"
           class="w-4 h-4 text-primary-500"
         />
-        <span class="font-semibold text-(--ui-text-highlighted)"
-          >AI 工作区</span
-        >
+        <span class="font-semibold text-(--ui-text-highlighted)">AI 审核</span>
         <span
           v-if="novel"
           class="text-sm text-(--ui-text-dimmed)"
           >- {{ novel.title }}</span
         >
       </div>
-      <NTabs
-        v-model:value="activeTab"
-        type="line"
-        size="small"
-        class="ml-4"
-        style="max-width: 280px"
-      >
-        <NTab name="generate">批量生成</NTab>
-        <NTab name="review">AI 审核</NTab>
-      </NTabs>
     </div>
 
     <!-- Main layout -->
@@ -567,299 +413,122 @@ const reviewPercent = computed(() => {
       <div
         class="w-80 shrink-0 border-r border-(--ui-border) overflow-y-auto p-4 space-y-4"
       >
-        <!-- ===== Generate Sidebar ===== -->
-        <template v-if="activeTab === 'generate'">
-          <div class="space-y-3">
-            <h3 class="text-sm font-semibold text-(--ui-text-highlighted)">
-              批量生成
-            </h3>
-            <div class="grid grid-cols-2 gap-2">
-              <div>
-                <label class="text-xs text-(--ui-text-dimmed)">起始章节</label>
-                <NInputNumber
-                  v-model:value="fromChapter"
-                  :min="1"
-                  size="small"
-                  :disabled="isGenerating"
-                />
-              </div>
-              <div>
-                <label class="text-xs text-(--ui-text-dimmed)">结束章节</label>
-                <NInputNumber
-                  v-model:value="toChapter"
-                  :min="fromChapter"
-                  :max="fromChapter + 20"
-                  size="small"
-                  :disabled="isGenerating"
-                />
-              </div>
-            </div>
-            <div>
-              <label class="text-xs text-(--ui-text-dimmed)"
-                >写作方向（可选）</label
-              >
-              <NInput
-                v-model:value="direction"
-                type="textarea"
-                placeholder="描述这批章节的整体方向..."
-                :rows="2"
-                size="small"
-                :disabled="isGenerating"
-              />
-            </div>
-            <p class="text-xs text-(--ui-text-dimmed)">
-              将生成
-              {{ toChapter - fromChapter + 1 }}
-              章，每章自动获取前一章全文作为上下文。
-            </p>
-            <template v-if="isGenerating">
-              <NProgress
-                :percentage="progressPercent"
-                :show-indicator="true"
-              />
-              <p class="text-xs text-(--ui-text-dimmed)">
-                正在生成：{{ generationProgress.current }} /
-                {{ generationProgress.total }} 章
-              </p>
-            </template>
-            <div class="flex gap-2">
-              <NButton
-                v-if="!isGenerating"
-                type="primary"
-                size="small"
-                class="flex-1"
-                @click="startGeneration"
-              >
-                <template #icon><Icon icon="lucide:play" /></template>
-                开始生成
-              </NButton>
-              <NButton
-                v-if="isGenerating"
-                size="small"
-                class="flex-1"
-                @click="cancelGeneration"
-              >
-                <template #icon><Icon icon="lucide:stop-circle" /></template>
-                取消生成
-              </NButton>
-            </div>
-            <div
-              v-if="completedChapters.length"
-              class="flex flex-wrap gap-1"
-            >
-              <NTag
-                v-for="ch in completedChapters"
-                :key="ch"
-                size="tiny"
-                type="success"
-                >第{{ ch }}章</NTag
-              >
-            </div>
-          </div>
-        </template>
-
         <!-- ===== Review Sidebar ===== -->
-        <template v-if="activeTab === 'review'">
-          <div class="space-y-3">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold text-(--ui-text-highlighted)">
-                选择章节
-              </h3>
-              <NButton
-                size="tiny"
-                @click="selectRecentForReview"
-                >最近5章</NButton
-              >
-            </div>
-            <div class="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
-              <NTag
-                v-for="ch in chapters"
-                :key="ch.id"
-                :type="
-                  selectedChapterIds.includes(ch.id) ? 'primary' : 'default'
-                "
-                size="small"
-                checkable
-                :checked="selectedChapterIds.includes(ch.id)"
-                @click="
-                  () => {
-                    const idx = selectedChapterIds.indexOf(ch.id)
-                    if (idx >= 0) selectedChapterIds.splice(idx, 1)
-                    else selectedChapterIds.push(ch.id)
-                  }
-                "
-              >
-                第{{ ch.chapterNumber }}章
-              </NTag>
-            </div>
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <h3 class="text-sm font-semibold text-(--ui-text-highlighted)">
+              选择章节
+            </h3>
             <NButton
-              type="primary"
+              size="tiny"
+              @click="selectRecentForReview"
+              >最近5章</NButton
+            >
+          </div>
+          <div class="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+            <NTag
+              v-for="ch in chapters"
+              :key="ch.id"
+              :type="selectedChapterIds.includes(ch.id) ? 'primary' : 'default'"
               size="small"
-              :loading="isReviewing"
-              :disabled="isReviewing || !selectedChapterIds.length"
-              @click="startReview"
-              block
+              checkable
+              :checked="selectedChapterIds.includes(ch.id)"
+              @click="
+                () => {
+                  const idx = selectedChapterIds.indexOf(ch.id)
+                  if (idx >= 0) selectedChapterIds.splice(idx, 1)
+                  else selectedChapterIds.push(ch.id)
+                }
+              "
             >
-              {{ isReviewing ? '审核中...' : '开始审核' }}
-            </NButton>
+              第{{ ch.chapterNumber }}章
+            </NTag>
+          </div>
+          <NButton
+            type="primary"
+            size="small"
+            :loading="isReviewing"
+            :disabled="isReviewing || !selectedChapterIds.length"
+            @click="startReview"
+            block
+          >
+            {{ isReviewing ? '审核中...' : '开始审核' }}
+          </NButton>
 
-            <!-- 进度 / 统计 / 软停止 -->
+          <!-- 进度 / 统计 / 软停止 -->
+          <div
+            v-if="isReviewing || reviewStats.reviewedCount || reviewStopped"
+            class="space-y-2"
+          >
+            <div v-if="isReviewing">
+              <NProgress
+                :percentage="reviewPercent"
+                :show-indicator="false"
+                size="small"
+              />
+              <p class="text-xs text-(--ui-text-dimmed) mt-1">
+                正在审核：{{ reviewProgress.completed }} /
+                {{ reviewProgress.total }} 章
+              </p>
+            </div>
             <div
-              v-if="isReviewing || reviewStats.reviewedCount || reviewStopped"
-              class="space-y-2"
+              v-if="reviewStats.reviewedCount"
+              class="flex items-center gap-2 flex-wrap"
             >
-              <div v-if="isReviewing">
-                <NProgress
-                  :percentage="reviewPercent"
-                  :show-indicator="false"
-                  size="small"
-                />
-                <p class="text-xs text-(--ui-text-dimmed) mt-1">
-                  正在审核：{{ reviewProgress.completed }} /
-                  {{ reviewProgress.total }} 章
-                </p>
-              </div>
-              <div
-                v-if="reviewStats.reviewedCount"
-                class="flex items-center gap-2 flex-wrap"
+              <NTag
+                :type="reviewStats.totalIssues > 0 ? 'warning' : 'success'"
+                size="small"
               >
-                <NTag
-                  :type="reviewStats.totalIssues > 0 ? 'warning' : 'success'"
-                  size="small"
-                >
-                  {{
-                    reviewStats.totalIssues > 0 ?
-                      `${reviewStats.totalIssues} 个问题`
-                    : '暂无问题'
-                  }}
-                </NTag>
-                <span
-                  v-if="reviewStats.high"
-                  class="text-red-500 text-xs"
-                  >高: {{ reviewStats.high }}</span
-                >
-                <span
-                  v-if="reviewStats.medium"
-                  class="text-amber-500 text-xs"
-                  >中: {{ reviewStats.medium }}</span
-                >
-                <span
-                  v-if="reviewStats.low"
-                  class="text-blue-500 text-xs"
-                  >低: {{ reviewStats.low }}</span
-                >
-              </div>
-              <div
-                v-if="reviewStopped"
-                class="space-y-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2"
+                {{
+                  reviewStats.totalIssues > 0 ?
+                    `${reviewStats.totalIssues} 个问题`
+                  : '暂无问题'
+                }}
+              </NTag>
+              <span
+                v-if="reviewStats.high"
+                class="text-red-500 text-xs"
+                >高: {{ reviewStats.high }}</span
               >
-                <p class="text-xs text-red-500 leading-relaxed">
-                  第 {{ reviewStopped.atChapterNumber }}
-                  章发现严重(high)问题，已暂停。剩余
-                  {{ reviewStopped.pendingChapterIds.length }} 章未审。
-                </p>
-                <NButton
-                  v-if="reviewStopped.pendingChapterIds.length"
-                  size="tiny"
-                  type="primary"
-                  :loading="isReviewing"
-                  block
-                  @click="continueReview"
-                >
-                  继续审剩余 {{ reviewStopped.pendingChapterIds.length }} 章
-                </NButton>
-              </div>
+              <span
+                v-if="reviewStats.medium"
+                class="text-amber-500 text-xs"
+                >中: {{ reviewStats.medium }}</span
+              >
+              <span
+                v-if="reviewStats.low"
+                class="text-blue-500 text-xs"
+                >低: {{ reviewStats.low }}</span
+              >
+            </div>
+            <div
+              v-if="reviewStopped"
+              class="space-y-2 rounded-lg border border-red-500/30 bg-red-500/5 p-2"
+            >
+              <p class="text-xs text-red-500 leading-relaxed">
+                第 {{ reviewStopped.atChapterNumber }}
+                章发现严重(high)问题，已暂停。剩余
+                {{ reviewStopped.pendingChapterIds.length }} 章未审。
+              </p>
+              <NButton
+                v-if="reviewStopped.pendingChapterIds.length"
+                size="tiny"
+                type="primary"
+                :loading="isReviewing"
+                block
+                @click="continueReview"
+              >
+                继续审剩余 {{ reviewStopped.pendingChapterIds.length }} 章
+              </NButton>
             </div>
           </div>
-        </template>
+        </div>
       </div>
 
       <!-- ===== Right Content ===== -->
       <div class="flex-1 overflow-y-auto">
-        <!-- Generate content -->
-        <div
-          v-if="activeTab === 'generate'"
-          class="h-full"
-        >
-          <div
-            v-if="sortedChunks.length === 0 && !isGenerating"
-            class="h-full flex flex-col items-center justify-center text-(--ui-text-dimmed)"
-          >
-            <Icon
-              icon="lucide:sparkles"
-              class="w-16 h-16 mb-4 opacity-20"
-            />
-            <p class="text-sm font-medium">配置参数后点击「开始生成」</p>
-            <p class="text-xs mt-1">生成的内容将在此处实时预览</p>
-          </div>
-          <div
-            v-else
-            class="p-6 space-y-6"
-          >
-            <div
-              v-for="[chapterNum, content] in sortedChunks"
-              :key="chapterNum"
-              class="border border-(--ui-border)/30 rounded-lg overflow-hidden"
-            >
-              <div
-                class="flex items-center justify-between px-4 py-3 bg-(--ui-bg-muted)/50 border-b border-(--ui-border)/20"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="font-semibold text-(--ui-text-highlighted)"
-                    >第{{ chapterNum }}章</span
-                  >
-                  <span
-                    v-if="generatedTitles.get(chapterNum)"
-                    class="text-sm text-(--ui-text)"
-                    >{{ generatedTitles.get(chapterNum) }}</span
-                  >
-                  <NTag
-                    v-if="completedChapters.includes(chapterNum)"
-                    size="tiny"
-                    type="success"
-                    >已完成</NTag
-                  >
-                  <NTag
-                    v-else-if="
-                      isGenerating && generationProgress.current === chapterNum
-                    "
-                    size="tiny"
-                    type="warning"
-                    >生成中...</NTag
-                  >
-                </div>
-                <span class="text-xs text-(--ui-text-dimmed)"
-                  >{{ content.replace(/\s/g, '').length }} 字</span
-                >
-              </div>
-              <div class="px-4 py-3 max-h-96 overflow-y-auto">
-                <p
-                  class="text-sm leading-relaxed text-(--ui-text) whitespace-pre-wrap font-serif"
-                >
-                  {{ content }}
-                </p>
-                <div
-                  v-if="
-                    isGenerating && generationProgress.current === chapterNum
-                  "
-                  class="flex items-center gap-1 text-xs text-primary-500 mt-2"
-                >
-                  <Icon
-                    icon="lucide:loader-2"
-                    class="w-3 h-3 animate-spin"
-                  />
-                  正在生成...
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Review content -->
-        <div
-          v-if="activeTab === 'review'"
-          class="h-full"
-        >
+        <div class="h-full">
           <div
             v-if="
               !isReviewing &&

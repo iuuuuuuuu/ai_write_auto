@@ -23,6 +23,7 @@ export interface PromptChapter {
 }
 
 export interface PromptCharacter {
+  id?: number
   name: string
   description?: string | null
   traits?: string | null
@@ -64,8 +65,8 @@ function formatPromptCharacterProfile(character: PromptCharacter): string {
   ].filter(Boolean)
 
   return parts.length ?
-      `${character.name}（${parts.join('；')}）`
-    : character.name
+      `${character.id ? `角色ID ${character.id}：` : ''}${character.name}（${parts.join('；')}）`
+    : `${character.id ? `角色ID ${character.id}：` : ''}${character.name}`
 }
 
 export interface PromptPlotPoint {
@@ -930,6 +931,7 @@ export function buildStyleAnalysisPrompt(
 export function buildConsistencyCheckPrompt(context: {
   novel?: { worldSetting?: string | null }
   characters: Array<{
+    id: number
     name: string
     description?: string | null
     traits?: string | null
@@ -1090,6 +1092,59 @@ export function buildOutlineGenerationPrompt(context: {
   ]
 }
 
+export function buildChapterOutlinePrompt(context: {
+  novel: {
+    title: string
+    genre?: string | null
+    worldSetting?: string | null
+    styleGuide?: string | null
+  }
+  chapter: { chapterNumber: number; title: string }
+  characters: Array<{ name: string; description?: string | null }>
+  idea?: string | null
+  currentOutline?: string | null
+  existingOutlines?: Array<{ chapterNumber: number; description: string }>
+}): Array<{ role: 'system' | 'user'; content: string }> {
+  const worldContext =
+    context.novel.worldSetting ?
+      `\n世界观设定：${context.novel.worldSetting.slice(0, CONTEXT_TRUNCATE_WORLD)}`
+    : ''
+  const styleContext =
+    context.novel.styleGuide ?
+      `\n写作风格：${context.novel.styleGuide.slice(0, 800)}`
+    : ''
+  const characterContext =
+    context.characters.length ?
+      `\n相关角色：${context.characters
+        .slice(0, 15)
+        .map(
+          (character) =>
+            `${character.name}${character.description ? `（${character.description}）` : ''}`
+        )
+        .join('、')}`
+    : ''
+  const nearbyOutlines = (context.existingOutlines || [])
+    .filter(
+      (outline) =>
+        outline.chapterNumber !== context.chapter.chapterNumber &&
+        Math.abs(outline.chapterNumber - context.chapter.chapterNumber) <= 3
+    )
+    .sort((left, right) => left.chapterNumber - right.chapterNumber)
+    .map((outline) => `第${outline.chapterNumber}章：${outline.description}`)
+    .join('\n')
+
+  return [
+    {
+      role: 'system',
+      content: `你是一位专业的小说章节策划师。请为用户指定的单个章节生成一段可直接写入编辑器的本章大纲。\n只返回一段本章大纲文本，不要 JSON，不要 Markdown，不要章节号列表，不要解释。`
+    },
+    {
+      role: 'user',
+      content: `小说标题：${context.novel.title}\n类型：${context.novel.genre || '未指定'}${worldContext}${styleContext}${characterContext}\n章节：第${context.chapter.chapterNumber}章「${context.chapter.title}」\n当前本章大纲：${context.currentOutline || '暂无'}\n用户规划方向：${context.idea || '请按小说设定自然规划'}${nearbyOutlines ? `\n邻近章节大纲：\n${nearbyOutlines}` : ''}`
+    }
+  ]
+}
+
 export function buildChapterPlanGenerationPrompt(context: {
   novel: {
     title: string
@@ -1163,19 +1218,371 @@ export function buildChapterPlanGenerationPrompt(context: {
   return [
     {
       role: 'system',
-      content: `你是一位专业的小说章节策划师。请根据已确认的本章大纲和角色，生成「大致剧情」草案。
+      content: `你是一位专业的小说章节策划师。请根据已确认的本章大纲和角色，生成「大致剧情」计划。
 
 要求：
 - 只做剧情规划，不要写正文，不要写章节标题，不要输出解释。
 - 草案要服务本章大纲，避免加入与大纲无关的新支线。
+    - 本章必须有清晰目标、核心冲突、关键转折和读者继续读下去的兴趣钩子。
 - 必须尊重角色身份、上下级关系、时代背景和称谓礼制；宫廷/古言场景尤其注意太监、宫女、嫔妃、皇帝之间的称谓边界。
 - 如果用户已有填写内容，在不违背大纲的前提下吸收并优化。
-- 返回严格 JSON 对象，不要 markdown，不要代码块，字段固定为：
-{"goal":"本章要推进的核心目标","mustInclude":"必须出现的人物、事件、物件","avoid":"需要避免提前揭露或避免出场的内容","pacing":"情绪与节奏要求","protocol":"称谓、身份、礼制或设定补充"}`
+- 只返回严格 JSON 对象，不要 markdown，不要代码块，不要解释文字。
+- JSON 必须包含这些字段名：goal, conflict, turningPoint, beats, mustInclude, avoid, characters, characterStateDeltas, plotThreadActions, foreshadowingActions, interestHooks, continuityRisks, pacing, protocol。
+- JSON 形状必须严格匹配：{"goal":"","conflict":"","turningPoint":"","beats":[],"mustInclude":[],"avoid":[],"characters":[],"characterStateDeltas":[],"plotThreadActions":[],"foreshadowingActions":[],"interestHooks":[],"continuityRisks":[],"pacing":"","protocol":""}
+- 上面的空字符串和空数组只表示字段类型，禁止原样返回上面的空 JSON 形状。
+- goal / conflict / turningPoint / pacing / protocol 必须写成贴合本章的具体内容，禁止照抄字段说明。
+- beats / mustInclude / avoid / characterStateDeltas / interestHooks / continuityRisks 必须是字符串数组；beats 至少 3 条，每条必须是可执行剧情动作。
+- characters 只能填写下方“角色ID”里的数字；没有合适角色时填空数组，不要猜 1、2、3。
+- plotThreadActions / foreshadowingActions 当前没有提供可用 ID 时必须填空数组，不要猜 1。`
     },
     {
       role: 'user',
       content: `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}${worldContext}${styleContext}\n章节：第${chapter.chapterNumber}章「${chapter.title}」\n本章大纲：${chapterOutline}${characterContext}${outlineContext}${existingPlanContext}`
+    }
+  ]
+}
+
+export type ChapterPlanSection = 'core' | 'constraints' | 'references'
+
+export type ChapterPlanSectionContext = {
+  section: ChapterPlanSection
+  novel: {
+    title: string
+    genre?: string | null
+    worldSetting?: string | null
+    styleGuide?: string | null
+  }
+  chapter: { title: string; chapterNumber: number }
+  chapterOutline: string
+  characters: Array<PromptCharacter & { id: number }>
+  outlines: Array<{ chapterNumber: number; description: string }>
+  existingPlan?: Partial<{
+    goal: string
+    mustInclude: string
+    avoid: string
+    pacing: string
+    protocol: string
+  }>
+  existingPartialPlan?: Partial<{
+    goal: string
+    conflict: string
+    turningPoint: string
+    beats: string[]
+    interestHooks: string[]
+    mustInclude: string[]
+    avoid: string[]
+    pacing: string
+    protocol: string
+    continuityRisks: string[]
+  }>
+  plotPoints?: Array<{ id: number; description: string }>
+  foreshadowings?: Array<{ id: number; content: string }>
+}
+
+export interface ChapterPlanSectionRepairContext extends ChapterPlanSectionContext {
+  failedOutput: string
+  failureReason: string
+}
+
+export type ChapterPlanPromptFieldValueKind = 'text' | 'list' | 'numberList'
+
+export interface ChapterPlanFieldContext extends Omit<
+  ChapterPlanSectionContext,
+  'section'
+> {
+  field: string
+  label: string
+  valueKind: ChapterPlanPromptFieldValueKind
+  instruction?: string
+}
+
+export interface ChapterPlanFieldRepairContext extends ChapterPlanFieldContext {
+  failedOutput: string
+  failureReason: string
+}
+
+const CHAPTER_PLAN_SECTION_CONFIG: Record<
+  ChapterPlanSection,
+  { title: string; shape: string; fields: string[]; rules: string[] }
+> = {
+  core: {
+    title: '剧情骨架',
+    shape:
+      '{"goal":"","conflict":"","turningPoint":"","beats":[],"interestHooks":[]}',
+    fields: ['goal', 'conflict', 'turningPoint', 'beats', 'interestHooks'],
+    rules: [
+      'goal / conflict / turningPoint 必须写成贴合本章大纲的具体剧情内容。',
+      'beats 必须是字符串数组，至少 3 条，每条是可执行剧情动作。',
+      'interestHooks 必须是字符串数组，写出章末或段落中的悬念、爽点或反转。'
+    ]
+  },
+  constraints: {
+    title: '约束节奏',
+    shape:
+      '{"mustInclude":[],"avoid":[],"pacing":"","protocol":"","continuityRisks":[]}',
+    fields: ['mustInclude', 'avoid', 'pacing', 'protocol', 'continuityRisks'],
+    rules: [
+      'mustInclude / avoid / continuityRisks 必须是字符串数组。',
+      'pacing 写本章情绪与节奏要求，protocol 写称谓、身份、礼制或设定补充。',
+      '如果没有连续性风险，continuityRisks 返回空数组。'
+    ]
+  },
+  references: {
+    title: '引用状态',
+    shape:
+      '{"characters":[],"characterStateDeltas":[],"plotThreadActions":[],"foreshadowingActions":[]}',
+    fields: [
+      'characters',
+      'characterStateDeltas',
+      'plotThreadActions',
+      'foreshadowingActions'
+    ],
+    rules: [
+      'characters 只能填写下方“角色ID”里的数字；没有合适角色时填空数组。',
+      'plotThreadActions 只能填写下方“剧情线ID”里的数字；没有可用 ID 时填空数组。',
+      'foreshadowingActions 只能填写下方“伏笔ID”里的数字；没有可用 ID 时填空数组。',
+      'characterStateDeltas 必须是字符串数组，描述角色在本章计划中的状态变化。'
+    ]
+  }
+}
+
+function formatChapterPlanSectionContext(context: ChapterPlanSectionContext) {
+  const { novel, chapter, chapterOutline, characters, outlines } = context
+  const worldContext =
+    novel.worldSetting ?
+      `\n世界观设定：${novel.worldSetting.slice(0, CONTEXT_TRUNCATE_WORLD)}`
+    : ''
+  const styleContext =
+    novel.styleGuide ? `\n写作风格：${novel.styleGuide.slice(0, 800)}` : ''
+  const characterContext =
+    characters.length ?
+      `\n已确认出场角色：\n${characters
+        .slice(0, 12)
+        .map((character) => `- ${formatPromptCharacterProfile(character)}`)
+        .join('\n')}`
+    : '\n已确认出场角色：未选择。'
+  const nearbyOutlines = outlines
+    .filter(
+      (outline) => Math.abs(outline.chapterNumber - chapter.chapterNumber) <= 2
+    )
+    .map((outline) => `第${outline.chapterNumber}章：${outline.description}`)
+    .join('\n')
+  const outlineContext =
+    nearbyOutlines ? `\n邻近章节大纲：\n${nearbyOutlines}` : ''
+  const existingPlanItems = [
+    cleanChapterPlanUserText(context.existingPlan?.goal) ?
+      `本章目标：${cleanChapterPlanUserText(context.existingPlan?.goal)}`
+    : '',
+    cleanChapterPlanUserText(context.existingPlan?.mustInclude) ?
+      `必须出现：${cleanChapterPlanUserText(context.existingPlan?.mustInclude)}`
+    : '',
+    cleanChapterPlanUserText(context.existingPlan?.avoid) ?
+      `避免出现：${cleanChapterPlanUserText(context.existingPlan?.avoid)}`
+    : '',
+    cleanChapterPlanUserText(context.existingPlan?.pacing) ?
+      `情绪/节奏：${cleanChapterPlanUserText(context.existingPlan?.pacing)}`
+    : '',
+    cleanChapterPlanUserText(context.existingPlan?.protocol) ?
+      `称谓或设定补充：${cleanChapterPlanUserText(context.existingPlan?.protocol)}`
+    : ''
+  ].filter(Boolean)
+  const existingPlan =
+    existingPlanItems.length ?
+      `\n用户已填剧情要求：\n${existingPlanItems.join('\n')}`
+    : ''
+  const existingPartial = formatChapterPlanExistingPartial(
+    context.existingPartialPlan
+  )
+  const plotPointContext =
+    context.plotPoints?.length ?
+      `\n可用剧情线：\n${context.plotPoints
+        .map((point) => `- 剧情线ID ${point.id}：${point.description}`)
+        .join('\n')}`
+    : '\n可用剧情线：无。'
+  const foreshadowingContext =
+    context.foreshadowings?.length ?
+      `\n可用伏笔：\n${context.foreshadowings
+        .map(
+          (foreshadowing) =>
+            `- 伏笔ID ${foreshadowing.id}：${foreshadowing.content}`
+        )
+        .join('\n')}`
+    : '\n可用伏笔：无。'
+  const referenceContext =
+    context.section === 'references' ?
+      `${plotPointContext}${foreshadowingContext}`
+    : ''
+
+  return `小说标题：${novel.title}\n类型：${novel.genre || '未指定'}${worldContext}${styleContext}\n章节：第${chapter.chapterNumber}章「${chapter.title}」\n本章大纲：${chapterOutline}${characterContext}${outlineContext}${existingPlan}${existingPartial}${referenceContext}`
+}
+
+function cleanChapterPlanUserText(value?: string | null): string {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  if (
+    text.includes('用户要求') ||
+    text.includes('用户需要') ||
+    text.includes('我需要') ||
+    text.includes('输入框') ||
+    text.includes('不要JSON') ||
+    text.includes('不能使用JSON') ||
+    /^首先[，,]/.test(text) ||
+    /^好的[，,]/.test(text)
+  ) {
+    return ''
+  }
+  return text
+}
+
+function formatChapterPlanExistingPartial(
+  existingPartialPlan: ChapterPlanSectionContext['existingPartialPlan']
+) {
+  if (!existingPartialPlan) return ''
+  const goal = cleanChapterPlanUserText(existingPartialPlan.goal)
+  const conflict = cleanChapterPlanUserText(existingPartialPlan.conflict)
+  const turningPoint = cleanChapterPlanUserText(existingPartialPlan.turningPoint)
+  const beats = cleanChapterPlanUserTextList(existingPartialPlan.beats)
+  const interestHooks = cleanChapterPlanUserTextList(
+    existingPartialPlan.interestHooks
+  )
+  const mustInclude = cleanChapterPlanUserTextList(
+    existingPartialPlan.mustInclude
+  )
+  const avoid = cleanChapterPlanUserTextList(existingPartialPlan.avoid)
+  const pacing = cleanChapterPlanUserText(existingPartialPlan.pacing)
+  const protocol = cleanChapterPlanUserText(existingPartialPlan.protocol)
+  const continuityRisks = cleanChapterPlanUserTextList(
+    existingPartialPlan.continuityRisks
+  )
+  const lines = [
+    goal ? `本章目标：${goal}` : '',
+    conflict ? `核心冲突：${conflict}` : '',
+    turningPoint ? `关键转折：${turningPoint}` : '',
+    beats.length ? `剧情节拍：${beats.join('；')}` : '',
+    interestHooks.length ? `兴趣钩子：${interestHooks.join('；')}` : '',
+    mustInclude.length ? `必须出现：${mustInclude.join('；')}` : '',
+    avoid.length ? `避免出现：${avoid.join('；')}` : '',
+    pacing ? `情绪节奏：${pacing}` : '',
+    protocol ? `称谓设定：${protocol}` : '',
+    continuityRisks.length ? `连续性风险：${continuityRisks.join('；')}` : ''
+  ].filter(Boolean)
+
+  return lines.length ? `\n已生成计划片段：\n${lines.join('\n')}` : ''
+}
+
+function cleanChapterPlanUserTextList(values?: string[] | null): string[] {
+  return (values || []).map(cleanChapterPlanUserText).filter(Boolean)
+}
+
+function formatChapterPlanFieldContext(context: ChapterPlanFieldContext) {
+  const referenceSection: ChapterPlanSection =
+    context.valueKind === 'numberList' ? 'references' : 'core'
+  return formatChapterPlanSectionContext({
+    ...context,
+    section: referenceSection
+  })
+}
+
+export function buildChapterPlanFieldPrompt(
+  context: ChapterPlanFieldContext
+): Array<{ role: 'system' | 'user'; content: string }> {
+  const outputRule =
+    context.valueKind === 'text' ? '只输出一段可直接填入输入框的中文正文。'
+    : context.valueKind === 'list' ? '每行 1 条，每条都要可直接填入输入框。'
+    : '只输出可用 ID，每行 1 个数字；没有合适 ID 就留空。'
+  const referenceRule =
+    context.valueKind === 'numberList' ?
+      '\n- 只能使用用户消息里明确列出的真实 ID，不要猜测或补造 ID。'
+    : ''
+  const customInstruction =
+    context.instruction ? `\n- ${context.instruction}` : ''
+
+  return [
+    {
+      role: 'system',
+      content: `你是一位专业的小说章节策划师。请只生成【${context.label}】输入框的内容。
+
+要求：
+- 只输出最终要填入该输入框的内容，不要解释、分析、标题、前言或总结。
+    - 第一个字必须就是内容本身，禁止以“好的”“首先”“我需要”“用户要求”“从大纲看”等开头。
+- 不要 JSON，不要代码块，不要字段名，不要 markdown 表格。
+- ${outputRule}${referenceRule}${customInstruction}`
+    },
+    { role: 'user', content: formatChapterPlanFieldContext(context) }
+  ]
+}
+
+export function buildChapterPlanFieldRepairPrompt(
+  context: ChapterPlanFieldRepairContext
+): Array<{ role: 'system' | 'user'; content: string }> {
+  const messages = buildChapterPlanFieldPrompt(context)
+  return [
+    messages[0],
+    {
+      role: 'user',
+      content: `${formatChapterPlanFieldContext(context)}
+
+上一次输出无法写入【${context.label}】输入框。
+原因：${context.failureReason}
+上一次输出：
+${context.failedOutput.slice(0, 1200)}
+
+请重新生成，只输出【${context.label}】输入框内容。`
+    }
+  ]
+}
+
+export function buildChapterPlanSectionPrompt(
+  context: ChapterPlanSectionContext
+): Array<{ role: 'system' | 'user'; content: string }> {
+  const config = CHAPTER_PLAN_SECTION_CONFIG[context.section]
+  return [
+    {
+      role: 'system',
+      content: `你是一位专业的小说章节策划师。请只生成章节计划的「${config.title}」部分。
+
+要求：
+- 只做剧情规划，不要写正文，不要写章节标题，不要输出解释。
+- 只返回严格 JSON 对象，不要 markdown，不要代码块，不要解释文字。
+- 不要输出思考过程、分析过程、步骤说明、理由、前言或总结；第一个字符必须是 {，最后一个字符必须是 }。
+- 本轮只能返回这些字段：${config.fields.join(', ')}。
+- JSON 形状必须严格匹配：${config.shape}
+- 顶层 JSON 必须直接包含上述字段，禁止包在「${config.title}」、core、constraints、references 或其他外层字段里。
+- 上面的空字符串和空数组只表示字段类型，禁止原样返回上面的空 JSON 形状。
+- ${config.rules.join('\n- ')}`
+    },
+    { role: 'user', content: formatChapterPlanSectionContext(context) }
+  ]
+}
+
+export function buildChapterPlanSectionRepairPrompt(
+  context: ChapterPlanSectionRepairContext
+): Array<{ role: 'system' | 'user'; content: string }> {
+  const config = CHAPTER_PLAN_SECTION_CONFIG[context.section]
+  return [
+    {
+      role: 'system',
+      content: `你是一位专业的小说章节策划师。请修复章节计划的「${config.title}」部分。
+
+要求：
+- 只返回严格 JSON 对象，不要 markdown，不要代码块，不要解释文字。
+- 不要输出思考过程、分析过程、步骤说明、理由、前言或总结；第一个字符必须是 {，最后一个字符必须是 }。
+- 本轮只能返回这些字段：${config.fields.join(', ')}。
+- JSON 形状必须严格匹配：${config.shape}
+- 顶层 JSON 必须直接包含上述字段，禁止包在「${config.title}」、core、constraints、references 或其他外层字段里。
+- 不要复读空模板；必须根据本章大纲和已有上下文写出可用剧情内容。
+- ${config.rules.join('\n- ')}`
+    },
+    {
+      role: 'user',
+      content: `${formatChapterPlanSectionContext(context)}
+
+## 上一次输出存在问题
+解析错误：${context.failureReason}
+原始输出：
+${context.failedOutput.slice(0, 2000)}
+
+请只修复并返回「${config.title}」JSON。`
     }
   ]
 }

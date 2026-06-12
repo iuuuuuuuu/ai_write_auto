@@ -17,6 +17,7 @@ import {
   ConsistencyIssueSchema
 } from '../../database/entities'
 import { filterUsablePlotPoints } from '../../utils/plot-points'
+import { parseJsonArrayLike } from '../../utils/json-salvage'
 
 const reviewSchema = z.object({
   novelId: z.number().int().positive(),
@@ -48,56 +49,14 @@ interface ReviewIssue {
   fixedText?: string
 }
 
-const cleanJson = (s: string) =>
-  s.replace(/^```(?:json)?\s*\n?|\n?```\s*$/g, '').trim()
-
 /** 三级容错解析单章审核结果：贪婪数组 → 惰性数组 → 对象包装字段。 */
 function parseIssues(raw: string): {
   issues: ReviewIssue[]
   parseError?: string
 } {
-  let issues: ReviewIssue[] = []
-  let parseError: string | undefined
-  try {
-    const cleaned = cleanJson(raw)
-    const arrMatch = cleaned.match(/\[[\s\S]*\]/)
-    if (arrMatch) {
-      try {
-        issues = JSON.parse(arrMatch[0])
-      } catch {
-        const lazyMatch = cleaned.match(/\[[\s\S]*?\]/)
-        if (lazyMatch) issues = JSON.parse(lazyMatch[0])
-      }
-    }
-    if (!Array.isArray(issues) || !issues.length) {
-      try {
-        const obj = JSON.parse(cleaned)
-        if (obj && typeof obj === 'object' && !Array.isArray(obj)) {
-          for (const key of [
-            'issues',
-            'results',
-            'problems',
-            'items',
-            'data'
-          ]) {
-            if (Array.isArray((obj as any)[key])) {
-              issues = (obj as any)[key]
-              break
-            }
-          }
-        }
-      } catch {
-        /* 继续 */
-      }
-    }
-  } catch (e: any) {
-    parseError = `JSON 解析失败: ${e.message}`
-  }
-
-  if (!Array.isArray(issues)) {
-    issues = []
-    parseError = parseError || 'AI 返回结果非数组'
-  }
+  let issues = parseJsonArrayLike(raw) as ReviewIssue[]
+  let parseError: string | undefined =
+    issues.length ? undefined : 'AI 返回结果非数组'
   const beforeFilter = issues.length
   issues = issues.filter(
     (i) =>

@@ -116,6 +116,38 @@ describe('ai-generation-logs', () => {
     expect(record.durationMs).toBe(2400)
   })
 
+  it('records first response latency for non-streamed output at finish time', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-06-10T11:30:00.000Z'))
+    const { records, store } = createFakeStore()
+
+    const handle = await startAiGenerationLog({
+      store,
+      userId: 7,
+      model: 'gpt-test',
+      modelType: 'chat_completion',
+      purpose: 'generation',
+      scenario: 'worldbuilding_generate',
+      source: 'api_route',
+      endpoint: '/api/ai/worldbuilding',
+      streamed: false,
+      inputChars: 24
+    })
+
+    vi.setSystemTime(new Date('2026-06-10T11:30:01.250Z'))
+    await finishAiGenerationLog(handle, {
+      tokensInput: 320,
+      tokensOutput: 180,
+      inputChars: 24,
+      outputChars: 420
+    })
+
+    expect(records).toHaveLength(1)
+    const [record] = records
+    expect(record.firstTokenLatencyMs).toBe(1250)
+    expect(record.durationMs).toBe(1250)
+  })
+
   it('calculates estimated cost from per-1k rates', () => {
     expect(
       calculateEstimatedCost({

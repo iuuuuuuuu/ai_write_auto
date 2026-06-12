@@ -4,7 +4,7 @@ This project uses MikroORM as the database abstraction layer for SQLite/LibSQL a
 
 ## Current Baseline
 
-- Schema version: `2026.05.21.001`
+- Schema version: `2026.06.10.005`
 - Schema sync entry point: `server/database/schema-sync.ts`
 - Entity definitions: `server/database/entities/index.ts`
 - Runtime database config: `data/db-config.json`
@@ -168,6 +168,11 @@ Safety rules:
 The settings page exposes backup creation, refresh, restore actions, retained backup count, and startup auto-backup. Restore requires a confirmation dialog.
 
 ## Versions
+
+### 2026.06.10.005
+
+- Added `chapter_workflow_plans` to persist single-chapter workflow plan snapshots, validation issues, optional AI judge output, acceptance status, and linked generation tasks.
+- Added `chapter_workflow_plans` to the SQLite/MySQL migration table manifest so accepted workflow plans are copied during database migration.
 
 ### 2026.05.21.001
 

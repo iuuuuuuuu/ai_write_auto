@@ -1,5 +1,8 @@
 import { z } from 'zod'
-import { createStreamResponse } from '../../../../utils/ai-stream'
+import {
+  createStreamResponse,
+  dynamicMaxTokens
+} from '../../../../utils/ai-stream'
 import { toAiOptions } from '../../../../utils/ai-client'
 import { buildCharacterGenerationPrompt } from '../../../../utils/ai-prompts'
 import {
@@ -8,7 +11,7 @@ import {
   CharacterSchema,
   PromptTemplateSchema
 } from '../../../../database/entities'
-import { resolveUserAiConfig } from '../../../../utils/ai-configs'
+import { resolveNovelAiConfig } from '../../../../utils/ai-configs'
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -42,7 +45,12 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const aiConfig = await resolveUserAiConfig(em, auth.userId, 'extraction')
+  const aiConfig = await resolveNovelAiConfig(
+    em,
+    auth.userId,
+    novelId,
+    'generation'
+  )
 
   const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
   const outlines = await em.find(
@@ -80,13 +88,17 @@ export default defineEventHandler(async (event) => {
     {
       ...toAiOptions(aiConfig, {
         messages,
-        temperature: 0.8,
-        maxTokens: 4096,
+        temperature: 0.5,
+        thinkingEnabled: false,
+        maxTokens: dynamicMaxTokens(count * 650 + 800, {
+          floor: 2000,
+          cap: 10000
+        }),
         tracking: {
           userId: auth.userId,
           configId: aiConfig.configId,
           modelId: aiConfig.modelId,
-          purpose: 'extraction',
+          purpose: 'generation',
           scenario: 'character_generate',
           source: 'api_route',
           endpoint: '/api/novels/[id]/characters/generate',
@@ -99,6 +111,7 @@ export default defineEventHandler(async (event) => {
       userId: auth.userId,
       configId: aiConfig.configId,
       model: aiConfig.model
-    }
+    },
+    { parseJsonResult: true }
   )
 })

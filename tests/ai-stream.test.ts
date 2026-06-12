@@ -5,6 +5,8 @@ const { mockStreamAi } = vi.hoisted(() => ({ mockStreamAi: vi.fn() }))
 vi.mock('../server/utils/ai-client', () => ({ streamAi: mockStreamAi }))
 
 import {
+  collectAiStreamWithUsage,
+  createStreamResponse,
   estimateTokens,
   dynamicMaxTokens,
   trimToCompleteEnding,
@@ -26,7 +28,61 @@ const opts = {
   maxTokens: 100
 }
 
+function fakeEvent() {
+  const listeners: Record<string, Array<() => void>> = {}
+  return {
+    node: {
+      req: {
+        on(event: string, callback: () => void) {
+          listeners[event] = [...(listeners[event] || []), callback]
+        }
+      },
+      res: {
+        setHeader() {}
+      }
+    }
+  } as any
+}
+
+async function readSsePayloads(response: Response) {
+  const text = await response.text()
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => JSON.parse(line.slice(6)) as Record<string, any>)
+}
+
 describe('ai-stream', () => {
+  describe('collectAiStreamWithUsage', () => {
+    beforeEach(() => vi.clearAllMocks())
+
+    it('通过 streamAi 收集完整内容和 usage', async () => {
+      const signal = new AbortController().signal
+      mockStreamAi.mockReturnValue(
+        fakeStream([
+          { content: '第一段', done: false },
+          { content: '第二段', done: false },
+          {
+            content: '',
+            done: true,
+            usage: { prompt_tokens: 12, completion_tokens: 34 }
+          }
+        ])
+      )
+
+      const result = await collectAiStreamWithUsage(opts, signal)
+
+      expect(mockStreamAi).toHaveBeenCalledWith(
+        expect.objectContaining({ stream: true, signal })
+      )
+      expect(result.content).toBe('第一段第二段')
+      expect(result.inputTokens).toBe(12)
+      expect(result.outputTokens).toBe(34)
+      expect(result.truncated).toBe(false)
+    })
+  })
+
   describe('estimateTokens', () => {
     it('estimates Chinese text at ~1.8 tokens per char', () => {
       const text = '这是一段中文测试文本'
@@ -71,7 +127,9 @@ describe('ai-stream', () => {
     })
 
     it('整段无句末标记则原样返回', () => {
-      expect(trimToCompleteEnding('一段没有标点的连续文字')).toBe('一段没有标点的连续文字')
+      expect(trimToCompleteEnding('一段没有标点的连续文字')).toBe(
+        '一段没有标点的连续文字'
+      )
     })
 
     it('按换行切分段落，丢弃进行中的尾段', () => {
@@ -88,7 +146,12 @@ describe('ai-stream', () => {
       mockStreamAi.mockReturnValue(
         fakeStream([
           { content: '完整的一章。', done: false },
-          { content: '', done: true, truncated: false, usage: { prompt_tokens: 10, completion_tokens: 20 } }
+          {
+            content: '',
+            done: true,
+            truncated: false,
+            usage: { prompt_tokens: 10, completion_tokens: 20 }
+          }
         ])
       )
       const r = await streamWithContinuation(opts, signal, () => {})
@@ -104,14 +167,24 @@ describe('ai-stream', () => {
       let call = 0
       mockStreamAi.mockImplementation(() => {
         call++
-        return call === 1
-          ? fakeStream([
+        return call === 1 ?
+            fakeStream([
               { content: '前半段被截断', done: false },
-              { content: '', done: true, truncated: true, usage: { prompt_tokens: 10, completion_tokens: 20 } }
+              {
+                content: '',
+                done: true,
+                truncated: true,
+                usage: { prompt_tokens: 10, completion_tokens: 20 }
+              }
             ])
           : fakeStream([
               { content: '，后半段补完整。', done: false },
-              { content: '', done: true, truncated: false, usage: { prompt_tokens: 5, completion_tokens: 8 } }
+              {
+                content: '',
+                done: true,
+                truncated: false,
+                usage: { prompt_tokens: 5, completion_tokens: 8 }
+              }
             ])
       })
       const r = await streamWithContinuation(opts, signal, () => {})
@@ -129,10 +202,17 @@ describe('ai-stream', () => {
       mockStreamAi.mockImplementation(() =>
         fakeStream([
           { content: '一句完整的话。还有半句', done: false },
-          { content: '', done: true, truncated: true, usage: { prompt_tokens: 1, completion_tokens: 1 } }
+          {
+            content: '',
+            done: true,
+            truncated: true,
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          }
         ])
       )
-      const r = await streamWithContinuation(opts, signal, () => {}, { maxRounds: 2 })
+      const r = await streamWithContinuation(opts, signal, () => {}, {
+        maxRounds: 2
+      })
       expect(mockStreamAi).toHaveBeenCalledTimes(3) // 1 首轮 + 2 续写
       expect(r.rounds).toBe(2)
       expect(r.finalTruncated).toBe(true)
@@ -143,13 +223,23 @@ describe('ai-stream', () => {
       let call = 0
       mockStreamAi.mockImplementation(() => {
         call++
-        return call === 1
-          ? fakeStream([
+        return call === 1 ?
+            fakeStream([
               { content: '主体内容被截断', done: false },
-              { content: '', done: true, truncated: true, usage: { prompt_tokens: 10, completion_tokens: 20 } }
+              {
+                content: '',
+                done: true,
+                truncated: true,
+                usage: { prompt_tokens: 10, completion_tokens: 20 }
+              }
             ])
           : fakeStream([
-              { content: '', done: true, truncated: true, usage: { prompt_tokens: 2, completion_tokens: 0 } }
+              {
+                content: '',
+                done: true,
+                truncated: true,
+                usage: { prompt_tokens: 2, completion_tokens: 0 }
+              }
             ])
       })
       const r = await streamWithContinuation(opts, signal, () => {})
@@ -163,7 +253,12 @@ describe('ai-stream', () => {
       mockStreamAi.mockReturnValue(
         fakeStream([
           { content: '被截断的内容', done: false },
-          { content: '', done: true, truncated: true, usage: { prompt_tokens: 1, completion_tokens: 1 } }
+          {
+            content: '',
+            done: true,
+            truncated: true,
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          }
         ])
       )
       const r = await streamWithContinuation(opts, signal, () => {}, {
@@ -178,7 +273,12 @@ describe('ai-stream', () => {
       mockStreamAi.mockReturnValue(
         fakeStream([
           { content: '被截断的内容', done: false },
-          { content: '', done: true, truncated: true, usage: { prompt_tokens: 1, completion_tokens: 1 } }
+          {
+            content: '',
+            done: true,
+            truncated: true,
+            usage: { prompt_tokens: 1, completion_tokens: 1 }
+          }
         ])
       )
       const r = await streamWithContinuation(opts, aborted, () => {})
@@ -190,8 +290,8 @@ describe('ai-stream', () => {
       let call = 0
       mockStreamAi.mockImplementation(() => {
         call++
-        return call === 1
-          ? fakeStream([
+        return call === 1 ?
+            fakeStream([
               { content: '第一轮内容很长需要续写', done: false },
               { content: '', done: true, truncated: true }
             ])
@@ -204,6 +304,77 @@ describe('ai-stream', () => {
       await streamWithContinuation(opts, signal, (c) => seen.push(c))
       expect(seen).toContain('第一轮内容很长需要续写')
       expect(seen).toContain('第二轮补全的内容。')
+    })
+  })
+
+  describe('createStreamResponse parsedJson', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+      vi.stubGlobal('setResponseHeaders', vi.fn())
+    })
+
+    it('keeps boolean parseJsonResult compatible with array parsing', async () => {
+      mockStreamAi.mockReturnValue(
+        fakeStream([
+          { content: '[{"a":1}]', done: false },
+          {
+            content: '',
+            done: true,
+            usage: { prompt_tokens: 2, completion_tokens: 3 }
+          }
+        ])
+      )
+
+      const response = createStreamResponse(fakeEvent(), opts, undefined, {
+        parseJsonResult: true
+      })
+      const payloads = await readSsePayloads(response)
+      expect(payloads.at(-1)?.parsedJson).toEqual([{ a: 1 }])
+    })
+
+    it('can parse object payloads when requested', async () => {
+      mockStreamAi.mockReturnValue(
+        fakeStream([
+          {
+            content: '{"worldSetting":"宫廷","styleGuide":"克制"}',
+            done: false
+          },
+          {
+            content: '',
+            done: true,
+            usage: { prompt_tokens: 2, completion_tokens: 3 }
+          }
+        ])
+      )
+
+      const response = createStreamResponse(fakeEvent(), opts, undefined, {
+        parseJsonResult: 'object'
+      })
+      const payloads = await readSsePayloads(response)
+      expect(payloads.at(-1)?.parsedJson).toEqual({
+        worldSetting: '宫廷',
+        styleGuide: '克制'
+      })
+    })
+
+    it('can transform final fullContent before done payload', async () => {
+      mockStreamAi.mockReturnValue(
+        fakeStream([
+          { content: '标题：宫廷初遇', done: false },
+          {
+            content: '',
+            done: true,
+            usage: { prompt_tokens: 2, completion_tokens: 3 }
+          }
+        ])
+      )
+
+      const response = createStreamResponse(fakeEvent(), opts, undefined, {
+        transformFullContent: (content) =>
+          content.replace(/^标题[：:]/, '').trim()
+      })
+      const payloads = await readSsePayloads(response)
+      expect(payloads.at(-1)?.fullContent).toBe('宫廷初遇')
     })
   })
 })

@@ -9,6 +9,7 @@ import { h } from 'vue'
 import { Icon } from '@iconify/vue'
 import GenerationContextPreview from '../../../../components/novel/GenerationContextPreview.vue'
 import { computeLineDiff, type DiffLine } from '../../../../utils/diff'
+import { consumeSSEStream } from '../../../../utils/sse-stream'
 import {
   cleanAiChapterTitle,
   formatAiTitleUsage,
@@ -540,15 +541,53 @@ interface OutlineItem {
 
 interface ChapterPlanForm {
   goal: string
+  conflict: string
+  turningPoint: string
+  beats: string
   mustInclude: string
   avoid: string
+  interestHooks: string
   pacing: string
   protocol: string
 }
 
-interface ChapterPlanResponse {
-  plan: Partial<ChapterPlanForm>
+interface ChapterPlanIssue {
+  code: string
+  severity: 'warning' | 'error'
+  message: string
 }
+
+interface ChapterPlanResponse {
+  planId: number
+  status: 'draft' | 'needs_revision' | 'accepted' | 'rejected'
+  plan: Partial<ChapterPlanForm>
+  validation: {
+    blocked: boolean
+    issues: ChapterPlanIssue[]
+  }
+}
+
+type ChapterPlanField = keyof ChapterPlanForm
+
+interface ChapterPlanFieldResponse {
+  field: ChapterPlanField
+  value: string | string[]
+}
+
+const chapterPlanGenerationFields: Array<{
+  field: ChapterPlanField
+  label: string
+}> = [
+  { field: 'goal', label: '本章目标' },
+  { field: 'conflict', label: '核心冲突' },
+  { field: 'turningPoint', label: '关键转折' },
+  { field: 'beats', label: '剧情节拍' },
+  { field: 'mustInclude', label: '必须出现' },
+  { field: 'avoid', label: '避免出现' },
+  { field: 'interestHooks', label: '兴趣钩子' },
+  { field: 'pacing', label: '情绪/节奏' },
+  { field: 'protocol', label: '称谓或设定补充' }
+]
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败，请稍后重试'
@@ -594,6 +633,10 @@ const { data: aiConfigs } = await useFetch<
       maxTokens?: number | null
       enabled: boolean
       supportsThinking: boolean
+      thinkingEnabled: boolean
+      temperatureDefault: number
+      topPDefault: number
+      samplingLockedWhenThinking: boolean
     }
   }>
 >('/api/ai/config', { default: () => [] })
@@ -610,15 +653,26 @@ const { data: novelOutlines, refresh: refreshNovelOutlines } = await useFetch<
 })
 const { aiStatus, refreshAiStatus, isRefreshing } = useAiConnectivity()
 const { recordReading } = useReadingHistory()
+const aiStatusHydrated = ref(false)
+const aiActionAvailable = computed(
+  () => aiStatusHydrated.value && aiStatus.value.available
+)
 
 async function retryAiStatus() {
-  await refreshAiStatus(true)
+  await refreshAiStatus({
+    check: true,
+    aiConfigId: selectedAiConfigId.value
+  })
   if (aiStatus.value.available) {
     message.success('AI 已恢复连接')
   } else {
     message.warning(aiStatus.value.reason || 'AI 仍然离线，请检查模型配置')
   }
 }
+
+onMounted(() => {
+  aiStatusHydrated.value = true
+})
 
 watch(
   [() => chapter.value, () => novelInfo.value],
@@ -661,15 +715,25 @@ const generationContextPreviewRef = ref<{
 } | null>(null)
 const generationContextSelection = ref<GenerationContextSelection | null>(null)
 const generationContextReady = ref(false)
+const refreshingGenerationContext = ref(false)
 const chapterOutlineDraft = ref('')
 const outlineIdea = ref('')
 const generatingChapterOutline = ref(false)
 const savingChapterOutline = ref(false)
 const generatingChapterPlan = ref(false)
+const acceptingChapterPlan = ref(false)
+const acceptedWorkflowPlanId = ref<number | null>(null)
+const currentWorkflowPlanId = ref<number | null>(null)
+const chapterPlanIssues = ref<ChapterPlanIssue[]>([])
+const chapterPlanBlocked = ref(false)
 const chapterPlanForm = reactive<ChapterPlanForm>({
   goal: '',
+  conflict: '',
+  turningPoint: '',
+  beats: '',
   mustInclude: '',
   avoid: '',
+  interestHooks: '',
   pacing: '',
   protocol: ''
 })
@@ -1250,6 +1314,10 @@ watch(
     serverUpdatedAt.value = chapter.value?.updatedAt || null
     if (newId !== oldId) {
       await setEditorMarkdown(content.value)
+      currentWorkflowPlanId.value = null
+      resetAcceptedChapterPlan()
+      chapterPlanIssues.value = []
+      chapterPlanBlocked.value = false
     }
     nextTick(detectCharactersFromContent)
     scrollCurrentChapterIntoView()
@@ -1284,10 +1352,12 @@ function toggleChapterCharacter(characterId: number) {
   if (next.has(characterId)) next.delete(characterId)
   else next.add(characterId)
   selectedCharacterIds.value = next
+  resetAcceptedChapterPlan()
 }
 
 function applyDetectedCharacters() {
   selectedCharacterIds.value = new Set(detectedCharacterIds.value)
+  resetAcceptedChapterPlan()
 }
 
 async function saveChapterCharacters() {
@@ -1415,26 +1485,104 @@ function insertCharacterName(name: string) {
   insertEditorTextAtCursor(name)
   nextTick(() => focusEditor())
 }
+
+function formatSamplingNumber(
+  value: number | string | null | undefined,
+  fallback: number
+) {
+  const parsed = typeof value === 'number' ? value : Number(value ?? fallback)
+  return Number.isFinite(parsed) ? parsed.toFixed(2) : fallback.toFixed(2)
+}
+
 const generationModelOptions = computed(() =>
   aiConfigs.value
     .filter(
       (config) =>
         config.purpose === 'generation' && config.enabled && config.operational
     )
-    .map((config) => ({
-      label:
-        config.isDefault ?
-          `${config.aiModel.name} · 默认`
-        : config.aiModel.name,
-      value: config.id,
-      description: config.aiModel.model
-    }))
+    .map((config) => {
+      const thinkingEnabled =
+        config.aiModel.supportsThinking &&
+        (config.thinkingEnabled ?? config.aiModel.thinkingEnabled)
+      const samplingLocked =
+        thinkingEnabled && config.aiModel.samplingLockedWhenThinking
+      const temperature =
+        samplingLocked ? config.aiModel.temperatureDefault : config.temperature
+      const topP = samplingLocked ? config.aiModel.topPDefault : config.topP
+      return {
+        label:
+          config.isDefault ?
+            `内容生成 / ${config.aiModel.name} · 默认`
+          : `内容生成 / ${config.aiModel.name}`,
+        value: config.id,
+        description: `${config.aiModel.model} · ${samplingLocked ? '模型默认采样' : '自定义采样'} · T ${formatSamplingNumber(temperature, 0.7)} · top_p ${formatSamplingNumber(topP, 0.95)}`,
+        isDefault: config.isDefault
+      }
+    })
 )
 
 const selectedGenerationConfig = computed(() => {
   return aiConfigs.value.find(
     (config) => config.id === selectedAiConfigId.value
   )
+})
+
+const selectedGenerationConfigBadge = computed(() => {
+  const config = selectedGenerationConfig.value
+  if (!config) return '内容生成'
+  return config.isDefault ? '内容生成 · 默认' : '内容生成'
+})
+
+const selectedGenerationConfigTitle = computed(() => {
+  const config = selectedGenerationConfig.value
+  if (!config) return '选择生成配置'
+  return config.aiModel?.name || '未知模型'
+})
+
+const selectedGenerationThinkingEnabled = computed(() => {
+  const config = selectedGenerationConfig.value
+  if (!config?.aiModel.supportsThinking) return false
+  return generateThinkingEnabled.value ?? config.aiModel.thinkingEnabled
+})
+
+const generationSamplingLocked = computed(() => {
+  const config = selectedGenerationConfig.value
+  return Boolean(
+    config?.aiModel.supportsThinking &&
+    config.aiModel.samplingLockedWhenThinking &&
+    selectedGenerationThinkingEnabled.value
+  )
+})
+
+const effectiveGenerationTemperature = computed(() => {
+  const config = selectedGenerationConfig.value
+  if (generationSamplingLocked.value) {
+    return config?.aiModel.temperatureDefault ?? 0.7
+  }
+  return generateTemperature.value
+})
+
+const effectiveGenerationTopP = computed(() => {
+  const config = selectedGenerationConfig.value
+  if (generationSamplingLocked.value) {
+    return config?.aiModel.topPDefault ?? 0.95
+  }
+  return generateTopP.value
+})
+
+const selectedGenerationConfigMeta = computed(() => {
+  const config = selectedGenerationConfig.value
+  if (!config) return '请到 AI 配置添加可用的内容生成配置'
+  const samplingText =
+    generationSamplingLocked.value ? '模型默认采样' : '自定义采样'
+  return `${config.aiModel.model} · ${samplingText} · T ${formatSamplingNumber(effectiveGenerationTemperature.value, 0.7)} · top_p ${formatSamplingNumber(effectiveGenerationTopP.value, 0.95)}`
+})
+
+const generationSamplingHint = computed(() => {
+  if (generationSamplingLocked.value) {
+    return '当前模型启用思考时会使用模型默认采样值，温度和 top_p 覆盖不会生效。'
+  }
+  return '控制候选词采样范围'
 })
 
 const reasoningOptions = [
@@ -1488,21 +1636,35 @@ watch(
       !selectedAiConfigId.value ||
       !options.some((option) => option.value === selectedAiConfigId.value)
     ) {
-      selectedAiConfigId.value = options[0]?.value
+      selectedAiConfigId.value =
+        options.find((option) => option.isDefault)?.value ?? options[0]?.value
     }
   },
   { immediate: true }
 )
 
-watch(selectedGenerationConfig, (config) => {
-  if (config) {
-    generateTemperature.value = parseFloat(config.temperature ?? '0.7')
-    generateTopP.value = parseFloat(config.topP ?? '0.95')
-    generateThinkingEnabled.value = config.thinkingEnabled ?? null
-    generateReasoningEffort.value = config.reasoningEffort ?? null
-    generateMaxTokens.value = config.aiModel?.maxTokens || 4096
-  }
-})
+watch(
+  selectedAiConfigId,
+  async (configId) => {
+    if (!configId || aiStatus.value.available || isRefreshing.value) return
+    await refreshAiStatus({ aiConfigId: configId })
+  },
+  { immediate: true }
+)
+
+watch(
+  selectedGenerationConfig,
+  (config) => {
+    if (config) {
+      generateTemperature.value = parseFloat(config.temperature ?? '0.7')
+      generateTopP.value = parseFloat(config.topP ?? '0.95')
+      generateThinkingEnabled.value = config.thinkingEnabled ?? null
+      generateReasoningEffort.value = config.reasoningEffort ?? null
+      generateMaxTokens.value = config.aiModel?.maxTokens || 4096
+    }
+  },
+  { immediate: true }
+)
 
 const presetCycle = [
   { name: '创意', temperature: 0.9 },
@@ -1554,13 +1716,26 @@ const currentPresetLabel = computed(() => {
   return '精确'
 })
 
+const samplingSummaryLabel = computed(() => {
+  if (generationSamplingLocked.value) {
+    return `模型默认 · T ${formatSamplingNumber(effectiveGenerationTemperature.value, 0.7)}`
+  }
+  return `${currentPresetLabel.value} · T ${formatSamplingNumber(generateTemperature.value, 0.7)}`
+})
+
 function cyclePreset() {
+  if (generationSamplingLocked.value) return
   const currentIdx = allPresets.value.findIndex(
     (p) => p.name === currentPresetLabel.value
   )
   const next = allPresets.value[(currentIdx + 1) % allPresets.value.length]!
   generateTemperature.value = next.temperature
-  if (next.configId && aiConfigs.value.find((c) => c.id === next.configId)) {
+  if (
+    next.configId &&
+    generationModelOptions.value.some(
+      (option) => option.value === next.configId
+    )
+  ) {
     selectedAiConfigId.value = next.configId
   }
 }
@@ -1644,8 +1819,12 @@ function getCharacterNote(character: {
 const chapterPlanDirection = computed(() => {
   return [
     ['本章目标', chapterPlanForm.goal],
+    ['核心冲突', chapterPlanForm.conflict],
+    ['关键转折', chapterPlanForm.turningPoint],
+    ['剧情节拍', chapterPlanForm.beats],
     ['必须出现', chapterPlanForm.mustInclude],
     ['避免出现', chapterPlanForm.avoid],
+    ['兴趣钩子', chapterPlanForm.interestHooks],
     ['情绪/节奏', chapterPlanForm.pacing],
     ['称谓或设定补充', chapterPlanForm.protocol]
   ]
@@ -1656,6 +1835,23 @@ const chapterPlanDirection = computed(() => {
     .filter(Boolean)
     .join('\n')
 })
+
+watch(
+  () => [
+    chapterPlanForm.goal,
+    chapterPlanForm.conflict,
+    chapterPlanForm.turningPoint,
+    chapterPlanForm.beats,
+    chapterPlanForm.mustInclude,
+    chapterPlanForm.avoid,
+    chapterPlanForm.interestHooks,
+    chapterPlanForm.pacing,
+    chapterPlanForm.protocol
+  ],
+  () => {
+    resetAcceptedChapterPlan()
+  }
+)
 
 const generationContextSummary = computed(() => {
   const direction = [generateDirection.value, chapterPlanDirection.value]
@@ -1701,6 +1897,7 @@ function applyRecommendedCharacters() {
     next.add(character.id)
   }
   selectedCharacterIds.value = next
+  resetAcceptedChapterPlan()
 }
 
 function buildFinalGenerateDirection() {
@@ -1720,6 +1917,10 @@ async function nextGenerateWizardStep() {
   if (generateWizardStep.value === 2) {
     await saveChapterCharacters()
   }
+  if (generateWizardStep.value === 3 && !acceptedWorkflowPlanId.value) {
+    message.warning('请先生成并验收大致剧情计划')
+    return
+  }
   generateWizardStep.value = Math.min(generateWizardStep.value + 1, 5)
   if (generateWizardStep.value === 4) {
     generationContextReady.value = false
@@ -1728,66 +1929,91 @@ async function nextGenerateWizardStep() {
   }
 }
 
+async function ensureGenerationContextReady() {
+  if (generationContextReady.value) return true
+  generationContextReady.value = false
+  refreshingGenerationContext.value = true
+  try {
+    await nextTick()
+    await generationContextPreviewRef.value?.fetchPreview()
+    return generationContextReady.value
+  } finally {
+    refreshingGenerationContext.value = false
+  }
+}
+
 function prevGenerateWizardStep() {
   generateWizardStep.value = Math.max(generateWizardStep.value - 1, 1)
 }
 
-function parseOutlineResult(raw: string) {
-  try {
-    const match = raw.match(/\[[\s\S]*\]/)
-    const parsed = JSON.parse(match ? match[0] : raw) as unknown
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map((item) => {
-        const record =
-          item && typeof item === 'object' ?
-            (item as Record<string, unknown>)
-          : {}
-        return {
-          chapterNumber: Number(record.chapterNumber),
-          description: String(record.description || '').trim()
-        }
-      })
-      .filter((item) => item.chapterNumber > 0 && item.description)
-  } catch {
-    return []
+function splitPlanLines(value: string) {
+  return value
+    .split(/\n|；|;/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function joinPlanText(value: unknown) {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .join('\n')
   }
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function buildEditableChapterPlan() {
+  return {
+    goal: chapterPlanForm.goal.trim(),
+    conflict: chapterPlanForm.conflict.trim(),
+    turningPoint: chapterPlanForm.turningPoint.trim(),
+    beats: splitPlanLines(chapterPlanForm.beats),
+    mustInclude: splitPlanLines(chapterPlanForm.mustInclude),
+    avoid: splitPlanLines(chapterPlanForm.avoid),
+    characters: Array.from(selectedCharacterIds.value),
+    characterStateDeltas: [],
+    plotThreadActions: [],
+    foreshadowingActions: [],
+    interestHooks: splitPlanLines(chapterPlanForm.interestHooks),
+    continuityRisks: [],
+    pacing: chapterPlanForm.pacing.trim(),
+    protocol: chapterPlanForm.protocol.trim()
+  }
+}
+
+function resetAcceptedChapterPlan() {
+  acceptedWorkflowPlanId.value = null
 }
 
 async function generateSingleChapterOutline() {
   if (!chapter.value) return
   generatingChapterOutline.value = true
   try {
-    const response = await fetch('/api/ai/generate-outline', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const description = await consumeSSEStream({
+      url: '/api/ai/generate-chapter-outline',
+      body: {
         novelId: novelId.value,
+        chapterId: chapter.value.id,
         idea:
           outlineIdea.value.trim() ||
           chapterOutlineDraft.value.trim() ||
           `请按小说设定规划第 ${chapter.value.chapterNumber} 章`,
-        chapterCount: 3,
-        startChapter: chapter.value.chapterNumber,
+        currentOutline: chapterOutlineDraft.value.trim() || undefined,
         existingOutlines: sortedNovelOutlines.value.map((outline) => ({
           chapterNumber: outline.chapterNumber,
           description: outline.description
         })),
         aiConfigId: selectedAiConfigId.value
-      })
+      }
     })
-    if (!response.ok) throw new Error(`生成大纲失败：${response.status}`)
-    const text = await response.text()
-    const items = parseOutlineResult(text)
-    const matched =
-      items.find(
-        (item) => item.chapterNumber === chapter.value?.chapterNumber
-      ) || items[0]
-    if (!matched?.description) {
-      message.warning('AI 未返回可用的本章大纲')
+    const trimmedDescription = description.trim()
+    if (!trimmedDescription) {
+      message.warning('AI 未返回有效大纲文本')
       return
     }
-    chapterOutlineDraft.value = matched.description
+    chapterOutlineDraft.value = trimmedDescription
     applyRecommendedCharacters()
   } catch (error: unknown) {
     message.error(getErrorMessage(error))
@@ -1842,39 +2068,113 @@ async function generateChapterPlan() {
     return
   }
   generatingChapterPlan.value = true
+  currentWorkflowPlanId.value = null
+  acceptedWorkflowPlanId.value = null
+  chapterPlanIssues.value = []
+  chapterPlanBlocked.value = false
   try {
+    for (const { field, label } of chapterPlanGenerationFields) {
+      const response = await $fetch<ChapterPlanFieldResponse>(
+        '/api/ai/generate-chapter-plan-field',
+        {
+          method: 'POST',
+          body: {
+            novelId: novelId.value,
+            chapterId: chapterId.value,
+            chapterOutline: outline,
+            field,
+            characterIds: Array.from(selectedCharacterIds.value),
+            existingPlan: { ...chapterPlanForm },
+            aiConfigId: selectedAiConfigId.value
+          }
+        }
+      )
+      chapterPlanForm[response.field] = joinPlanText(response.value)
+      message.info(`${label}已生成`)
+    }
+
     const response = await $fetch<ChapterPlanResponse>(
-      '/api/ai/generate-chapter-plan',
+      '/api/ai/save-chapter-plan',
       {
         method: 'POST',
         body: {
           novelId: novelId.value,
           chapterId: chapterId.value,
-          chapterOutline: outline,
-          characterIds: Array.from(selectedCharacterIds.value),
-          existingPlan: { ...chapterPlanForm },
-          aiConfigId: selectedAiConfigId.value
+          plan: buildEditableChapterPlan()
         }
       }
     )
     const plan = response.plan || {}
-    for (const key of [
-      'goal',
-      'mustInclude',
-      'avoid',
-      'pacing',
-      'protocol'
-    ] as const) {
-      const value = plan[key]
-      if (typeof value === 'string' && value.trim()) {
-        chapterPlanForm[key] = value.trim()
-      }
+    chapterPlanForm.goal = joinPlanText(plan.goal)
+    chapterPlanForm.conflict = joinPlanText(plan.conflict)
+    chapterPlanForm.turningPoint = joinPlanText(plan.turningPoint)
+    chapterPlanForm.beats = joinPlanText(plan.beats)
+    chapterPlanForm.mustInclude = joinPlanText(plan.mustInclude)
+    chapterPlanForm.avoid = joinPlanText(plan.avoid)
+    chapterPlanForm.interestHooks = joinPlanText(plan.interestHooks)
+    chapterPlanForm.pacing = joinPlanText(plan.pacing)
+    chapterPlanForm.protocol = joinPlanText(plan.protocol)
+    currentWorkflowPlanId.value = response.planId
+    acceptedWorkflowPlanId.value =
+      response.status === 'accepted' ? response.planId : null
+    chapterPlanIssues.value = response.validation.issues
+    chapterPlanBlocked.value = response.validation.blocked
+    if (response.validation.blocked) {
+      message.warning('剧情计划存在阻断问题，请修订后再验收')
+    } else if (response.validation.issues.length) {
+      message.warning('剧情计划已生成，但有可改进项，请确认后验收')
+    } else {
+      message.success('已生成大致剧情计划，请验收后继续')
     }
-    message.success('已生成大致剧情草案')
   } catch (error: unknown) {
     message.error(getErrorMessage(error))
   } finally {
     generatingChapterPlan.value = false
+  }
+}
+
+async function acceptCurrentChapterPlan() {
+  if (!currentWorkflowPlanId.value) {
+    message.warning('请先生成大致剧情计划')
+    return
+  }
+  const editablePlan = buildEditableChapterPlan()
+  if (
+    !editablePlan.goal ||
+    !editablePlan.conflict ||
+    !editablePlan.turningPoint
+  ) {
+    message.warning('请补全本章目标、核心冲突和关键转折')
+    return
+  }
+  if (!editablePlan.beats.length) {
+    message.warning('请至少填写一个剧情节拍')
+    return
+  }
+  acceptingChapterPlan.value = true
+  try {
+    const response = await $fetch<{
+      planId: number
+      status: 'accepted'
+      plan: Partial<ChapterPlanForm>
+    }>('/api/ai/accept-chapter-plan', {
+      method: 'POST',
+      body: {
+        novelId: novelId.value,
+        chapterId: chapterId.value,
+        planId: currentWorkflowPlanId.value,
+        plan: editablePlan
+      }
+    })
+    acceptedWorkflowPlanId.value = response.planId
+    chapterPlanIssues.value = []
+    chapterPlanBlocked.value = false
+    message.success('剧情计划已验收')
+  } catch (error: unknown) {
+    acceptedWorkflowPlanId.value = null
+    message.error(getErrorMessage(error))
+  } finally {
+    acceptingChapterPlan.value = false
   }
 }
 
@@ -2309,6 +2609,19 @@ function forceSaveContent() {
 
 async function generateChapter() {
   if (!selectedAiConfigId.value) return
+  if (!chapterOutlineDraft.value.trim()) {
+    message.warning('请先确认本章大纲')
+    return
+  }
+  if (!aiActionAvailable.value) {
+    message.warning(aiStatus.value.reason || 'AI 当前不可用，请检查模型配置')
+    return
+  }
+  const contextReady = await ensureGenerationContextReady()
+  if (!contextReady) {
+    message.warning('上下文仍在刷新，请稍后再试')
+    return
+  }
 
   const finalDirection = buildFinalGenerateDirection()
 
@@ -2335,8 +2648,13 @@ async function generateChapter() {
         chapterOutline: chapterOutlineDraft.value.trim() || undefined,
         direction: finalDirection || undefined,
         aiConfigId: selectedAiConfigId.value,
-        temperature: generateTemperature.value,
-        topP: generateTopP.value,
+        workflowPlanId: acceptedWorkflowPlanId.value || undefined,
+        ...(generationSamplingLocked.value ?
+          {}
+        : {
+            temperature: generateTemperature.value,
+            topP: generateTopP.value
+          }),
         thinkingEnabled: generateThinkingEnabled.value ?? undefined,
         reasoningEffort: generateReasoningEffort.value ?? undefined,
         maxTokens: generateMaxTokens.value,
@@ -2443,8 +2761,12 @@ async function regenerateWithFeedback() {
         previousResult: previousGeneratedContent.value,
         feedback: feedbackText.value,
         aiConfigId: selectedAiConfigId.value,
-        temperature: generateTemperature.value,
-        topP: generateTopP.value,
+        ...(generationSamplingLocked.value ?
+          {}
+        : {
+            temperature: generateTemperature.value,
+            topP: generateTopP.value
+          }),
         thinkingEnabled: generateThinkingEnabled.value ?? undefined,
         reasoningEffort: generateReasoningEffort.value ?? undefined,
         maxTokens: generateMaxTokens.value
@@ -2744,17 +3066,17 @@ onBeforeUnmount(() => {
 <template>
   <div
     ref="pageRootRef"
-    class="flex flex-col overflow-hidden bg-(--ui-bg) transition-all duration-300"
+    class="chapter-editor-shell flex flex-col overflow-hidden transition-all duration-300"
     :class="{ 'fixed inset-0 z-50': zenMode }"
     :style="{ height: zenMode ? '100vh' : pageHeight }"
   >
     <!-- Toolbar -->
     <div
       v-if="!zenMode"
-      class="flex items-center gap-2.5 px-4 h-12 border-b border-(--ui-border) bg-(--ui-bg-muted) backdrop-blur-md shrink-0"
+      class="flex h-12 shrink-0 items-center gap-2.5 border-b border-sky-100/80 bg-white/86 px-4 shadow-[0_12px_34px_-28px_rgba(14,116,144,0.65)] backdrop-blur-md dark:border-sky-900/45 dark:bg-slate-950/76"
     >
       <button
-        class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-muted) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+        class="flex h-8 w-8 items-center justify-center rounded-lg text-sky-600 transition-colors hover:bg-sky-50 hover:text-sky-700 dark:text-sky-300 dark:hover:bg-sky-950/70 dark:hover:text-sky-200"
         @click="navigateTo(getNovelTo())"
       >
         <Icon
@@ -2787,18 +3109,18 @@ onBeforeUnmount(() => {
               @click="startEditTitle"
             >
               <p
-                class="truncate text-sm font-medium text-(--ui-text-highlighted) group-hover:text-(--ui-primary) transition-colors"
+                class="truncate text-sm font-medium text-slate-800 transition-colors group-hover:text-sky-600 dark:text-slate-100 dark:group-hover:text-sky-300"
               >
                 Ch.{{ chapter?.chapterNumber }} {{ chapter?.title }}
               </p>
               <Icon
                 icon="lucide:pencil"
-                class="w-3 h-3 shrink-0 text-(--ui-text-dimmed) group-hover:text-(--ui-primary) transition-colors"
+                class="h-3 w-3 shrink-0 text-sky-300 transition-colors group-hover:text-sky-500 dark:text-sky-700 dark:group-hover:text-sky-300"
               />
             </div>
             <button
               type="button"
-              class="shrink-0 ml-1 p-0.5 rounded text-(--ui-text-dimmed) hover:text-primary-500 transition-colors"
+              class="ml-1 shrink-0 rounded p-0.5 text-sky-400 transition-colors hover:text-sky-600 dark:text-sky-600 dark:hover:text-sky-300"
               :class="{ 'animate-spin': regeneratingTitle }"
               title="AI 生成章节名"
               :disabled="regeneratingTitle"
@@ -2838,7 +3160,7 @@ onBeforeUnmount(() => {
       <!-- Left group: AI model + features -->
       <div class="flex items-center gap-1">
         <div
-          v-if="!aiStatus.available"
+          v-if="!aiActionAvailable"
           class="flex items-center gap-1.5 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-600"
           title="AI 当前不可用，仍可手动写作"
         >
@@ -2868,61 +3190,95 @@ onBeforeUnmount(() => {
           size="small"
         >
           <button
-            class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+            class="flex h-9 min-w-0 max-w-56 items-center gap-2 rounded-lg border border-sky-100/80 bg-sky-50/70 px-2.5 text-left text-[11px] text-sky-700 transition-colors hover:border-sky-200 hover:bg-white dark:border-sky-900/50 dark:bg-sky-950/45 dark:text-sky-200 dark:hover:bg-sky-950/75"
+            :title="selectedGenerationConfigMeta"
           >
-            <Icon
-              icon="lucide:cpu"
-              class="w-3 h-3"
-            />
-            <span class="max-w-20 truncate">{{
-              selectedGenerationConfig?.aiModel?.name || '模型'
-            }}</span>
+            <span
+              class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-white text-sky-500 shadow-sm dark:bg-sky-950/70 dark:text-sky-300"
+            >
+              <Icon
+                icon="lucide:wand-sparkles"
+                class="h-3.5 w-3.5"
+              />
+            </span>
+            <span class="min-w-0 leading-tight">
+              <span
+                class="block text-[9px] font-medium text-sky-500 dark:text-sky-400"
+              >
+                {{ selectedGenerationConfigBadge }}
+              </span>
+              <span
+                class="block truncate text-[11px] font-semibold text-sky-800 dark:text-sky-100"
+              >
+                {{ selectedGenerationConfigTitle }}
+              </span>
+            </span>
           </button>
         </NPopselect>
         <button
-          class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
-          :title="t('chapter.generateDialog.temperatureHint')"
+          class="flex h-9 items-center gap-2 rounded-lg border border-cyan-100/80 bg-cyan-50/60 px-2.5 text-left text-[11px] text-cyan-700 transition-colors hover:border-cyan-200 hover:bg-white disabled:cursor-not-allowed disabled:opacity-70 dark:border-cyan-900/50 dark:bg-cyan-950/35 dark:text-cyan-200 dark:hover:bg-cyan-950/60"
+          :disabled="generationSamplingLocked"
+          :title="`${generationSamplingHint}；${selectedGenerationConfigMeta}`"
           @click="cyclePreset"
         >
           <Icon
             icon="lucide:thermometer"
-            class="w-3 h-3"
+            class="h-3.5 w-3.5 shrink-0"
           />
-          <span>{{ currentPresetLabel }}</span>
+          <span class="leading-tight">
+            <span
+              class="block text-[9px] font-medium text-cyan-500 dark:text-cyan-400"
+            >
+              采样
+            </span>
+            <span
+              class="block whitespace-nowrap text-[11px] font-semibold text-cyan-800 dark:text-cyan-100"
+            >
+              {{ samplingSummaryLabel }}
+            </span>
+          </span>
         </button>
-        <div class="w-px h-4 bg-(--ui-border)/40 mx-0.5" />
-        <NButton
-          size="tiny"
-          quaternary
-          :loading="suggestionsLoading"
-          :disabled="!aiStatus.available || !content"
+        <div class="mx-0.5 h-4 w-px bg-sky-100 dark:bg-sky-900/60" />
+        <button
+          type="button"
+          class="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] text-sky-500 transition-colors hover:bg-sky-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-45 dark:text-sky-400 dark:hover:bg-sky-950/70 dark:hover:text-sky-200"
+          :disabled="!aiActionAvailable || !content"
           title="AI 建议"
           @click="startSuggestionMode"
         >
-          <template #icon>
-            <Icon icon="lucide:message-square-diff" />
-          </template>
-        </NButton>
-        <NButton
-          size="tiny"
-          quaternary
-          :loading="generating"
-          :disabled="!aiStatus.available"
+          <Icon
+            :icon="
+              suggestionsLoading ? 'lucide:loader-2' : (
+                'lucide:message-square-diff'
+              )
+            "
+            class="h-3.5 w-3.5"
+            :class="{ 'animate-spin': suggestionsLoading }"
+          />
+          <span class="hidden xl:inline">建议</span>
+        </button>
+        <button
+          type="button"
+          class="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] text-sky-500 transition-colors hover:bg-sky-50 hover:text-sky-700 disabled:cursor-not-allowed disabled:opacity-45 dark:text-sky-400 dark:hover:bg-sky-950/70 dark:hover:text-sky-200"
+          :disabled="!aiActionAvailable"
           title="AI 生成"
           @click="openGenerateWizard"
         >
-          <template #icon>
-            <Icon icon="lucide:sparkles" />
-          </template>
-        </NButton>
+          <Icon
+            :icon="generating ? 'lucide:loader-2' : 'lucide:sparkles'"
+            class="h-3.5 w-3.5"
+            :class="{ 'animate-spin': generating }"
+          />
+          <span class="hidden xl:inline">生成</span>
+        </button>
       </div>
 
-      <div class="w-px h-4 bg-(--ui-border)/40" />
+      <div class="h-4 w-px bg-sky-100 dark:bg-sky-900/60" />
 
       <!-- Right group: Utility actions -->
       <div class="flex items-center gap-1">
         <button
-          class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+          class="flex h-8 w-8 items-center justify-center rounded-lg text-sky-500 transition-colors hover:bg-sky-50 hover:text-sky-700 dark:text-sky-400 dark:hover:bg-sky-950/70 dark:hover:text-sky-200"
           title="快捷键（Ctrl + /）"
           @click="showShortcutHelp = true"
         >
@@ -2932,7 +3288,7 @@ onBeforeUnmount(() => {
           />
         </button>
         <button
-          class="flex items-center justify-center w-8 h-8 rounded-lg text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-elevated)/80 transition-colors"
+          class="flex h-8 w-8 items-center justify-center rounded-lg text-sky-500 transition-colors hover:bg-sky-50 hover:text-sky-700 dark:text-sky-400 dark:hover:bg-sky-950/70 dark:hover:text-sky-200"
           title="禅模式"
           @click="zenMode = true"
         >
@@ -3049,32 +3405,34 @@ onBeforeUnmount(() => {
         >
           <button
             class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+            :title="selectedGenerationConfigMeta"
           >
             <Icon
-              icon="lucide:cpu"
+              icon="lucide:wand-sparkles"
               class="w-3 h-3"
             />
-            <span class="max-w-20 truncate">{{
-              selectedGenerationConfig?.aiModel?.name || '模型'
+            <span class="max-w-28 truncate">{{
+              selectedGenerationConfigTitle
             }}</span>
           </button>
         </NPopselect>
         <button
-          class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
-          :title="t('chapter.generateDialog.temperatureHint')"
+          class="flex items-center gap-1 h-7 px-2 rounded-md text-[11px] text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) disabled:cursor-not-allowed disabled:opacity-60 transition-colors"
+          :disabled="generationSamplingLocked"
+          :title="`${generationSamplingHint}；${selectedGenerationConfigMeta}`"
           @click="cyclePreset"
         >
           <Icon
             icon="lucide:thermometer"
             class="w-3 h-3"
           />
-          <span>{{ currentPresetLabel }}</span>
+          <span>{{ samplingSummaryLabel }}</span>
         </button>
         <div class="w-px h-4 bg-(--ui-border)/30 mx-0.5" />
         <NButton
           size="tiny"
           quaternary
-          :disabled="!aiStatus.available"
+          :disabled="!aiActionAvailable"
           title="AI 续写 (Ctrl+J)"
           @click="doAiAction('continue')"
         >
@@ -3085,7 +3443,7 @@ onBeforeUnmount(() => {
           size="tiny"
           quaternary
           :loading="generating"
-          :disabled="!aiStatus.available"
+          :disabled="!aiActionAvailable"
           title="AI 生成"
           @click="openGenerateWizard"
         >
@@ -3182,16 +3540,16 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Main Area: Sidebar + Editor -->
-    <div class="flex-1 min-h-0 overflow-hidden flex">
+    <div class="flex min-h-0 flex-1 overflow-hidden">
       <!-- Left Sidebar -->
       <div
         v-if="!zenMode"
-        class="shrink-0 border-r border-(--ui-border) bg-(--ui-bg-muted) flex flex-col transition-all duration-200"
+        class="flex shrink-0 flex-col border-r border-sky-100/80 bg-[linear-gradient(180deg,rgba(239,248,255,0.96)_0%,rgba(225,242,255,0.9)_100%)] shadow-[18px_0_42px_-34px_rgba(14,116,144,0.78)] backdrop-blur transition-all duration-200 dark:border-sky-900/45 dark:bg-[linear-gradient(180deg,rgba(15,23,42,0.82)_0%,rgba(8,28,48,0.74)_100%)]"
         :class="sidebarCollapsed ? 'w-10' : 'w-64'"
       >
         <!-- Collapse toggle -->
         <button
-          class="flex items-center justify-center h-8 border-b border-(--ui-border) text-(--ui-text-dimmed) hover:text-(--ui-text) hover:bg-(--ui-bg-muted) transition-colors"
+          class="flex h-8 items-center justify-center border-b border-sky-100/80 text-sky-500 transition-colors hover:bg-white/75 hover:text-sky-700 dark:border-sky-900/45 dark:text-sky-400 dark:hover:bg-sky-950/55 dark:hover:text-sky-200"
           @click="sidebarCollapsed = !sidebarCollapsed"
         >
           <Icon
@@ -3207,57 +3565,59 @@ onBeforeUnmount(() => {
         <template v-if="!sidebarCollapsed">
           <!-- 自定义 Tabs -->
           <div class="px-2 pt-2 pb-1">
-            <div class="flex rounded-md bg-(--ui-bg-muted)/60 p-0.5 gap-0.5">
+            <div
+              class="flex gap-0.5 rounded-lg border border-sky-100/80 bg-white/75 p-0.5 shadow-inner shadow-sky-100/50 dark:border-sky-900/45 dark:bg-slate-900/62 dark:shadow-none"
+            >
               <button
-                class="flex-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
+                class="flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors"
                 :class="
                   leftSidebarTab === 'chapters' ?
-                    'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
-                  : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+                    'bg-white text-sky-700 shadow-sm shadow-sky-100/80 dark:bg-sky-950/70 dark:text-sky-200 dark:shadow-none'
+                  : 'text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200'
                 "
                 @click="leftSidebarTab = 'chapters'"
               >
                 章节
               </button>
               <button
-                class="flex-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
+                class="flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors"
                 :class="
                   leftSidebarTab === 'characters' ?
-                    'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
-                  : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+                    'bg-white text-sky-700 shadow-sm shadow-sky-100/80 dark:bg-sky-950/70 dark:text-sky-200 dark:shadow-none'
+                  : 'text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200'
                 "
                 @click="leftSidebarTab = 'characters'"
               >
                 角色
               </button>
               <button
-                class="flex-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
+                class="flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors"
                 :class="
                   leftSidebarTab === 'versions' ?
-                    'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
-                  : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+                    'bg-white text-sky-700 shadow-sm shadow-sky-100/80 dark:bg-sky-950/70 dark:text-sky-200 dark:shadow-none'
+                  : 'text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200'
                 "
                 @click="leftSidebarTab = 'versions'"
               >
                 版本
               </button>
               <button
-                class="flex-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-colors"
+                class="flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors"
                 :class="
                   leftSidebarTab === 'notes' ?
-                    'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
-                  : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+                    'bg-white text-sky-700 shadow-sm shadow-sky-100/80 dark:bg-sky-950/70 dark:text-sky-200 dark:shadow-none'
+                  : 'text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200'
                 "
                 @click="leftSidebarTab = 'notes'"
               >
                 笔记
               </button>
               <button
-                class="px-2 py-1 text-[11px] font-medium rounded-md transition-colors relative"
+                class="relative rounded-md px-2 py-1 text-[11px] font-medium transition-colors"
                 :class="
                   leftSidebarTab === 'checks' ?
-                    'bg-(--ui-bg-elevated) text-(--ui-text-highlighted) shadow-sm'
-                  : 'text-(--ui-text-muted) hover:text-(--ui-text)'
+                    'bg-white text-sky-700 shadow-sm shadow-sky-100/80 dark:bg-sky-950/70 dark:text-sky-200 dark:shadow-none'
+                  : 'text-slate-500 hover:text-sky-700 dark:text-slate-400 dark:hover:text-sky-200'
                 "
                 @click="leftSidebarTab = 'checks'"
               >
@@ -3331,11 +3691,11 @@ onBeforeUnmount(() => {
                 v-for="(ch, index) in filteredChapters"
                 :key="ch.id"
                 :ref="(el) => setChapterButtonRef(ch.id, el)"
-                class="w-full flex items-center rounded-md px-2.5 py-2 text-xs transition-colors group"
+                class="group flex w-full items-center rounded-lg px-2.5 py-2 text-xs transition-colors"
                 :class="
                   ch.id === chapterId ?
-                    'bg-(--ui-primary-100)/10 text-(--ui-primary-600) dark:text-(--ui-primary-400) border border-(--ui-primary-500)/20'
-                  : 'hover:bg-(--ui-bg-elevated)/60 text-(--ui-text-muted)'
+                    'border border-sky-200/80 bg-white text-sky-700 shadow-sm shadow-sky-100/80 dark:border-sky-800/70 dark:bg-sky-950/40 dark:text-sky-200 dark:shadow-none'
+                  : 'text-slate-500 hover:bg-white/70 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-sky-950/35 dark:hover:text-slate-100'
                 "
               >
                 <button
@@ -3347,8 +3707,8 @@ onBeforeUnmount(() => {
                       class="text-[10px] font-mono shrink-0 w-8 text-right"
                       :class="
                         ch.id === chapterId ?
-                          'text-(--ui-primary-500)'
-                        : 'text-(--ui-text-dimmed)'
+                          'text-sky-500'
+                        : 'text-slate-400 dark:text-slate-500'
                       "
                       >Ch.{{ index + 1 }}</span
                     >
@@ -3807,8 +4167,8 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Editor -->
-      <div class="flex-1 min-w-0 min-h-0 flex flex-col bg-(--ui-bg)">
-        <div class="flex-1 min-h-0 flex flex-col px-2 pt-2 pb-1.5 sm:px-3">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col bg-transparent">
+        <div class="flex min-h-0 flex-1 flex-col px-3 pb-2 pt-3 sm:px-5">
           <div
             class="editor-canvas flex-1 min-h-0 w-full overflow-y-auto"
             style="height: 0"
@@ -3816,7 +4176,7 @@ onBeforeUnmount(() => {
           >
             <div
               ref="editorContainerRef"
-              class="chapter-writing-surface w-full min-h-full milkdown-editor px-4 py-4 text-(--ui-text) text-[15px] leading-[1.9] sm:px-6 sm:py-5"
+              class="chapter-writing-surface min-h-full w-full px-4 py-4 text-[15px] leading-[1.9] text-slate-800 sm:px-6 sm:py-5 dark:text-slate-100"
               :class="zenMode ? 'min-h-screen leading-[2.05] lg:px-[6vw]' : ''"
               @mousedown="onEditorMousedown"
               :style="
@@ -4108,25 +4468,23 @@ onBeforeUnmount(() => {
         <!-- Editor Status Bar -->
         <div
           v-if="!zenMode"
-          class="shrink-0 flex flex-col"
+          class="flex shrink-0 flex-col border-t border-sky-100/70 bg-white/70 backdrop-blur dark:border-sky-900/45 dark:bg-slate-950/55"
         >
           <!-- Progress indicator -->
           <div
-            class="relative h-[2px] mx-4 rounded-full bg-(--ui-border)/30 overflow-hidden"
+            class="relative mx-4 h-[2px] overflow-hidden rounded-full bg-sky-100 dark:bg-sky-950"
           >
             <div
               class="absolute inset-y-0 left-0 rounded-full transition-all duration-700 ease-out"
               :class="
-                chapterProgress >= 100 ? 'bg-emerald-400' : (
-                  'bg-(--ui-primary)/60'
-                )
+                chapterProgress >= 100 ? 'bg-emerald-400' : 'bg-sky-500/70'
               "
               :style="{ width: `${chapterProgress}%` }"
             />
           </div>
           <!-- Status bar content -->
           <div
-            class="flex items-center justify-between px-4 py-2 text-[11px] text-(--ui-text-dimmed)/70"
+            class="flex items-center justify-between px-4 py-2 text-[11px] text-slate-500 dark:text-slate-400"
           >
             <!-- Left: Writing status -->
             <div class="flex items-center gap-2.5">
@@ -4145,7 +4503,7 @@ onBeforeUnmount(() => {
                 />
                 {{ saveStatusText }}
               </span>
-              <span class="w-px h-3 bg-(--ui-border)/40" />
+              <span class="h-3 w-px bg-sky-100 dark:bg-sky-900/60" />
               <span class="tabular-nums"
                 >{{ currentWordCount.toLocaleString() }} 字</span
               >
@@ -4162,7 +4520,7 @@ onBeforeUnmount(() => {
               >
               <span
                 v-else
-                class="text-(--ui-text-dimmed)/50"
+                class="text-slate-400 dark:text-slate-500"
                 >{{ currentWordCount }} / {{ chapterGoal }} 字</span
               >
             </div>
@@ -4234,7 +4592,7 @@ onBeforeUnmount(() => {
                 size="tiny"
                 quaternary
                 :loading="expandingOrRewriting"
-                :disabled="!aiStatus.available"
+                :disabled="!aiActionAvailable"
                 @click="doAiAction('continue')"
               >
                 <template #icon>
@@ -4251,7 +4609,7 @@ onBeforeUnmount(() => {
                 size="tiny"
                 quaternary
                 :loading="expandingOrRewriting"
-                :disabled="!aiStatus.available"
+                :disabled="!aiActionAvailable"
                 @click="doAiAction('continue', '自然收尾')"
               >
                 <template #icon>
@@ -4292,7 +4650,7 @@ onBeforeUnmount(() => {
               size="tiny"
               quaternary
               :loading="expandingOrRewriting"
-              :disabled="!aiStatus.available"
+              :disabled="!aiActionAvailable"
             >
               <template #icon>
                 <Icon icon="lucide:scissors" />
@@ -4323,19 +4681,22 @@ onBeforeUnmount(() => {
       v-model:show="showGenerateDialog"
       preset="card"
       :title="t('chapter.generateDialog.title')"
-      style="max-width: 480px"
+      style="width: min(92vw, 720px); max-width: 92vw"
     >
       <div class="space-y-4">
-        <NSteps
-          :current="generateWizardStep"
-          size="small"
-        >
-          <NStep title="本章大纲" />
-          <NStep title="推荐角色" />
-          <NStep title="大致剧情" />
-          <NStep title="上下文确认" />
-          <NStep title="生成正文" />
-        </NSteps>
+        <div class="w-full overflow-x-auto pb-1">
+          <NSteps
+            :current="generateWizardStep"
+            size="small"
+            class="min-w-[560px]"
+          >
+            <NStep title="本章大纲" />
+            <NStep title="推荐角色" />
+            <NStep title="大致剧情" />
+            <NStep title="上下文确认" />
+            <NStep title="生成正文" />
+          </NSteps>
+        </div>
         <NAlert
           type="info"
           :show-icon="false"
@@ -4366,7 +4727,7 @@ onBeforeUnmount(() => {
             <NButton
               type="primary"
               :loading="generatingChapterOutline"
-              :disabled="!aiStatus.available"
+              :disabled="!aiActionAvailable"
               @click="generateSingleChapterOutline"
             >
               生成/重拟大纲
@@ -4486,18 +4847,51 @@ onBeforeUnmount(() => {
         >
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="text-xs text-gray-400">
-              根据已确认大纲和角色生成可编辑的剧情草案
+              根据已确认大纲和角色生成可验收的剧情计划
             </span>
-            <NButton
-              type="primary"
-              secondary
-              :loading="generatingChapterPlan"
-              :disabled="!aiStatus.available || !chapterOutlineDraft.trim()"
-              @click="generateChapterPlan"
-            >
-              AI 生成大致剧情
-            </NButton>
+            <div class="flex flex-wrap gap-2">
+              <NButton
+                type="primary"
+                secondary
+                :loading="generatingChapterPlan"
+                :disabled="!aiActionAvailable || !chapterOutlineDraft.trim()"
+                @click="generateChapterPlan"
+              >
+                AI 生成计划
+              </NButton>
+              <NButton
+                type="success"
+                :loading="acceptingChapterPlan"
+                :disabled="!currentWorkflowPlanId || chapterPlanBlocked"
+                @click="acceptCurrentChapterPlan"
+              >
+                验收计划
+              </NButton>
+            </div>
           </div>
+          <NAlert
+            v-if="acceptedWorkflowPlanId"
+            type="success"
+            :show-icon="false"
+          >
+            剧情计划已验收，正文生成将使用该计划快照。
+          </NAlert>
+          <NAlert
+            v-else-if="chapterPlanIssues.length"
+            :type="chapterPlanBlocked ? 'error' : 'warning'"
+            :show-icon="false"
+          >
+            <div class="space-y-1 text-xs">
+              <div
+                v-for="issue in chapterPlanIssues"
+                :key="`${issue.code}-${issue.message}`"
+              >
+                {{ issue.severity === 'error' ? '阻断' : '提醒' }}：{{
+                  issue.message
+                }}
+              </div>
+            </div>
+          </NAlert>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <NFormItem label="本章目标">
               <NInput
@@ -4505,6 +4899,30 @@ onBeforeUnmount(() => {
                 type="textarea"
                 placeholder="这一章要推进什么"
                 :rows="2"
+              />
+            </NFormItem>
+            <NFormItem label="核心冲突">
+              <NInput
+                v-model:value="chapterPlanForm.conflict"
+                type="textarea"
+                placeholder="本章的两难、对抗或压力来源"
+                :rows="2"
+              />
+            </NFormItem>
+            <NFormItem label="关键转折">
+              <NInput
+                v-model:value="chapterPlanForm.turningPoint"
+                type="textarea"
+                placeholder="本章中读者预期被改变的节点"
+                :rows="2"
+              />
+            </NFormItem>
+            <NFormItem label="剧情节拍">
+              <NInput
+                v-model:value="chapterPlanForm.beats"
+                type="textarea"
+                placeholder="一行一个节拍，按正文推进顺序填写"
+                :rows="3"
               />
             </NFormItem>
             <NFormItem label="必须出现">
@@ -4520,6 +4938,14 @@ onBeforeUnmount(() => {
                 v-model:value="chapterPlanForm.avoid"
                 type="textarea"
                 placeholder="不要提前揭露、不要让谁出场"
+                :rows="2"
+              />
+            </NFormItem>
+            <NFormItem label="兴趣钩子">
+              <NInput
+                v-model:value="chapterPlanForm.interestHooks"
+                type="textarea"
+                placeholder="反转、悬念、爽点或章末牵引"
                 :rows="2"
               />
             </NFormItem>
@@ -4552,6 +4978,7 @@ onBeforeUnmount(() => {
             :chapter-id="chapterId"
             :chapter-outline="chapterOutlineDraft"
             :direction="buildFinalGenerateDirection()"
+            :ai-config-id="selectedAiConfigId"
             :skill-ids="selectedSkillIds"
             @update:selection="generationContextSelection = $event"
             @ready-change="generationContextReady = $event"
@@ -4693,33 +5120,57 @@ onBeforeUnmount(() => {
           <NFormItem :label="t('chapter.generateDialog.temperature')">
             <div class="w-full space-y-1">
               <NSlider
-                v-model:value="generateTemperature"
+                :value="
+                  generationSamplingLocked ?
+                    effectiveGenerationTemperature
+                  : generateTemperature
+                "
                 :min="0"
                 :max="2"
                 :step="0.1"
+                :disabled="generationSamplingLocked"
                 :tooltip="true"
+                @update:value="generateTemperature = $event"
               />
               <div class="flex justify-between text-xs text-gray-400">
-                <span>{{ t('chapter.generateDialog.temperatureHint') }}</span>
-                <span>{{ generateTemperature }}</span>
+                <span>{{ generationSamplingHint }}</span>
+                <span>{{
+                  formatSamplingNumber(effectiveGenerationTemperature, 0.7)
+                }}</span>
               </div>
             </div>
           </NFormItem>
           <NFormItem label="top_p">
             <div class="w-full space-y-1">
               <NSlider
-                v-model:value="generateTopP"
+                :value="
+                  generationSamplingLocked ?
+                    effectiveGenerationTopP
+                  : generateTopP
+                "
                 :min="0.01"
                 :max="1"
                 :step="0.01"
+                :disabled="generationSamplingLocked"
                 :tooltip="true"
+                @update:value="generateTopP = $event"
               />
               <div class="flex justify-between text-xs text-gray-400">
-                <span>控制候选词采样范围</span>
-                <span>{{ generateTopP }}</span>
+                <span>{{ generationSamplingHint }}</span>
+                <span>{{
+                  formatSamplingNumber(effectiveGenerationTopP, 0.95)
+                }}</span>
               </div>
             </div>
           </NFormItem>
+          <NAlert
+            v-if="generationSamplingLocked"
+            type="warning"
+            :show-icon="false"
+          >
+            当前模型启用思考时不支持自定义 temperature /
+            top_p，生成时会跟随模型配置里的默认采样值。
+          </NAlert>
           <div
             v-if="selectedGenerationConfig?.aiModel.supportsThinking"
             class="grid gap-3 sm:grid-cols-2"
@@ -4799,7 +5250,8 @@ onBeforeUnmount(() => {
               v-if="generateWizardStep < 5"
               type="primary"
               :disabled="
-                generateWizardStep === 1 && !chapterOutlineDraft.trim()
+                (generateWizardStep === 1 && !chapterOutlineDraft.trim()) ||
+                (generateWizardStep === 3 && !acceptedWorkflowPlanId)
               "
               :loading="generateWizardStep === 2 && savingChapterCharacters"
               @click="nextGenerateWizardStep"
@@ -4811,10 +5263,10 @@ onBeforeUnmount(() => {
               type="primary"
               :disabled="
                 !selectedAiConfigId ||
-                !aiStatus.available ||
-                !chapterOutlineDraft.trim() ||
-                !generationContextReady
+                !aiActionAvailable ||
+                !chapterOutlineDraft.trim()
               "
+              :loading="refreshingGenerationContext"
               @click="generateChapter"
             >
               <template #icon><Icon icon="lucide:sparkles" /></template>
@@ -5134,13 +5586,46 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.chapter-editor-shell {
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.52) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px),
+    linear-gradient(135deg, #f2f9ff 0%, #e3f2ff 48%, #f8fcff 100%);
+  background-size:
+    28px 28px,
+    28px 28px,
+    auto;
+}
+
+:root.dark .chapter-editor-shell {
+  background:
+    linear-gradient(rgba(56, 189, 248, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.04) 1px, transparent 1px),
+    linear-gradient(135deg, #08111f 0%, #0b1d32 46%, #07111f 100%);
+  background-size:
+    28px 28px,
+    28px 28px,
+    auto;
+}
+
 .editor-canvas {
-  background: var(--ui-bg-elevated);
-  border-radius: 0.75rem;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.54),
+      rgba(240, 249, 255, 0.34)
+    ),
+    linear-gradient(
+      135deg,
+      rgba(186, 230, 253, 0.28),
+      rgba(224, 242, 254, 0.18)
+    );
+  border-radius: 1rem;
+  padding: clamp(0.75rem, 1.6vw, 1.35rem);
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--ui-border) 50%, transparent),
-    0 2px 8px rgba(0, 0, 0, 0.03),
-    0 4px 20px rgba(0, 0, 0, 0.02);
+    inset 0 0 0 1px rgba(186, 230, 253, 0.62),
+    0 16px 48px rgba(14, 116, 144, 0.08),
+    0 2px 10px rgba(15, 23, 42, 0.04);
   transition:
     box-shadow 0.35s cubic-bezier(0.16, 1, 0.3, 1),
     border-color 0.35s cubic-bezier(0.16, 1, 0.3, 1);
@@ -5149,28 +5634,58 @@ onBeforeUnmount(() => {
 
 .editor-canvas:focus-within {
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--ui-primary) 20%, var(--ui-border)),
-    0 2px 8px rgba(0, 0, 0, 0.04),
-    0 8px 28px rgba(0, 0, 0, 0.05);
+    inset 0 0 0 1px rgba(56, 189, 248, 0.7),
+    0 18px 54px rgba(14, 116, 144, 0.12),
+    0 4px 16px rgba(15, 23, 42, 0.05);
 }
 
 :root.dark .editor-canvas {
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.74), rgba(8, 28, 48, 0.54)),
+    linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(30, 41, 59, 0.24));
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--ui-border) 60%, transparent),
-    0 2px 8px rgba(0, 0, 0, 0.12),
-    0 4px 20px rgba(0, 0, 0, 0.08);
+    inset 0 0 0 1px rgba(14, 165, 233, 0.22),
+    0 16px 48px rgba(0, 0, 0, 0.24),
+    0 2px 10px rgba(0, 0, 0, 0.18);
 }
 
 :root.dark .editor-canvas:focus-within {
   box-shadow:
-    0 0 0 1px color-mix(in oklch, var(--ui-primary) 25%, var(--ui-border)),
-    0 2px 8px rgba(0, 0, 0, 0.15),
-    0 8px 28px rgba(0, 0, 0, 0.12);
+    inset 0 0 0 1px rgba(56, 189, 248, 0.38),
+    0 18px 54px rgba(0, 0, 0, 0.28),
+    0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 .chapter-writing-surface {
   display: flex;
   flex-direction: column;
+  max-width: 62rem;
+  margin: 0 auto;
+  min-height: 100%;
+  border: 1px solid rgba(186, 230, 253, 0.72);
+  border-radius: 0.9rem;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(255, 255, 255, 0.94)
+    ),
+    linear-gradient(90deg, rgba(14, 165, 233, 0.1) 0 1px, transparent 1px 100%);
+  box-shadow:
+    0 18px 42px rgba(14, 116, 144, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.86) inset;
+}
+
+:root.dark .chapter-writing-surface {
+  border-color: rgba(14, 165, 233, 0.24);
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96),
+    rgba(15, 23, 42, 0.9)
+  );
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.24),
+    0 1px 0 rgba(125, 211, 252, 0.08) inset;
 }
 
 .chapter-writing-surface :deep(.milkdown) {
@@ -5262,6 +5777,11 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .editor-canvas {
     border-radius: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .chapter-writing-surface {
+    border-radius: 0.65rem;
   }
 
   .chapter-writing-surface :deep(.ProseMirror) {

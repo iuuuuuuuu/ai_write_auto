@@ -1,5 +1,7 @@
 import type { EntityManager } from '@mikro-orm/core'
-import { callAiWithUsage, toAiOptions } from '../utils/ai-client'
+import { toAiOptions } from '../utils/ai-client'
+import { collectAiStreamWithUsage } from '../utils/ai-stream'
+import { parseJsonArrayLike } from '../utils/json-salvage'
 import {
   resolvePlanningConfig,
   isAgenticRetrievalEnabled
@@ -74,7 +76,7 @@ function notesToItems(notes: ContentContext[]): RagContextItem[] {
   }))
 }
 
-/** 与 workspace-generate 的 mergeRagContexts 同构的去重键，保证合并行为一致 */
+/** RAG 笔记去重键，保证不同来源合并后的上下文不重复注入。 */
 function dedupeNotes(items: RagContextItem[]): RagContextItem[] {
   const seen = new Set<string>()
   const out: RagContextItem[] = []
@@ -88,21 +90,10 @@ function dedupeNotes(items: RagContextItem[]): RagContextItem[] {
 }
 
 function parseQueryList(raw: string): string[] {
-  try {
-    const m = raw.match(/\[[\s\S]*\]/)
-    const arr = JSON.parse(m?.[0] || raw)
-    if (Array.isArray(arr)) {
-      return arr
-        .filter(
-          (x): x is string => typeof x === 'string' && x.trim().length > 0
-        )
-        .map((x) => x.trim())
-        .slice(0, MAX_QUERIES + 1)
-    }
-  } catch {
-    /* 非法 JSON → 调用方回落 seed-only */
-  }
-  return []
+  return parseJsonArrayLike(raw)
+    .filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+    .map((x) => x.trim())
+    .slice(0, MAX_QUERIES + 1)
 }
 
 /** query-only：用廉价模型（决策③）产出检索 query 列表。失败/无配置返回 []（调用方回落 seed）。 */
@@ -121,12 +112,12 @@ async function planQueries(
     foreshadowingTitles: opts.foreshadowingTitles,
     recentSummaries: opts.recentSummaries
   })
-  const res = await callAiWithUsage(
+  const res = await collectAiStreamWithUsage(
     toAiOptions(cfg, {
       messages,
       temperature: 0.3,
       maxTokens: 256,
-      // query 生成是廉价结构化调用：关掉思考链，省 token、降首 token 延迟（与标题生成一致）。
+      // query 生成是廉价结构化调用：关掉思考链，省 token、降首 token 延迟。
       // 不支持这些字段的供应商会忽略它们；真失败则上层回落 seed-only。
       extraBody: { enable_thinking: false, reasoning_effort: 'low' },
       tracking: {

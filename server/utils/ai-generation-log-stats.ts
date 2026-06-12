@@ -1,4 +1,7 @@
-import { AiGenerationLogSchema } from '../database/entities'
+import {
+  AiGenerationLogSchema,
+  type AiGenerationLog
+} from '../database/entities'
 import type { PaginationParams } from './pagination'
 
 export interface AiGenerationLogQueryFilters {
@@ -132,6 +135,42 @@ function normalizeCost(value: unknown): string {
   return toFiniteNumber(value).toFixed(6)
 }
 
+function estimateTokensByChars(chars: number): number {
+  return Math.ceil(Math.max(0, chars) * 1.8)
+}
+
+function needsTokenEstimate(
+  log: Pick<
+    AiGenerationLog,
+    | 'status'
+    | 'modelType'
+    | 'streamed'
+    | 'tokensInput'
+    | 'tokensOutput'
+    | 'inputChars'
+    | 'outputChars'
+  >
+): boolean {
+  return (
+    String(log.status ?? '') === 'success' &&
+    String(log.modelType ?? '') === 'chat_completion' &&
+    Boolean(log.streamed) &&
+    toFiniteNumber(log.tokensInput) === 0 &&
+    toFiniteNumber(log.tokensOutput) === 0 &&
+    (toFiniteNumber(log.inputChars) > 0 || toFiniteNumber(log.outputChars) > 0)
+  )
+}
+
+function resolveTokenValue(
+  tokenValue: unknown,
+  charValue: unknown,
+  shouldEstimate: boolean
+): number {
+  const tokens = toFiniteNumber(tokenValue)
+  if (tokens || !shouldEstimate) return tokens
+  return estimateTokensByChars(toFiniteNumber(charValue))
+}
+
 function getEntityId(entity: unknown): number | null {
   if (entity === null || entity === undefined) return null
   if (typeof entity === 'number') return entity
@@ -206,8 +245,12 @@ export function normalizeAiGenerationLogSummaryRow(
   const successCalls = toFiniteNumber(row?.success_calls)
   const failedCalls = toFiniteNumber(row?.failed_calls)
   const cancelledCalls = toFiniteNumber(row?.cancelled_calls)
-  const totalInputTokens = toFiniteNumber(row?.total_input_tokens)
-  const totalOutputTokens = toFiniteNumber(row?.total_output_tokens)
+  const totalInputTokens =
+    toFiniteNumber(row?.total_input_tokens) +
+    estimateTokensByChars(toFiniteNumber(row?.fallback_input_chars))
+  const totalOutputTokens =
+    toFiniteNumber(row?.total_output_tokens) +
+    estimateTokensByChars(toFiniteNumber(row?.fallback_output_chars))
 
   return {
     totalCalls,
@@ -235,8 +278,12 @@ function normalizeAggregateRow(
 ): AiGenerationLogAggregateRow {
   const totalCalls = toFiniteNumber(row.total_calls)
   const successCalls = toFiniteNumber(row.success_calls)
-  const totalInputTokens = toFiniteNumber(row.total_input_tokens)
-  const totalOutputTokens = toFiniteNumber(row.total_output_tokens)
+  const totalInputTokens =
+    toFiniteNumber(row.total_input_tokens) +
+    estimateTokensByChars(toFiniteNumber(row.fallback_input_chars))
+  const totalOutputTokens =
+    toFiniteNumber(row.total_output_tokens) +
+    estimateTokensByChars(toFiniteNumber(row.fallback_output_chars))
   const key = String(row.key ?? labelFallback)
 
   return {
@@ -283,7 +330,29 @@ function buildOrmFilter(filters: AiGenerationLogQueryFilters) {
   return filter
 }
 
-function toItem(log: Record<string, unknown>): AiGenerationLogItem {
+function toItem(log: AiGenerationLog): AiGenerationLogItem {
+  const shouldEstimateTokens = needsTokenEstimate(log)
+  const tokensInput = resolveTokenValue(
+    log.tokensInput,
+    log.inputChars,
+    shouldEstimateTokens
+  )
+  const tokensOutput = resolveTokenValue(
+    log.tokensOutput,
+    log.outputChars,
+    shouldEstimateTokens
+  )
+  const durationMs = nullableNumber(log.durationMs)
+  const firstTokenLatencyMs =
+    nullableNumber(log.firstTokenLatencyMs) ??
+    ((
+      String(log.status ?? '') === 'success' &&
+      !Boolean(log.streamed) &&
+      toFiniteNumber(log.outputChars) > 0
+    ) ?
+      durationMs
+    : null)
+
   return {
     id: toFiniteNumber(log.id),
     userId: getEntityId(log.user),
@@ -300,8 +369,8 @@ function toItem(log: Record<string, unknown>): AiGenerationLogItem {
     errorMessage:
       typeof log.errorMessage === 'string' ? log.errorMessage : null,
     errorType: typeof log.errorType === 'string' ? log.errorType : null,
-    tokensInput: toFiniteNumber(log.tokensInput),
-    tokensOutput: toFiniteNumber(log.tokensOutput),
+    tokensInput,
+    tokensOutput,
     estimatedCost:
       typeof log.estimatedCost === 'string' ? log.estimatedCost : null,
     inputChars: toFiniteNumber(log.inputChars),
@@ -310,8 +379,8 @@ function toItem(log: Record<string, unknown>): AiGenerationLogItem {
     startedAt: log.startedAt instanceof Date ? log.startedAt : new Date(),
     firstTokenAt: log.firstTokenAt instanceof Date ? log.firstTokenAt : null,
     endedAt: log.endedAt instanceof Date ? log.endedAt : null,
-    firstTokenLatencyMs: nullableNumber(log.firstTokenLatencyMs),
-    durationMs: nullableNumber(log.durationMs),
+    firstTokenLatencyMs,
+    durationMs,
     streamed: Boolean(log.streamed),
     requestId: typeof log.requestId === 'string' ? log.requestId : null,
     parentRequestId:
@@ -343,6 +412,8 @@ async function querySummary(
             COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END),0) as cancelled_calls,
             COALESCE(SUM(tokens_input),0) as total_input_tokens,
             COALESCE(SUM(tokens_output),0) as total_output_tokens,
+            COALESCE(SUM(CASE WHEN status = 'success' AND model_type = 'chat_completion' AND streamed = 1 AND tokens_input = 0 AND tokens_output = 0 THEN input_chars ELSE 0 END),0) as fallback_input_chars,
+            COALESCE(SUM(CASE WHEN status = 'success' AND model_type = 'chat_completion' AND streamed = 1 AND tokens_input = 0 AND tokens_output = 0 THEN output_chars ELSE 0 END),0) as fallback_output_chars,
             COALESCE(SUM(CASE WHEN estimated_cost IS NOT NULL THEN CAST(estimated_cost AS REAL) ELSE 0 END),0) as total_cost,
             COALESCE(SUM(CASE WHEN model_type = 'embedding' THEN 1 ELSE 0 END),0) as embedding_calls,
             COALESCE(SUM(CASE WHEN model_type = 'embedding' THEN input_chars ELSE 0 END),0) as embedding_input_chars,
@@ -373,6 +444,8 @@ async function queryAggregate(
             COALESCE(SUM(CASE WHEN l.status = 'failed' THEN 1 ELSE 0 END),0) as failed_calls,
             COALESCE(SUM(l.tokens_input),0) as total_input_tokens,
             COALESCE(SUM(l.tokens_output),0) as total_output_tokens,
+            COALESCE(SUM(CASE WHEN l.status = 'success' AND l.model_type = 'chat_completion' AND l.streamed = 1 AND l.tokens_input = 0 AND l.tokens_output = 0 THEN l.input_chars ELSE 0 END),0) as fallback_input_chars,
+            COALESCE(SUM(CASE WHEN l.status = 'success' AND l.model_type = 'chat_completion' AND l.streamed = 1 AND l.tokens_input = 0 AND l.tokens_output = 0 THEN l.output_chars ELSE 0 END),0) as fallback_output_chars,
             COALESCE(SUM(CASE WHEN l.estimated_cost IS NOT NULL THEN CAST(l.estimated_cost AS REAL) ELSE 0 END),0) as total_cost,
             COALESCE(SUM(CASE WHEN l.model_type = 'embedding' THEN 1 ELSE 0 END),0) as embedding_calls,
             AVG(l.first_token_latency_ms) as avg_first_token_latency_ms,
@@ -426,7 +499,7 @@ export async function queryAiGenerationLogStats(
     ])
 
   return {
-    items: (logs as Array<Record<string, unknown>>).map(toItem),
+    items: logs.map((log) => toItem(log)),
     total,
     summary,
     byUser,

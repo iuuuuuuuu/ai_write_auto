@@ -46,11 +46,13 @@ const {
 
 const { confirmDelete } = useConfirmDialog()
 const { t } = useI18n()
+const { removeNovelHistory } = useReadingHistory()
 
 async function deleteNovel(novel: AdminNovelListItem) {
   const confirmed = await confirmDelete(novel.title)
   if (!confirmed) return
   await $fetch(`/api/admin/novels/${novel.id}`, { method: 'DELETE' })
+  removeNovelHistory(novel.id)
   refresh()
 }
 

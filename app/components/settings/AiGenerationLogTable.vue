@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { h } from 'vue'
 import { NTag } from 'naive-ui'
+import {
+  AI_GENERATION_MODEL_TYPE_OPTIONS,
+  getAiGenerationScenarioLabel,
+  getAiGenerationTaskTypeLabel
+} from '~/utils/ai-generation-labels'
 
 interface AiGenerationLogItem {
   id: number
@@ -78,12 +83,7 @@ const statusOptions = [
   { label: '取消', value: 'cancelled' }
 ]
 
-const modelTypeOptions = [
-  { label: '全部类型', value: 'all' },
-  { label: '对话生成', value: 'chat_completion' },
-  { label: 'Embedding', value: 'embedding' },
-  { label: '连通测试', value: 'connectivity_check' }
-]
+const modelTypeOptions = [...AI_GENERATION_MODEL_TYPE_OPTIONS]
 
 const queryParams = computed(() => {
   const params: Record<string, string> = {
@@ -151,12 +151,6 @@ function statusTagType(status: string) {
   return 'warning'
 }
 
-function modelTypeLabel(modelType: string) {
-  if (modelType === 'embedding') return 'Embedding'
-  if (modelType === 'connectivity_check') return '连通测试'
-  return '对话生成'
-}
-
 const tableColumns = [
   {
     title: '状态',
@@ -171,14 +165,26 @@ const tableColumns = [
     }
   },
   {
-    title: '类型',
+    title: '任务类型',
     key: 'modelType',
-    width: 105,
+    width: 110,
     render(row: AiGenerationLogItem) {
-      return modelTypeLabel(row.modelType)
+      return getAiGenerationTaskTypeLabel(row.modelType, row.scenario)
     }
   },
-  { title: '场景', key: 'scenario', width: 170, ellipsis: { tooltip: true } },
+  {
+    title: '具体场景',
+    key: 'scenario',
+    width: 190,
+    ellipsis: { tooltip: true },
+    render(row: AiGenerationLogItem) {
+      return h(
+        'span',
+        { title: row.scenario },
+        getAiGenerationScenarioLabel(row.scenario)
+      )
+    }
+  },
   { title: '模型', key: 'model', width: 160, ellipsis: { tooltip: true } },
   {
     title: 'Tokens',

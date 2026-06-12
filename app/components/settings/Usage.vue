@@ -2,7 +2,7 @@
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart, BarChart } from 'echarts/charts'
+import { BarChart, LineChart } from 'echarts/charts'
 import {
   GridComponent,
   TooltipComponent,
@@ -11,8 +11,8 @@ import {
 
 use([
   CanvasRenderer,
-  LineChart,
   BarChart,
+  LineChart,
   GridComponent,
   TooltipComponent,
   LegendComponent
@@ -20,6 +20,25 @@ use([
 
 interface Props {
   days?: number
+}
+
+interface UsageBucket {
+  bucket: string
+  tokensInput: number
+  tokensOutput: number
+  tokensTotal: number
+  cost: number
+  calls: number
+}
+
+interface ModelUsageItem {
+  model: string
+  modelName: string
+  tokensInput: number
+  tokensOutput: number
+  tokensTotal: number
+  cost: number
+  calls: number
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -63,7 +82,15 @@ const totalCalls = computed(() => (usage.value as any)?.totalCalls || 0)
 const totalEstimatedCost = computed(
   () => (usage.value as any)?.totalEstimatedCost || null
 )
-const records = computed<any[]>(() => (usage.value as any)?.usage || [])
+const records = computed<UsageBucket[]>(() =>
+  Array.isArray((usage.value as any)?.usage) ? (usage.value as any).usage : []
+)
+const modelUsage = computed<ModelUsageItem[]>(() =>
+  Array.isArray((usage.value as any)?.modelUsage) ?
+    (usage.value as any).modelUsage
+  : []
+)
+const modelChartData = computed(() => [...modelUsage.value].reverse())
 
 // 聚合桶标签：天→MM/DD，小时→DD HH:00
 function bucketLabel(bucket: string) {
@@ -151,7 +178,8 @@ const chartOption = computed(() => {
       bottom: 0,
       textStyle: { fontSize: 11, color: '#888' },
       itemWidth: 12,
-      itemHeight: 8
+      itemHeight: 8,
+      icon: 'roundRect'
     },
     grid: { top: 10, right: 16, bottom: 36, left: 50 },
     xAxis: {
@@ -177,19 +205,96 @@ const chartOption = computed(() => {
     series: [
       {
         name: 'Input Tokens',
-        type: 'bar',
-        stack: 'total',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        showSymbol: data.length <= 24,
         data: data.map((r: any) => r.tokensInput || 0),
-        itemStyle: { color: '#60a5fa', borderRadius: [0, 0, 0, 0] },
-        barMaxWidth: 20
+        lineStyle: { color: '#2563eb', width: 3 },
+        itemStyle: { color: '#2563eb' },
+        areaStyle: { color: 'rgba(37, 99, 235, 0.12)' },
+        emphasis: { focus: 'series' }
       },
       {
         name: 'Output Tokens',
-        type: 'bar',
-        stack: 'total',
+        type: 'line',
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        showSymbol: data.length <= 24,
         data: data.map((r: any) => r.tokensOutput || 0),
-        itemStyle: { color: '#a78bfa', borderRadius: [3, 3, 0, 0] },
-        barMaxWidth: 20
+        lineStyle: { color: '#06b6d4', width: 3 },
+        itemStyle: { color: '#06b6d4' },
+        areaStyle: { color: 'rgba(6, 182, 212, 0.1)' },
+        emphasis: { focus: 'series' }
+      }
+    ]
+  }
+})
+
+const modelChartOption = computed(() => {
+  const data = modelChartData.value
+  return {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'shadow' },
+      backgroundColor: 'rgba(255,255,255,0.95)',
+      borderColor: '#e5e7eb',
+      borderWidth: 1,
+      textStyle: { color: '#333', fontSize: 12 },
+      formatter(params: unknown) {
+        const items = Array.isArray(params) ? params : []
+        const first = items[0] as { dataIndex?: number; axisValue?: string }
+        const item = data[first?.dataIndex ?? 0]
+        if (!item) return ''
+        return `${first.axisValue || item.modelName}<br/>总量：${formatNumber(item.tokensTotal)} tokens<br/>Input：${formatNumber(item.tokensInput)}<br/>Output：${formatNumber(item.tokensOutput)}<br/>调用：${item.calls} 次<br/>费用：$${item.cost ? item.cost.toFixed(4) : '0.0000'}`
+      }
+    },
+    grid: { top: 8, right: 24, bottom: 20, left: 110 },
+    xAxis: {
+      type: 'value',
+      axisLine: { show: false },
+      splitLine: { lineStyle: { color: '#f0f0f0' } },
+      axisLabel: {
+        fontSize: 10,
+        color: '#999',
+        formatter: (v: number) => {
+          if (v >= 1000000) return (v / 1000000).toFixed(1) + 'M'
+          if (v >= 1000) return (v / 1000).toFixed(0) + 'K'
+          return v
+        }
+      }
+    },
+    yAxis: {
+      type: 'category',
+      data: data.map((item) => item.modelName || item.model),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        fontSize: 11,
+        color: '#64748b',
+        width: 96,
+        overflow: 'truncate'
+      }
+    },
+    series: [
+      {
+        name: 'Tokens',
+        type: 'bar',
+        data: data.map((item) => item.tokensTotal),
+        barMaxWidth: 16,
+        itemStyle: {
+          color: '#2563eb',
+          borderRadius: [0, 6, 6, 0]
+        },
+        label: {
+          show: true,
+          position: 'right',
+          color: '#475569',
+          fontSize: 11,
+          formatter: (params: { value: number }) => formatNumber(params.value)
+        }
       }
     ]
   }
@@ -270,6 +375,72 @@ watch([days, granularity], () => refresh())
           style="height: 220px; width: 100%"
         />
       </ClientOnly>
+    </div>
+
+    <div
+      v-if="modelUsage.length"
+      class="card-glass p-4"
+    >
+      <div
+        class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"
+      >
+        <div>
+          <p class="text-sm font-medium text-(--ui-text-highlighted)">
+            模型使用量排行
+          </p>
+          <p class="mt-1 text-xs text-(--ui-text-muted)">
+            按当前时间范围内的总 token 排序，展示各模型调用量、输入输出和费用。
+          </p>
+        </div>
+        <p class="text-xs text-(--ui-text-dimmed)">
+          Top {{ modelUsage.length }}
+        </p>
+      </div>
+
+      <div
+        class="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]"
+      >
+        <ClientOnly>
+          <VChart
+            :option="modelChartOption"
+            autoresize
+            style="height: 260px; width: 100%"
+          />
+        </ClientOnly>
+
+        <div class="space-y-2">
+          <div
+            v-for="model in modelUsage.slice(0, 6)"
+            :key="model.model"
+            class="rounded-lg border border-(--ui-border)/50 bg-(--ui-bg-muted)/40 px-3 py-2"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p
+                  class="truncate text-sm font-medium text-(--ui-text-highlighted)"
+                >
+                  {{ model.modelName || model.model }}
+                </p>
+                <p class="mt-0.5 truncate text-[11px] text-(--ui-text-dimmed)">
+                  {{ model.model }}
+                </p>
+              </div>
+              <p
+                class="shrink-0 font-mono text-sm font-semibold text-primary-600"
+              >
+                {{ formatNumber(model.tokensTotal) }}
+              </p>
+            </div>
+            <div
+              class="mt-2 grid grid-cols-3 gap-2 text-[11px] text-(--ui-text-muted)"
+            >
+              <span>Input {{ formatNumber(model.tokensInput) }}</span>
+              <span>Output {{ formatNumber(model.tokensOutput) }}</span>
+              <span class="text-right">{{ model.calls }} 次</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div

@@ -86,4 +86,166 @@ describe('ai-generation-log-stats', () => {
     expect(aggregateSql).toContain("COALESCE(u.username, '未知用户')")
     expect(aggregateSql).not.toContain('COALESCE(u.username, "未知用户")')
   })
+
+  it('estimates missing tokens for historical successful streaming chat logs', async () => {
+    const executedSql: string[] = []
+    const em = {
+      find: async () => [
+        {
+          id: 17,
+          user: { id: 1, username: 'admin' },
+          model: 'mimo-v2.5-pro',
+          modelType: 'chat_completion',
+          providerName: null,
+          purpose: 'generation',
+          scenario: 'worldbuilding_generate',
+          endpoint: '/api/ai/worldbuilding',
+          source: 'api_route',
+          status: 'success',
+          errorMessage: null,
+          errorType: null,
+          tokensInput: 0,
+          tokensOutput: 0,
+          estimatedCost: null,
+          inputChars: 407,
+          outputChars: 467,
+          embeddingItems: 0,
+          startedAt: new Date('2026-06-11T03:55:50.000Z'),
+          firstTokenAt: new Date('2026-06-11T03:56:34.000Z'),
+          endedAt: new Date('2026-06-11T03:56:44.000Z'),
+          firstTokenLatencyMs: 44491,
+          durationMs: 54660,
+          streamed: true,
+          requestId: null,
+          parentRequestId: null,
+          novel: null,
+          chapter: null,
+          generationTask: null
+        }
+      ],
+      count: async () => 1,
+      getConnection: () => ({
+        execute: async (sql: string) => {
+          executedSql.push(sql)
+          if (!sql.includes('GROUP BY')) {
+            return [
+              {
+                total_calls: 1,
+                success_calls: 1,
+                failed_calls: 0,
+                cancelled_calls: 0,
+                total_input_tokens: 0,
+                total_output_tokens: 0,
+                fallback_input_chars: 407,
+                fallback_output_chars: 467,
+                total_cost: 0,
+                embedding_calls: 0,
+                embedding_input_chars: 0,
+                avg_first_token_latency_ms: 44491,
+                avg_duration_ms: 54660
+              }
+            ]
+          }
+          return [
+            {
+              key: 'worldbuilding_generate',
+              label: 'worldbuilding_generate',
+              total_calls: 1,
+              success_calls: 1,
+              failed_calls: 0,
+              total_input_tokens: 0,
+              total_output_tokens: 0,
+              fallback_input_chars: 407,
+              fallback_output_chars: 467,
+              total_cost: 0,
+              embedding_calls: 0,
+              avg_first_token_latency_ms: 44491,
+              avg_duration_ms: 54660,
+              last_started_at: 1781130950
+            }
+          ]
+        }
+      })
+    }
+
+    const result = await queryAiGenerationLogStats(
+      em as Parameters<typeof queryAiGenerationLogStats>[0],
+      { since: new Date('2026-06-10T00:00:00.000Z'), userId: 1 },
+      { page: 1, pageSize: 20, limit: 20, offset: 0 }
+    )
+
+    expect(result.items[0]?.tokensInput).toBe(733)
+    expect(result.items[0]?.tokensOutput).toBe(841)
+    expect(result.summary.totalInputTokens).toBe(733)
+    expect(result.summary.totalOutputTokens).toBe(841)
+    expect(result.summary.totalTokens).toBe(1574)
+    expect(result.byScenario[0]?.totalTokens).toBe(1574)
+    expect(executedSql.join('\n')).toContain('fallback_input_chars')
+  })
+
+  it('uses duration as first response latency for historical non-streamed output logs', async () => {
+    const em = {
+      find: async () => [
+        {
+          id: 18,
+          user: { id: 1, username: 'admin' },
+          model: 'mimo-v2.5-pro',
+          modelType: 'chat_completion',
+          providerName: null,
+          purpose: 'generation',
+          scenario: 'worldbuilding_generate',
+          endpoint: '/api/ai/worldbuilding',
+          source: 'api_route',
+          status: 'success',
+          errorMessage: null,
+          errorType: null,
+          tokensInput: 320,
+          tokensOutput: 180,
+          estimatedCost: null,
+          inputChars: 407,
+          outputChars: 467,
+          embeddingItems: 0,
+          startedAt: new Date('2026-06-11T03:55:50.000Z'),
+          firstTokenAt: null,
+          endedAt: new Date('2026-06-11T03:56:44.000Z'),
+          firstTokenLatencyMs: null,
+          durationMs: 54660,
+          streamed: false,
+          requestId: null,
+          parentRequestId: null,
+          novel: null,
+          chapter: null,
+          generationTask: null
+        }
+      ],
+      count: async () => 1,
+      getConnection: () => ({
+        execute: async () => [
+          {
+            total_calls: 1,
+            success_calls: 1,
+            failed_calls: 0,
+            cancelled_calls: 0,
+            total_input_tokens: 320,
+            total_output_tokens: 180,
+            fallback_input_chars: 0,
+            fallback_output_chars: 0,
+            total_cost: 0,
+            embedding_calls: 0,
+            embedding_input_chars: 0,
+            avg_first_token_latency_ms: null,
+            avg_duration_ms: 54660
+          }
+        ]
+      })
+    }
+
+    const result = await queryAiGenerationLogStats(
+      em as Parameters<typeof queryAiGenerationLogStats>[0],
+      { since: new Date('2026-06-10T00:00:00.000Z'), userId: 1 },
+      { page: 1, pageSize: 20, limit: 20, offset: 0 }
+    )
+
+    expect(result.items[0]?.firstTokenLatencyMs).toBe(54660)
+  })
 })

@@ -39,6 +39,7 @@ describe('ai-client request options', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.unstubAllGlobals()
   })
 
@@ -193,6 +194,79 @@ describe('ai-client request options', () => {
     expect(mockFinishLog).not.toHaveBeenCalled()
   })
 
+  it('retries transient fetch failures once before failing the request', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: 'ok' } }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await callAi({
+      apiUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'secret',
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: 'ping' }],
+      tracking: {
+        userId: 7,
+        purpose: 'planning',
+        scenario: 'model_connectivity_check',
+        source: 'api_route',
+        endpoint: '/api/ai/models-test'
+      }
+    })
+
+    expect(result).toBe('ok')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(mockFailLog).not.toHaveBeenCalled()
+    expect(mockFinishLog).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses custom connect timeout for slow AI providers', async () => {
+    vi.useFakeTimers()
+    let rejectedError: unknown
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) => {
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => {
+          const error = new Error('aborted')
+          error.name = 'AbortError'
+          reject(error)
+        })
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    callAi({
+      apiUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'secret',
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: '生成章节计划' }],
+      connectTimeoutMs: 1200,
+      tracking: {
+        userId: 7,
+        purpose: 'generation',
+        scenario: 'chapter_workflow_plan',
+        source: 'service',
+        endpoint: '/api/ai/chapter-workflow/plan'
+      }
+    }).catch((error: unknown) => {
+      rejectedError = error
+    })
+
+    await vi.advanceTimersByTimeAsync(1200)
+
+    expect(rejectedError).toBeInstanceOf(Error)
+    expect((rejectedError as Error).message).toContain(
+      'AI API 连接超时（1.2秒）'
+    )
+    expect(mockFailLog).toHaveBeenCalledWith(logHandle, expect.any(Error))
+    expect(mockFinishLog).not.toHaveBeenCalled()
+  })
+
   it('records streaming metadata when visible content arrives', async () => {
     const encoder = new TextEncoder()
     const body = new ReadableStream({
@@ -260,6 +334,182 @@ describe('ai-client request options', () => {
       tokensOutput: 2,
       inputChars: 2,
       outputChars: 2
+    })
+    expect(mockFailLog).not.toHaveBeenCalled()
+  })
+
+  it('uses reasoning_content when streaming fallback response has no content', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  'data: {"choices":[{"delta":{},"finish_reason":"stop"}] }\n\n'
+                )
+              )
+              controller.close()
+            }
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [
+              { message: { reasoning_content: '{"goal":"稳住局面"}' } }
+            ],
+            usage: { prompt_tokens: 4, completion_tokens: 6 }
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const chunks = []
+    for await (const chunk of streamAi({
+      apiUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'secret',
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: '生成计划' }],
+      tracking: {
+        userId: 7,
+        purpose: 'generation',
+        scenario: 'chapter_workflow_plan',
+        source: 'service',
+        endpoint: '/api/ai/chapter-workflow/plan'
+      }
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks[0]).toEqual({
+      content: '{"goal":"稳住局面"}',
+      done: false,
+      usage: { prompt_tokens: 4, completion_tokens: 6 }
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(mockFinishLog).toHaveBeenCalledWith(logHandle, {
+      tokensInput: 4,
+      tokensOutput: 6,
+      inputChars: 4,
+      outputChars: 15
+    })
+  })
+
+  it('falls back when streaming response only contains hidden thinking', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  'data: {"choices":[{"delta":{"content":"<think>先推理</think>"},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":8}}\n\n'
+                )
+              )
+              controller.close()
+            }
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: '{"goal":"稳住局面"}' } }],
+            usage: { prompt_tokens: 4, completion_tokens: 6 }
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } }
+        )
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const chunks = []
+    for await (const chunk of streamAi({
+      apiUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'secret',
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: '生成计划' }],
+      tracking: {
+        userId: 7,
+        purpose: 'generation',
+        scenario: 'chapter_workflow_plan',
+        source: 'service',
+        endpoint: '/api/ai/chapter-workflow/plan'
+      }
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks[0]).toEqual({
+      content: '{"goal":"稳住局面"}',
+      done: false,
+      usage: { prompt_tokens: 4, completion_tokens: 6 }
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(mockFinishLog).toHaveBeenCalledWith(logHandle, {
+      tokensInput: 4,
+      tokensOutput: 6,
+      inputChars: 4,
+      outputChars: 15
+    })
+  })
+
+  it('estimates streaming token usage when provider omits usage', async () => {
+    const encoder = new TextEncoder()
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"delta":{"content":"世界观"}}]}\n\n'
+          )
+        )
+        controller.enqueue(
+          encoder.encode(
+            'data: {"choices":[{"delta":{"content":"设定。"},"finish_reason":"stop"}]}\n\n'
+          )
+        )
+        controller.close()
+      }
+    })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response(body, { status: 200 }))
+    )
+
+    const chunks = []
+    for await (const chunk of streamAi({
+      apiUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'secret',
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: '生成世界观' }],
+      tracking: {
+        userId: 7,
+        purpose: 'generation',
+        scenario: 'worldbuilding_generate',
+        source: 'api_route',
+        endpoint: '/api/ai/worldbuilding'
+      }
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks.at(-1)).toEqual({
+      content: '',
+      done: true,
+      truncated: false,
+      usage: { prompt_tokens: 9, completion_tokens: 10 }
+    })
+    expect(mockFinishLog).toHaveBeenCalledWith(logHandle, {
+      tokensInput: 9,
+      tokensOutput: 10,
+      inputChars: 5,
+      outputChars: 6
     })
     expect(mockFailLog).not.toHaveBeenCalled()
   })

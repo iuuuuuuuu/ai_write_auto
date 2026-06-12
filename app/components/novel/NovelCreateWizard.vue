@@ -85,7 +85,7 @@ const genreOptions = computed(() => {
       locale.value === 'zh-CN' ?
         NOVEL_GENRE_GROUP_LABELS[group].zh
       : NOVEL_GENRE_GROUP_LABELS[group].en,
-    key: group,
+    key: `genre-group-${group}`,
     children: options
   }))
 })
@@ -104,9 +104,17 @@ const templateOptions = computed(() =>
   }))
 )
 
+const selectedTemplateLabel = computed(() => {
+  if (!selectedTemplate.value) return ''
+  return `${selectedTemplate.value.name} · ${t(getNovelGenreLabelKey(selectedTemplate.value.genre))}`
+})
+
 const selectedGenreMeta = computed(() => getNovelGenreMeta(form.genre))
 const canGenerateDescription = computed(
   () => !!form.title.trim() && !!form.genre
+)
+const descriptionGenerateLabel = computed(() =>
+  form.description.trim() ? 'AI 丰满' : 'AI 生成'
 )
 const canGenerateWorldbuilding = computed(() => !!form.title.trim())
 const { streaming: generatingDescription, startStream: streamDescription } =
@@ -122,16 +130,25 @@ const busy = computed(
 
 watch(
   () => form.genre,
-  () => {
-    if (!form.templateId) return
+  (genre) => {
     const current = novelTemplates.value.find(
       (template) => template.id === form.templateId
     )
-    if (current && current.genre !== form.genre) {
-      form.templateId = null
-    }
+    if (current && current.genre === genre) return
+
+    const matchedTemplates =
+      genre ?
+        novelTemplates.value.filter((template) => template.genre === genre)
+      : []
+    form.templateId =
+      matchedTemplates.length === 1 ? matchedTemplates[0].id : null
   }
 )
+
+watch(recommendedTemplates, (templates) => {
+  if (!form.genre || form.templateId || templates.length !== 1) return
+  form.templateId = templates[0].id
+})
 
 watch(
   () => form.templateId,
@@ -158,6 +175,12 @@ function applyTemplate(template: NovelTemplateItem, overwrite: boolean) {
   if (template.defaultTemperature && (overwrite || !form.aiTemperature)) {
     form.aiTemperature = template.defaultTemperature
   }
+}
+
+function reapplySelectedTemplate() {
+  if (!selectedTemplate.value) return
+  applyTemplate(selectedTemplate.value, true)
+  message.success(`已覆盖为「${selectedTemplate.value.name}」模板的写作设定`)
 }
 
 function resetForm() {
@@ -190,6 +213,12 @@ function scrollToFirstFormError() {
   })
 }
 
+function formatAiGenerateError(error: string) {
+  return error === 'Failed to fetch' ?
+      'AI 服务连接失败，请检查服务是否正在运行'
+    : error
+}
+
 function goNext() {
   if (createStep.value === 1 && !form.genre) {
     message.warning('请选择小说类型')
@@ -208,19 +237,32 @@ function goPrevious() {
 
 async function generateDescription() {
   if (!canGenerateDescription.value) return
+  const idea = form.description.trim()
+  let generatedDescription = ''
   form.description = ''
   await streamDescription({
     url: '/api/ai/suggest-description',
     body: {
       title: form.title.trim(),
       genre: form.genre,
-      template: selectedTemplate.value?.name || undefined
+      template: selectedTemplate.value?.name || undefined,
+      idea: idea || undefined
     },
     onChunk: (content) => {
-      form.description += content
+      generatedDescription += content
+      form.description = generatedDescription
     },
-    onError: (error) => {
-      message.error(error)
+    onDone: (fullContent) => {
+      form.description = fullContent.trim() || generatedDescription.trim()
+    },
+    onError: (error, partialContent) => {
+      const partial = partialContent?.trim() || generatedDescription.trim()
+      if (partial) {
+        form.description = partial
+      } else {
+        form.description = idea
+      }
+      message.error(formatAiGenerateError(error))
     }
   })
 }
@@ -229,7 +271,7 @@ async function generateWorldbuilding() {
   if (!canGenerateWorldbuilding.value) return
   form.worldSetting = ''
   form.styleGuide = ''
-  let buffer = ''
+  let generatedText = ''
   await streamWorldbuilding({
     url: '/api/ai/worldbuilding',
     body: {
@@ -238,21 +280,26 @@ async function generateWorldbuilding() {
       genre: form.genre || undefined
     },
     onChunk: (content) => {
-      buffer += content
-      form.worldSetting = buffer
+      generatedText += content
+      form.worldSetting = 'AI 正在整理世界观与写作风格...'
     },
-    onDone: (fullContent) => {
-      try {
-        const jsonMatch = fullContent.match(/\{[\s\S]*\}/)
-        const parsed = JSON.parse(jsonMatch?.[0] || fullContent)
-        form.worldSetting = parsed.worldSetting || fullContent
-        form.styleGuide = parsed.styleGuide || ''
-      } catch {
-        form.worldSetting = fullContent
-      }
+    onDone: (_fullContent, parsedJson) => {
+      const parsed =
+        parsedJson && typeof parsedJson === 'object' ?
+          (parsedJson as Record<string, unknown>)
+        : null
+      const worldSetting =
+        typeof parsed?.worldSetting === 'string' ?
+          parsed.worldSetting.trim()
+        : ''
+      const styleGuide =
+        typeof parsed?.styleGuide === 'string' ? parsed.styleGuide.trim() : ''
+      form.worldSetting = worldSetting || generatedText.trim()
+      form.styleGuide = styleGuide
     },
     onError: (error) => {
-      message.error(error)
+      form.worldSetting = generatedText.trim()
+      message.error(formatAiGenerateError(error))
     }
   })
 }
@@ -349,12 +396,30 @@ async function handleCreateNovel() {
           path="templateId"
         >
           <NSelect
+            v-if="templateOptions.length > 1"
             v-model:value="form.templateId"
             :options="templateOptions"
             placeholder="选择模板自动填充写作设定"
             filterable
             clearable
           />
+          <div
+            v-else-if="selectedTemplate"
+            class="flex items-center justify-between gap-3 rounded-lg border border-(--ui-border) bg-(--ui-bg-muted) px-3 py-2"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-sm text-(--ui-text-highlighted)">
+                {{ selectedTemplateLabel }}
+              </p>
+              <p class="mt-0.5 text-xs text-(--ui-text-muted)">
+                写作风格、AI 提示词和温度已随模板带入
+              </p>
+            </div>
+            <Icon
+              icon="lucide:check"
+              class="h-4 w-4 shrink-0 text-primary-500"
+            />
+          </div>
         </NFormItem>
 
         <div
@@ -383,10 +448,10 @@ async function handleCreateNovel() {
             size="small"
             secondary
             :disabled="busy"
-            @click="applyTemplate(selectedTemplate, true)"
+            @click="reapplySelectedTemplate"
           >
             <template #icon><Icon icon="lucide:wand-sparkles" /></template>
-            重新套用模板内容
+            覆盖写作设定
           </NButton>
         </div>
       </div>
@@ -432,17 +497,17 @@ async function handleCreateNovel() {
                     @click="generateDescription"
                   >
                     <template #icon><Icon icon="lucide:sparkles" /></template>
-                    AI 生成
+                    {{ descriptionGenerateLabel }}
                   </NButton>
                 </template>
-                请先填写标题和类型
+                请先填写标题和类型；也可以先写想法，再让 AI 丰满。
               </NTooltip>
             </div>
           </template>
           <NInput
             v-model:value="form.description"
             type="textarea"
-            placeholder="一句话概括故事核心，或点击 AI 生成"
+            placeholder="先写你的故事想法，或留空让 AI 生成简介"
             :rows="4"
             :maxlength="5000"
             show-count

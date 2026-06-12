@@ -51,6 +51,17 @@ export interface ResolvedAiConfig {
   capabilities: AiModelCapabilities
 }
 
+export interface AiStatusConfigCandidate {
+  id: number
+  enabled?: boolean | null
+  isDefault?: boolean | null
+  aiModel?: {
+    enabled?: boolean | null
+    lastCheckAvailable?: boolean | null
+    provider?: { enabled?: boolean | null } | null
+  } | null
+}
+
 function modelCapabilities(aiModel: AiModel): AiModelCapabilities {
   return {
     supportsThinking: aiModel.supportsThinking,
@@ -209,6 +220,45 @@ export async function resolveNovelAiConfig(
   }
 
   return resolveUserAiConfig(em, userId, purpose)
+}
+
+function isAiStatusConfigCheckable(config: AiStatusConfigCandidate): boolean {
+  return (
+    config.enabled !== false &&
+    config.aiModel?.enabled !== false &&
+    !!config.aiModel?.provider &&
+    config.aiModel.provider.enabled !== false
+  )
+}
+
+function isAiStatusConfigOperational(config: AiStatusConfigCandidate): boolean {
+  return (
+    config.enabled !== false &&
+    isModelOperational({
+      enabled: config.aiModel?.enabled,
+      lastCheckAvailable: config.aiModel?.lastCheckAvailable,
+      provider: config.aiModel?.provider
+    })
+  )
+}
+
+export function selectAiStatusConfig<T extends AiStatusConfigCandidate>(
+  configs: readonly T[],
+  options: { requestedConfigId?: number; allowUnchecked?: boolean } = {}
+): T | null {
+  const candidates =
+    options.allowUnchecked ?
+      configs.filter(isAiStatusConfigCheckable)
+    : configs.filter(isAiStatusConfigOperational)
+
+  if (options.requestedConfigId) {
+    return (
+      candidates.find((config) => config.id === options.requestedConfigId) ??
+      null
+    )
+  }
+
+  return candidates.find((config) => config.isDefault) ?? candidates[0] ?? null
 }
 
 export function maskApiKey(apiKey: string) {

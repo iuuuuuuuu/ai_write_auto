@@ -36,7 +36,7 @@ import {
 import type { GenerationTask } from '../database/entities'
 import type { ResolvedAiConfig } from '../utils/ai-configs'
 
-/** Streaming wrapper that returns the same shape as the old callAiWithUsage. */
+/** 流式收集内部短结果，供任务队列后处理复用。 */
 async function callAiStreaming(options: Parameters<typeof streamAi>[0]) {
   let content = ''
   let inputTokens = 0

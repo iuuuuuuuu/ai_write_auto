@@ -59,6 +59,25 @@ describe('ai-model-capabilities', () => {
     expect(resolved.samplingLocked).toBe(true)
   })
 
+  it('allows request override to disable thinking for structured output', () => {
+    const resolved = resolveAiRequestParameters(
+      baseInput({
+        request: {
+          temperature: 0.4,
+          topP: 0.5,
+          thinkingEnabled: false,
+          reasoningEffort: 'high'
+        }
+      })
+    )
+
+    expect(resolved.temperature).toBe(0.4)
+    expect(resolved.topP).toBe(0.5)
+    expect(resolved.thinkingEnabled).toBe(false)
+    expect(resolved.reasoningEffort).toBeNull()
+    expect(resolved.samplingLocked).toBe(false)
+  })
+
   it('falls back through novel and config layers when request omits overrides', () => {
     const resolved = resolveAiRequestParameters(
       baseInput({

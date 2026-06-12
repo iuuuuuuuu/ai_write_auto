@@ -7,7 +7,7 @@ import {
   GenerationTaskSchema
 } from '../database/entities'
 import { recordAiGeneration } from './writing-stats'
-import { parsePartialJsonArray } from './json-salvage'
+import { parseJsonObjectLike, parsePartialJsonArray } from './json-salvage'
 
 export function createRequestSignal(event: H3Event): AbortSignal {
   const controller = new AbortController()
@@ -37,8 +37,9 @@ export function dynamicMaxTokens(
   estimatedOutputTokens: number,
   { floor, cap }: { floor: number; cap: number }
 ): number {
-  const n = Number.isFinite(estimatedOutputTokens)
-    ? Math.ceil(estimatedOutputTokens)
+  const n =
+    Number.isFinite(estimatedOutputTokens) ?
+      Math.ceil(estimatedOutputTokens)
     : floor
   return Math.max(floor, Math.min(n, cap))
 }
@@ -75,11 +76,20 @@ export async function recordUsage(
 }
 
 export interface StreamResponseOptions {
-  parseJsonResult?: boolean
+  parseJsonResult?: boolean | 'array' | 'object'
+  transformFullContent?: (content: string) => string
+  emptyMessage?: string
 }
 
 interface StreamCollector {
   fullContent: string
+  inputTokens: number
+  outputTokens: number
+  truncated: boolean
+}
+
+export interface CollectedAiStream {
+  content: string
   inputTokens: number
   outputTokens: number
   truncated: boolean
@@ -121,6 +131,19 @@ async function collectStream(
   }
 
   return { fullContent, inputTokens, outputTokens, truncated }
+}
+
+export async function collectAiStreamWithUsage(
+  options: AiRequestOptions,
+  signal: AbortSignal = new AbortController().signal
+): Promise<CollectedAiStream> {
+  const result = await collectStream(options, signal, () => {})
+  return {
+    content: result.fullContent,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    truncated: result.truncated
+  }
 }
 
 /** 去空白可见字数（中文长度的稳定度量，避免 token 估算误差）。 */
@@ -247,9 +270,14 @@ export function createStreamResponse(
           signal,
           (content) => send({ content, done: false })
         )
+        const finalContent =
+          responseOpts?.transformFullContent?.(fullContent) ?? fullContent
 
-        if (!fullContent) {
-          send({ error: 'AI 返回了空内容', done: true })
+        if (!finalContent) {
+          send({
+            error: responseOpts?.emptyMessage || 'AI 返回了空内容',
+            done: true
+          })
           controller.close()
           return
         }
@@ -259,7 +287,7 @@ export function createStreamResponse(
         const donePayload: Record<string, any> = {
           content: '',
           done: true,
-          fullContent,
+          fullContent: finalContent,
           usage: {
             inputTokens,
             outputTokens
@@ -268,8 +296,13 @@ export function createStreamResponse(
         if (responseOpts?.parseJsonResult) {
           // 容错解析 + 截断 salvage：长大纲/长建议被按长度截断时，
           // 也能取出已写完的前 N 条，而非整体丢失（旧实现 JSON.parse 抛错被吞 → 前端拿空）。
-          const arr = parsePartialJsonArray(fullContent)
-          if (arr.length) donePayload.parsedJson = arr
+          if (responseOpts.parseJsonResult === 'object') {
+            const object = parseJsonObjectLike(finalContent)
+            if (object) donePayload.parsedJson = object
+          } else {
+            const arr = parsePartialJsonArray(finalContent)
+            if (arr.length) donePayload.parsedJson = arr
+          }
         }
 
         send(donePayload)
@@ -388,7 +421,12 @@ export function createTrackedStreamResponse(
         if (tracked.onComplete && fullContent)
           await tracked.onComplete(fullContent)
 
-        send({ content: '', done: true, taskId: tracked.taskId, truncated: finalTruncated })
+        send({
+          content: '',
+          done: true,
+          taskId: tracked.taskId,
+          truncated: finalTruncated
+        })
         controller.close()
       } catch (err: any) {
         await ctx.em.nativeUpdate(

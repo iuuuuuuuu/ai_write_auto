@@ -32,6 +32,7 @@ export interface AiRequestOptions {
   maxTokens?: number
   stream?: boolean
   signal?: AbortSignal
+  connectTimeoutMs?: number
   extraBody?: Record<string, unknown>
   modelId?: number
   tracking?: AiRequestTracking
@@ -129,6 +130,36 @@ function countMessageChars(messages: AiRequestOptions['messages']): number {
   return messages.reduce((sum, message) => sum + message.content.length, 0)
 }
 
+function estimateTokens(text: string): number {
+  const chineseChars = (text.match(/[一-鿿㐀-䶿]/g) || []).length
+  const nonChinese = text.length - chineseChars
+  return Math.ceil(chineseChars * 1.8 + nonChinese * 0.4)
+}
+
+function estimateMessageTokens(messages: AiRequestOptions['messages']): number {
+  return messages.reduce(
+    (sum, message) => sum + estimateTokens(message.content),
+    0
+  )
+}
+
+function isTransientFetchError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return message.includes('fetch failed')
+}
+
+function getMessageContent(message: unknown): string {
+  if (!message || typeof message !== 'object') return ''
+  const record = message as Record<string, unknown>
+  return (
+    (typeof record.content === 'string' && record.content) ||
+    (typeof record.reasoning_content === 'string' &&
+      record.reasoning_content) ||
+    ''
+  )
+}
+
 function buildTrackingOptions(
   options: AiRequestOptions,
   streamed: boolean
@@ -162,12 +193,29 @@ async function doFetch(
   options: AiRequestOptions,
   stream: boolean
 ): Promise<Response> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      return await doFetchOnce(options, stream)
+    } catch (error: unknown) {
+      lastError = error
+      if (attempt > 0 || !isTransientFetchError(error)) break
+    }
+  }
+  throw lastError
+}
+
+async function doFetchOnce(
+  options: AiRequestOptions,
+  stream: boolean
+): Promise<Response> {
   const controller = new AbortController()
   let timedOut = false
+  const connectTimeoutMs = options.connectTimeoutMs ?? AI_CONNECT_TIMEOUT_MS
   const connectTimeout = setTimeout(() => {
     timedOut = true
     controller.abort()
-  }, AI_CONNECT_TIMEOUT_MS)
+  }, connectTimeoutMs)
 
   if (options.signal) {
     if (options.signal.aborted) {
@@ -209,7 +257,7 @@ async function doFetch(
     if (e.name === 'AbortError') {
       if (timedOut) {
         throw new Error(
-          `AI API 连接超时（${AI_CONNECT_TIMEOUT_MS / 1000}秒），请检查 API 地址是否可达: ${options.apiUrl}`
+          `AI API 连接超时（${connectTimeoutMs / 1000}秒），请检查 API 地址是否可达: ${options.apiUrl}`
         )
       }
       throw new Error('请求已被取消')
@@ -249,7 +297,7 @@ export async function callAi(options: AiRequestOptions): Promise<string> {
   try {
     const response = await doFetch(options, false)
     const data = await response.json()
-    const content = data.choices[0]?.message?.content || ''
+    const content = getMessageContent(data.choices[0]?.message)
     const cleaned = stripThinking(content)
     const inputTokens = data.usage?.prompt_tokens || 0
     const outputTokens = data.usage?.completion_tokens || 0
@@ -276,9 +324,7 @@ export async function callAiWithUsage(
   try {
     const response = await doFetch(options, false)
     const data = await response.json()
-    const msg = data.choices[0]?.message
-    // Prefer content; fall back to reasoning_content (some models put answer there)
-    const raw = msg?.content || msg?.reasoning_content || ''
+    const raw = getMessageContent(data.choices[0]?.message)
     const content = stripThinking(raw)
     const inputTokens = data.usage?.prompt_tokens || 0
     const outputTokens = data.usage?.completion_tokens || 0
@@ -309,6 +355,7 @@ export async function* streamAi(
   let outputChars = 0
   let inputTokens = 0
   let outputTokens = 0
+  let tokenEstimateContent = ''
   let firstTokenMarked = false
   let finished = false
   let response: Response
@@ -329,7 +376,9 @@ export async function* streamAi(
 
   const markContent = async (content: string) => {
     if (!content) return
+    hasContent = true
     outputChars += content.length
+    tokenEstimateContent += content
     if (!firstTokenMarked) {
       firstTokenMarked = true
       await markFirstToken(logHandle)
@@ -337,14 +386,29 @@ export async function* streamAi(
   }
 
   const finishLog = async () => {
-    if (finished) return
+    if (finished) {
+      return {
+        prompt_tokens: inputTokens,
+        completion_tokens: outputTokens
+      }
+    }
     finished = true
+    if (!inputTokens) {
+      inputTokens = estimateMessageTokens(options.messages)
+    }
+    if (!outputTokens && tokenEstimateContent) {
+      outputTokens = estimateTokens(tokenEstimateContent)
+    }
     await finishAiGenerationLog(logHandle, {
       tokensInput: inputTokens,
       tokensOutput: outputTokens,
       inputChars,
       outputChars
     })
+    return {
+      prompt_tokens: inputTokens,
+      completion_tokens: outputTokens
+    }
   }
 
   try {
@@ -398,7 +462,6 @@ export async function* streamAi(
             ) {
               continue
             }
-            hasContent = true
             if (insideThink) {
               thinkBuffer += delta
               if (
@@ -449,12 +512,12 @@ export async function* streamAi(
           }
           if (finishReason === 'stop' || finishReason === 'length') {
             if (!hasContent) break
-            await finishLog()
+            const finalUsage = await finishLog()
             yield {
               content: '',
               done: true,
               truncated: finishReason === 'length',
-              usage
+              usage: usage ?? finalUsage
             }
             return
           }
@@ -472,7 +535,7 @@ export async function* streamAi(
   if (!hasContent) {
     const fallbackResponse = await doFetch(options, false)
     const fallbackData = await fallbackResponse.json()
-    const content = fallbackData.choices?.[0]?.message?.content || ''
+    const content = getMessageContent(fallbackData.choices?.[0]?.message)
     const usage = fallbackData.usage
     const cleaned = stripThinking(content)
     inputTokens = usage?.prompt_tokens || 0
@@ -482,20 +545,14 @@ export async function* streamAi(
       yield {
         content: cleaned,
         done: false,
-        usage: {
-          prompt_tokens: usage?.prompt_tokens || 0,
-          completion_tokens: usage?.completion_tokens || 0
-        }
+        usage
       }
     }
-    await finishLog()
+    const finalUsage = await finishLog()
     yield {
       content: '',
       done: true,
-      usage: {
-        prompt_tokens: usage?.prompt_tokens || 0,
-        completion_tokens: usage?.completion_tokens || 0
-      }
+      usage: usage ?? finalUsage
     }
   }
 }

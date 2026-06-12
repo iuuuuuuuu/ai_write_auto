@@ -58,6 +58,7 @@ export default defineEventHandler(async (event) => {
         }
       })
     },
-    { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
+    { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model },
+    { parseJsonResult: 'object' }
   )
 })

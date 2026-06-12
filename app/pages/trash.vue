@@ -7,6 +7,7 @@ const { t } = useI18n()
 const message = useMessage()
 const dialog = useDialog()
 const { get: apiGet, post, del: apiDel, put } = useApi()
+const { removeNovelHistory } = useReadingHistory()
 
 interface TrashNovel {
   id: number
@@ -219,6 +220,9 @@ function confirmDelete(
           body: { type, id: item.id },
           successMessage: '已永久删除'
         })
+        if (type === 'novel') {
+          removeNovelHistory(item.id)
+        }
         await fetchTrash()
       } catch {}
     }
@@ -256,6 +260,9 @@ function confirmBatchDelete(type: 'novel' | 'chapter') {
           }).catch(() => {})
         )
       )
+      if (type === 'novel') {
+        ids.forEach((id) => removeNovelHistory(id))
+      }
       message.success(`已永久删除 ${ids.length} 项`)
       await fetchTrash()
     }

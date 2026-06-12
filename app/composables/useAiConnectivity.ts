@@ -5,6 +5,11 @@ export interface AiStatus {
   checkedConnectivity?: boolean
 }
 
+export interface RefreshAiStatusOptions {
+  check?: boolean
+  aiConfigId?: number
+}
+
 export function useAiConnectivity(options?: {
   immediate?: boolean
   checkConnectivity?: boolean
@@ -24,10 +29,19 @@ export function useAiConnectivity(options?: {
 
   const isRefreshing = ref(false)
 
-  async function refreshAiStatus(check = false) {
+  async function refreshAiStatus(
+    options: boolean | RefreshAiStatusOptions = false
+  ) {
     isRefreshing.value = true
     try {
-      const query = check ? { check: 'true' } : {}
+      const refreshOptions =
+        typeof options === 'boolean' ? { check: options } : options
+      const query = {
+        ...(refreshOptions.check ? { check: 'true' } : {}),
+        ...(refreshOptions.aiConfigId ?
+          { aiConfigId: refreshOptions.aiConfigId }
+        : {})
+      }
       const result = await $fetch<AiStatus>('/api/ai/status', { query })
       aiStatus.value = result
     } catch {
@@ -42,7 +56,7 @@ export function useAiConnectivity(options?: {
   }
 
   async function checkConnectivity() {
-    return refreshAiStatus(true)
+    return refreshAiStatus({ check: true })
   }
 
   if (import.meta.client && immediate && !aiStatus.value.checkedAt) {

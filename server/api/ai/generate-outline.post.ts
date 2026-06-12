@@ -59,7 +59,8 @@ export default defineEventHandler(async (event) => {
     {
       ...toAiOptions(aiConfig, {
         messages,
-        temperature: 0.8,
+        temperature: 0.5,
+        thinkingEnabled: false,
         // 按章数动态给上限（每章大纲 JSON 约 ~120 tokens），避免大 chapterCount 被固定 4000 截断
         maxTokens: dynamicMaxTokens(data.chapterCount * 120 + 300, {
           floor: 1000,

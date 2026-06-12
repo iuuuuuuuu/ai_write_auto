@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { callAiWithUsage, toAiOptions } from '../../utils/ai-client'
-import { recordUsage } from '../../utils/ai-stream'
+import { toAiOptions } from '../../utils/ai-client'
+import { collectAiStreamWithUsage, recordUsage } from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import {
   NovelSchema,
@@ -77,15 +77,11 @@ export default defineEventHandler(async (event) => {
     }
   ]
 
-  // 标题是「服务端消费完再返回 JSON」的短任务，不需要流式；改用非流式 callAiWithUsage
-  // 才能可靠拿到 usage——流式下多数 OpenAI 兼容端点不回 usage 块（未传 stream_options），
-  // 导致前端「本次消耗」恒为 0。
-  // 思考模型需要更大 token 预算(思考过程约200-500 tokens)，但非思考模型保持 48 即可
   const {
     content: title,
     inputTokens,
     outputTokens
-  } = await callAiWithUsage(
+  } = await collectAiStreamWithUsage(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.8,

@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // 用 vi.hoisted 让 mock 函数在被提升的 vi.mock 工厂里可用
 const {
-  mockCallAi,
+  mockCollectAi,
   mockRetrieve,
   mockResolvePlanning,
   mockEmbeddingReady,
   mockFlagEnabled
 } = vi.hoisted(() => ({
-  mockCallAi: vi.fn(),
+  mockCollectAi: vi.fn(),
   mockRetrieve: vi.fn(),
   mockResolvePlanning: vi.fn(),
   mockEmbeddingReady: vi.fn(),
@@ -16,8 +16,10 @@ const {
 }))
 
 vi.mock('../server/utils/ai-client', () => ({
-  callAiWithUsage: mockCallAi,
   toAiOptions: (config: any, overrides: any) => ({ ...config, ...overrides })
+}))
+vi.mock('../server/utils/ai-stream', () => ({
+  collectAiStreamWithUsage: mockCollectAi
 }))
 vi.mock('../server/utils/ai-configs', () => ({
   resolvePlanningConfig: mockResolvePlanning,
@@ -58,7 +60,7 @@ describe('gatherRelevantContext', () => {
     mockFlagEnabled.mockReturnValue(true)
     mockResolvePlanning.mockResolvedValue(fakeCfg)
     mockRetrieve.mockResolvedValue([sampleNote])
-    mockCallAi.mockResolvedValue({
+    mockCollectAi.mockResolvedValue({
       content: '["查询A","查询B"]',
       inputTokens: 10,
       outputTokens: 5
@@ -73,7 +75,7 @@ describe('gatherRelevantContext', () => {
       seed: '种子查询',
       depth: 'seed-only'
     })
-    expect(mockCallAi).not.toHaveBeenCalled()
+    expect(mockCollectAi).not.toHaveBeenCalled()
     expect(mockRetrieve).toHaveBeenCalledWith(1, '种子查询', 10, undefined)
     expect(r.retrievedNotes).toHaveLength(1)
     expect(r.retrievedNotes[0]).toMatchObject({
@@ -90,8 +92,8 @@ describe('gatherRelevantContext', () => {
       seed: 's',
       depth: 'query-only'
     })
-    expect(mockCallAi).toHaveBeenCalledTimes(1)
-    expect(mockCallAi).toHaveBeenCalledWith(
+    expect(mockCollectAi).toHaveBeenCalledTimes(1)
+    expect(mockCollectAi).toHaveBeenCalledWith(
       expect.objectContaining({
         tracking: expect.objectContaining({
           userId: 1,
@@ -110,7 +112,7 @@ describe('gatherRelevantContext', () => {
   })
 
   it('query-only: 模型返回非法 JSON 时回落到 seed 检索', async () => {
-    mockCallAi.mockResolvedValue({
+    mockCollectAi.mockResolvedValue({
       content: '对不起我无法规划',
       inputTokens: 3,
       outputTokens: 2
@@ -122,7 +124,7 @@ describe('gatherRelevantContext', () => {
       seed: '兜底种子',
       depth: 'query-only'
     })
-    expect(mockCallAi).toHaveBeenCalledTimes(1)
+    expect(mockCollectAi).toHaveBeenCalledTimes(1)
     expect(mockRetrieve).toHaveBeenCalledTimes(1)
     expect(mockRetrieve).toHaveBeenCalledWith(1, '兜底种子', 10, undefined)
     expect(r.queries).toBeUndefined()
@@ -136,7 +138,7 @@ describe('gatherRelevantContext', () => {
       seed: 's',
       depth: 'full'
     })
-    expect(mockCallAi).toHaveBeenCalledTimes(1)
+    expect(mockCollectAi).toHaveBeenCalledTimes(1)
   })
 
   it('总开关关闭时强制 seed-only（不调模型）', async () => {
@@ -148,7 +150,7 @@ describe('gatherRelevantContext', () => {
       seed: 's',
       depth: 'query-only'
     })
-    expect(mockCallAi).not.toHaveBeenCalled()
+    expect(mockCollectAi).not.toHaveBeenCalled()
     expect(mockRetrieve).toHaveBeenCalledTimes(1)
   })
 
@@ -161,7 +163,7 @@ describe('gatherRelevantContext', () => {
       seed: '兜底',
       depth: 'query-only'
     })
-    expect(mockCallAi).not.toHaveBeenCalled()
+    expect(mockCollectAi).not.toHaveBeenCalled()
     expect(mockRetrieve).toHaveBeenCalledWith(1, '兜底', 10, undefined)
     expect(r.queries).toBeUndefined()
   })
@@ -180,7 +182,7 @@ describe('gatherRelevantContext', () => {
       extraNotes: extra
     })
     expect(mockRetrieve).not.toHaveBeenCalled()
-    expect(mockCallAi).not.toHaveBeenCalled()
+    expect(mockCollectAi).not.toHaveBeenCalled()
     expect(r.retrievedNotes).toEqual(extra)
   })
 

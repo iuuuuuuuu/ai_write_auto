@@ -385,6 +385,28 @@ export interface GenerationTask {
   completedAt: Date | null
 }
 
+export interface ChapterWorkflowPlan {
+  [OptionalProps]?:
+    | 'id'
+    | 'generationTask'
+    | 'issuesJson'
+    | 'judgeJson'
+    | 'acceptedAt'
+    | 'createdAt'
+    | 'updatedAt'
+  id: number
+  novel: Novel
+  chapter: Chapter
+  generationTask: GenerationTask | null
+  status: 'draft' | 'needs_revision' | 'accepted' | 'rejected'
+  planJson: string
+  issuesJson: string | null
+  judgeJson: string | null
+  acceptedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
 export interface TokenUsage {
   [OptionalProps]?: 'id' | 'aiConfig' | 'estimatedCost' | 'createdAt'
   id: number
@@ -1321,6 +1343,52 @@ export const GenerationTaskSchema = new EntitySchema<GenerationTask>({
   }
 })
 
+export const ChapterWorkflowPlanSchema = new EntitySchema<ChapterWorkflowPlan>({
+  name: 'ChapterWorkflowPlan',
+  tableName: 'chapter_workflow_plans',
+  indexes: [
+    {
+      properties: ['novel', 'chapter', 'status'],
+      name: 'idx_chapter_workflow_plans_novel_chapter_status'
+    }
+  ],
+  properties: {
+    id: { type: 'number', primary: true, autoincrement: true },
+    novel: { kind: 'm:1', entity: () => 'Novel', fieldName: 'novel_id' },
+    chapter: {
+      kind: 'm:1',
+      entity: () => 'Chapter',
+      fieldName: 'chapter_id'
+    },
+    generationTask: {
+      kind: 'm:1',
+      entity: () => 'GenerationTask',
+      fieldName: 'generation_task_id',
+      nullable: true
+    },
+    status: { type: 'string', default: 'draft' },
+    planJson: { type: 'string', fieldName: 'plan_json' },
+    issuesJson: { type: 'string', nullable: true, fieldName: 'issues_json' },
+    judgeJson: { type: 'string', nullable: true, fieldName: 'judge_json' },
+    acceptedAt: {
+      type: UnixTimestampType,
+      fieldName: 'accepted_at',
+      nullable: true
+    },
+    createdAt: {
+      type: UnixTimestampType,
+      fieldName: 'created_at',
+      onCreate: () => new Date()
+    },
+    updatedAt: {
+      type: UnixTimestampType,
+      fieldName: 'updated_at',
+      onCreate: () => new Date(),
+      onUpdate: () => new Date()
+    }
+  }
+})
+
 export const TokenUsageSchema = new EntitySchema<TokenUsage>({
   name: 'TokenUsage',
   tableName: 'token_usage',
@@ -1752,6 +1820,7 @@ export const allEntities = [
   PlotPointSchema,
   StoryArcSchema,
   GenerationTaskSchema,
+  ChapterWorkflowPlanSchema,
   TokenUsageSchema,
   AiGenerationLogSchema,
   PromptTemplateSchema,

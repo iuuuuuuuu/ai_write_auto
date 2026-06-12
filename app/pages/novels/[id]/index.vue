@@ -13,9 +13,10 @@ const route = useRoute()
 const novelId = computed(() => Number(route.params.id))
 const message = useMessage()
 const { post, put, del: apiDel } = useApi()
-const { startStream } = useAiStream()
+const { removeNovelHistory } = useReadingHistory()
 const { tabs, updateActiveTabTitle, removeTab, activeTab, setActiveTab } =
   useTabs('user')
+const { startStream } = useAiStream()
 
 function closeAndGoHome() {
   const tabId = activeTab.value?.id
@@ -118,11 +119,6 @@ interface OutlineFormItem {
   chapterNumber: number
   description: string
   sortOrder: number
-}
-
-interface GenerateOutlineForm {
-  idea: string
-  chapterCount: number
 }
 
 interface PlotPointItem {
@@ -325,34 +321,6 @@ const chapterStatusFilter = shallowRef<ChapterStatusFilter>('all')
 const editingOutlines = shallowRef(false)
 const savingOutlines = shallowRef(false)
 const outlineFormItems = ref<OutlineFormItem[]>([])
-const showGenerateOutlineDialog = shallowRef(false)
-const showRegenerateOutlineDialog = shallowRef(false)
-const generatingOutline = shallowRef(false)
-const outlineStreamText = ref('')
-
-const outlineStreamItems = computed(() => {
-  const text = outlineStreamText.value
-  const items: Array<{ chapterNumber: number; description: string }> = []
-  const regex =
-    /\{\s*"chapterNumber"\s*:\s*(\d+)\s*,\s*"description"\s*:\s*"((?:[^"\\]|\\.)*)"\s*\}/g
-  let match
-  while ((match = regex.exec(text)) !== null) {
-    items.push({
-      chapterNumber: parseInt(match[1]!),
-      description: match[2]!.replace(/\\"/g, '"').replace(/\\n/g, '\n')
-    })
-  }
-  return items
-})
-const generateOutlineForm = reactive<GenerateOutlineForm>({
-  idea: '',
-  chapterCount: 20
-})
-const regenerateOutlineForm = reactive({
-  startChapter: 1,
-  chapterCount: 10,
-  idea: ''
-})
 const outlineSearchQuery = shallowRef('')
 const plotPointSearchQuery = shallowRef('')
 const foreshadowingRefreshKey = shallowRef(0)
@@ -393,6 +361,7 @@ async function deleteNovel() {
   const confirmed = await confirmDelete(novel.value?.title || '此小说')
   if (!confirmed) return
   await $fetch(`/api/novels/${novelId.value}`, { method: 'DELETE' })
+  removeNovelHistory(novelId.value)
   // 关闭所有指向该小说的标签页（详情/章节/工作区/阅读），并切回首页，
   // 避免删除后残留指向已不存在小说的死标签。
   setActiveTab('home')
@@ -730,149 +699,6 @@ async function saveOutlines() {
     // useApi handles error display
   } finally {
     savingOutlines.value = false
-  }
-}
-
-function openGenerateOutlineDialog() {
-  generateOutlineForm.idea =
-    novel.value?.description || novel.value?.title || ''
-  generateOutlineForm.chapterCount = Math.max(chapters.value?.length || 20, 3)
-  showGenerateOutlineDialog.value = true
-}
-
-function openRegenerateOutlineDialog(startChapter?: number) {
-  regenerateOutlineForm.startChapter =
-    startChapter || Math.max((chapters.value?.length || 0) + 1, 1)
-  regenerateOutlineForm.chapterCount = Math.max(
-    (sortedOutlines.value.length || 20) -
-      regenerateOutlineForm.startChapter +
-      1,
-    3
-  )
-  regenerateOutlineForm.idea =
-    novel.value?.description || novel.value?.title || ''
-  showRegenerateOutlineDialog.value = true
-}
-
-async function regenerateOutlinesFromChapter() {
-  const idea = regenerateOutlineForm.idea.trim()
-  if (!idea) {
-    message.warning('请输入故事核心想法')
-    return
-  }
-
-  generatingOutline.value = true
-  outlineStreamText.value = ''
-  try {
-    await startStream({
-      url: '/api/ai/generate-outline',
-      body: {
-        novelId: novelId.value,
-        idea,
-        chapterCount: regenerateOutlineForm.chapterCount,
-        startChapter: regenerateOutlineForm.startChapter,
-        existingOutlines: sortedOutlines.value.map((outline) => ({
-          chapterNumber: outline.chapterNumber,
-          description: outline.description
-        }))
-      },
-      onChunk: (chunk) => {
-        outlineStreamText.value += chunk
-      },
-      onDone: (fullContent, parsedJson) => {
-        try {
-          const parsed =
-            parsedJson ||
-            JSON.parse((fullContent.match(/\[[\s\S]*\]/) || [fullContent])[0])
-          const outlines =
-            Array.isArray(parsed) ? parsed : parsed.outlines || []
-          if (!outlines.length) {
-            message.warning('AI 未返回可用大纲')
-            return
-          }
-          const preserved = sortedOutlines.value
-            .filter(
-              (outline) =>
-                outline.chapterNumber < regenerateOutlineForm.startChapter
-            )
-            .map((outline, index) => ({
-              chapterNumber: outline.chapterNumber,
-              description: outline.description,
-              sortOrder: index
-            }))
-          const regenerated = outlines.map((outline: any, index: number) => ({
-            chapterNumber: outline.chapterNumber,
-            description: outline.description,
-            sortOrder: preserved.length + index
-          }))
-          outlineFormItems.value = [...preserved, ...regenerated]
-          editingOutlines.value = true
-          showRegenerateOutlineDialog.value = false
-          message.success('后续大纲已重新生成，请确认后保存')
-        } catch {
-          message.warning('AI 返回格式异常')
-        }
-      },
-      onError: (err) => {
-        message.error(err)
-      }
-    })
-  } finally {
-    generatingOutline.value = false
-  }
-}
-
-async function generateOutlines() {
-  const idea = generateOutlineForm.idea.trim()
-  if (!idea) {
-    message.warning('请输入故事核心想法')
-    return
-  }
-
-  generatingOutline.value = true
-  outlineStreamText.value = ''
-  try {
-    await startStream({
-      url: '/api/ai/generate-outline',
-      body: {
-        novelId: novelId.value,
-        idea,
-        chapterCount: generateOutlineForm.chapterCount
-      },
-      onChunk: (chunk) => {
-        outlineStreamText.value += chunk
-      },
-      onDone: (fullContent, parsedJson) => {
-        try {
-          const parsed =
-            parsedJson ||
-            JSON.parse((fullContent.match(/\[[\s\S]*\]/) || [fullContent])[0])
-          const outlines =
-            Array.isArray(parsed) ? parsed : parsed.outlines || []
-          if (!outlines.length) {
-            message.warning('AI 未返回可用大纲')
-            return
-          }
-          outlineFormItems.value = outlines.map(
-            (outline: any, index: number) => ({
-              chapterNumber: outline.chapterNumber,
-              description: outline.description,
-              sortOrder: outline.sortOrder ?? index
-            })
-          )
-          editingOutlines.value = true
-          showGenerateOutlineDialog.value = false
-          message.success('大纲已生成，请确认后保存')
-        } catch {
-          message.warning('AI 返回格式异常')
-        }
-      },
-      onError: (err) => {
-        message.error(err)
-      }
-    })
-  } finally {
-    generatingOutline.value = false
   }
 }
 
@@ -1285,6 +1111,7 @@ const generateCount = ref(3)
 const generatePromptId = ref<number>(0)
 const generating = ref(false)
 const characterStreamText = ref('')
+const characterGenerateError = ref('')
 
 const showExportDialog = ref(false)
 const exportFormat = ref<'txt' | 'md' | 'epub'>('md')
@@ -1322,19 +1149,26 @@ const { data: characterPrompts } = await useFetch<
 >('/api/prompts/character-generation', { default: () => [] })
 
 const promptOptions = computed(() => [
-  { label: '默认提示词', value: 0 },
-  ...(characterPrompts.value || []).map((p) => ({ label: p.name, value: p.id }))
+  { label: '内置角色生成规则', value: 0 },
+  ...(characterPrompts.value || []).map((p) => ({
+    label: `自定义：${p.name}`,
+    value: p.id
+  }))
 ])
 
 function openGenerateDialog() {
   generateCount.value = 3
   generatePromptId.value = 0
+  characterStreamText.value = ''
+  characterGenerateError.value = ''
   showGenerateDialog.value = true
 }
 
 async function generateCharacters() {
+  if (generating.value) return
   generating.value = true
   characterStreamText.value = ''
+  characterGenerateError.value = ''
   try {
     await startStream({
       url: `/api/novels/${novelId.value}/characters/generate`,
@@ -1345,29 +1179,48 @@ async function generateCharacters() {
       onChunk: (chunk) => {
         characterStreamText.value += chunk
       },
-      onDone: async (fullContent, parsedJson) => {
+      onDone: async (_fullContent, parsedJson) => {
         try {
-          const parsed =
-            parsedJson ||
-            JSON.parse((fullContent.match(/\[[\s\S]*\]/) || [fullContent])[0])
+          const parsed = parsedJson
           if (!Array.isArray(parsed) || !parsed.length) {
-            message.warning('AI 未返回可用角色')
+            characterGenerateError.value =
+              'AI 未返回可用角色，请换一个模型或减少生成数量后重试。'
+            message.warning(characterGenerateError.value)
             return
           }
-          await post(`/api/novels/${novelId.value}/characters-batch`, {
-            characters: parsed
-          })
-          message.success(`成功生成 ${parsed.length} 个角色`)
+          const result = await post<{ created: number }>(
+            `/api/novels/${novelId.value}/characters-batch`,
+            { characters: parsed }
+          )
+          if (!result.created) {
+            characterGenerateError.value =
+              'AI 返回的角色与现有角色重名，没有新增角色。'
+            message.warning(characterGenerateError.value)
+            return
+          }
+          message.success(`成功生成 ${result.created} 个角色`)
           showGenerateDialog.value = false
           await refreshCharacters()
-        } catch {
-          message.warning('AI 返回格式异常')
+        } catch (error: any) {
+          characterGenerateError.value =
+            error?.data?.message ||
+            error?.message ||
+            'AI 返回格式异常，未能保存角色。'
+          message.warning(characterGenerateError.value)
         }
       },
-      onError: (err) => {
+      onError: (err, partialContent) => {
+        characterGenerateError.value = err
+        if (partialContent) characterStreamText.value = partialContent
         message.error(err)
       }
     })
+  } catch (error: any) {
+    if (!characterGenerateError.value) {
+      characterGenerateError.value =
+        error?.data?.message || error?.message || '角色生成失败，请稍后重试。'
+      message.error(characterGenerateError.value)
+    }
   } finally {
     generating.value = false
   }
@@ -1823,15 +1676,15 @@ async function savePlotPoint() {
               >
             </div>
             <p class="mb-3 text-xs text-(--ui-text-muted)">
-              用 AI 生成章节大纲，为写作提供方向。
+              手动梳理章节大纲，为单章工作流程提供方向。
             </p>
             <NButton
               v-if="!setupStep3Done"
               size="tiny"
               type="primary"
-              @click="openGenerateOutlineDialog"
+              @click="startEditOutlines"
             >
-              生成大纲
+              编辑大纲
             </NButton>
             <span
               v-else
@@ -1865,20 +1718,6 @@ async function savePlotPoint() {
               </p>
             </div>
             <div class="flex gap-2">
-              <NButton
-                size="tiny"
-                @click="openGenerateOutlineDialog"
-              >
-                <template #icon><Icon icon="lucide:sparkles" /></template>
-                AI 生成
-              </NButton>
-              <NButton
-                size="tiny"
-                @click="() => openRegenerateOutlineDialog()"
-              >
-                <template #icon><Icon icon="lucide:refresh-cw" /></template>
-                重新规划后续
-              </NButton>
               <NButton
                 v-if="!editingOutlines"
                 size="tiny"
@@ -1982,7 +1821,7 @@ async function savePlotPoint() {
             v-else-if="!sortedOutlines.length"
             class="rounded-2xl bg-(--ui-bg-muted) ring-1 ring-(--ui-border) py-8 text-center text-sm text-(--ui-text-muted)"
           >
-            暂无章节大纲，可手动编辑或使用 AI 生成。
+            暂无章节大纲，可手动编辑后在章节工作流程中生成并验收单章计划。
           </div>
 
           <div
@@ -3185,9 +3024,7 @@ async function savePlotPoint() {
               icon="lucide:workflow"
               class="size-4 text-primary-500"
             />
-            <h2 class="font-semibold text-(--ui-text-highlighted)">
-              AI 工作区
-            </h2>
+            <h2 class="font-semibold text-(--ui-text-highlighted)">AI 审核</h2>
           </div>
           <NButton
             size="small"
@@ -3195,215 +3032,10 @@ async function savePlotPoint() {
             @click="navigateTo(`/novels/${novelId}/workspace`)"
           >
             <template #icon><Icon icon="lucide:external-link" /></template>
-            打开工作区
+            打开审核
           </NButton>
         </div>
       </section>
-
-      <!-- AI Generate Outline Dialog -->
-      <NModal
-        v-model:show="showGenerateOutlineDialog"
-        preset="card"
-        title="AI 生成大纲"
-        class="max-w-md"
-        :mask-closable="!generatingOutline"
-        :close-on-esc="!generatingOutline"
-        :closable="!generatingOutline"
-      >
-        <div class="space-y-4">
-          <template v-if="generatingOutline">
-            <div class="max-h-72 overflow-y-auto space-y-2">
-              <div
-                v-if="!outlineStreamItems.length"
-                class="flex items-center gap-2 text-sm text-(--ui-text-muted) py-4 justify-center"
-              >
-                <Icon
-                  icon="lucide:loader-2"
-                  class="w-4 h-4 animate-spin"
-                />
-                <span>正在生成大纲...</span>
-              </div>
-              <div
-                v-for="item in outlineStreamItems"
-                :key="item.chapterNumber"
-                class="flex gap-2 p-2 rounded-md bg-(--ui-bg-elevated)"
-              >
-                <span
-                  class="shrink-0 w-7 h-7 rounded-full bg-(--ui-primary)/10 text-(--ui-primary) flex items-center justify-center text-xs font-medium"
-                  >{{ item.chapterNumber }}</span
-                >
-                <p class="text-sm text-(--ui-text) leading-relaxed pt-0.5">
-                  {{ item.description }}
-                </p>
-              </div>
-              <div
-                v-if="outlineStreamItems.length"
-                class="flex items-center gap-1 text-xs text-(--ui-text-dimmed) pt-1"
-              >
-                <Icon
-                  icon="lucide:loader-2"
-                  class="w-3 h-3 animate-spin"
-                />
-                <span>已生成 {{ outlineStreamItems.length }} 章...</span>
-              </div>
-            </div>
-          </template>
-          <template v-else>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-(--ui-text)"
-                >故事核心想法</label
-              >
-              <NInput
-                v-model:value="generateOutlineForm.idea"
-                type="textarea"
-                :autosize="{ minRows: 4, maxRows: 8 }"
-                placeholder="输入主线目标、核心冲突、结局方向等"
-              />
-            </div>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-(--ui-text)"
-                >章节数量</label
-              >
-              <NInputNumber
-                v-model:value="generateOutlineForm.chapterCount"
-                :min="3"
-                :max="200"
-                class="w-full"
-              />
-            </div>
-          </template>
-        </div>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <NButton
-              :disabled="generatingOutline"
-              @click="showGenerateOutlineDialog = false"
-              >取消</NButton
-            >
-            <NButton
-              type="primary"
-              :loading="generatingOutline"
-              :disabled="generatingOutline"
-              @click="generateOutlines"
-            >
-              <template #icon><Icon icon="lucide:sparkles" /></template>
-              开始生成
-            </NButton>
-          </div>
-        </template>
-      </NModal>
-
-      <!-- AI Regenerate Later Outlines Dialog -->
-      <NModal
-        v-model:show="showRegenerateOutlineDialog"
-        preset="card"
-        title="重新规划后续大纲"
-        class="max-w-md"
-        :mask-closable="!generatingOutline"
-        :close-on-esc="!generatingOutline"
-        :closable="!generatingOutline"
-      >
-        <div class="space-y-4">
-          <template v-if="generatingOutline">
-            <div class="max-h-72 overflow-y-auto space-y-2">
-              <div
-                v-if="!outlineStreamItems.length"
-                class="flex items-center gap-2 text-sm text-(--ui-text-muted) py-4 justify-center"
-              >
-                <Icon
-                  icon="lucide:loader-2"
-                  class="w-4 h-4 animate-spin"
-                />
-                <span>正在生成大纲...</span>
-              </div>
-              <div
-                v-for="item in outlineStreamItems"
-                :key="item.chapterNumber"
-                class="flex gap-2 p-2 rounded-md bg-(--ui-bg-elevated)"
-              >
-                <span
-                  class="shrink-0 w-7 h-7 rounded-full bg-(--ui-primary)/10 text-(--ui-primary) flex items-center justify-center text-xs font-medium"
-                  >{{ item.chapterNumber }}</span
-                >
-                <p class="text-sm text-(--ui-text) leading-relaxed pt-0.5">
-                  {{ item.description }}
-                </p>
-              </div>
-              <div
-                v-if="outlineStreamItems.length"
-                class="flex items-center gap-1 text-xs text-(--ui-text-dimmed) pt-1"
-              >
-                <Icon
-                  icon="lucide:loader-2"
-                  class="w-3 h-3 animate-spin"
-                />
-                <span>已生成 {{ outlineStreamItems.length }} 章...</span>
-              </div>
-            </div>
-          </template>
-          <template v-else>
-            <NAlert
-              type="info"
-              title="仅替换起始章节及之后的大纲"
-            >
-              起始章节之前的大纲会被保留，生成结果需要你确认后手动保存。
-            </NAlert>
-            <div class="grid grid-cols-2 gap-3">
-              <div class="space-y-1.5">
-                <label class="text-sm font-medium text-(--ui-text)"
-                  >起始章节</label
-                >
-                <NInputNumber
-                  v-model:value="regenerateOutlineForm.startChapter"
-                  :min="1"
-                  :max="200"
-                  class="w-full"
-                />
-              </div>
-              <div class="space-y-1.5">
-                <label class="text-sm font-medium text-(--ui-text)"
-                  >生成数量</label
-                >
-                <NInputNumber
-                  v-model:value="regenerateOutlineForm.chapterCount"
-                  :min="3"
-                  :max="200"
-                  class="w-full"
-                />
-              </div>
-            </div>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-(--ui-text)"
-                >后续规划方向</label
-              >
-              <NInput
-                v-model:value="regenerateOutlineForm.idea"
-                type="textarea"
-                :autosize="{ minRows: 4, maxRows: 8 }"
-                placeholder="描述从这一章开始的剧情目标、转折、结局方向等"
-              />
-            </div>
-          </template>
-        </div>
-        <template #footer>
-          <div class="flex justify-end gap-2">
-            <NButton
-              :disabled="generatingOutline"
-              @click="showRegenerateOutlineDialog = false"
-              >取消</NButton
-            >
-            <NButton
-              type="primary"
-              :loading="generatingOutline"
-              :disabled="generatingOutline"
-              @click="regenerateOutlinesFromChapter"
-            >
-              <template #icon><Icon icon="lucide:refresh-cw" /></template>
-              重新生成
-            </NButton>
-          </div>
-        </template>
-      </NModal>
 
       <!-- AI Generate Characters Dialog -->
       <NModal
@@ -3415,8 +3047,21 @@ async function savePlotPoint() {
         :close-on-esc="!generating"
         :closable="!generating"
       >
+        <NAlert
+          v-if="characterGenerateError"
+          type="error"
+          class="mb-4"
+          :show-icon="false"
+        >
+          {{ characterGenerateError }}
+        </NAlert>
         <div class="space-y-4">
           <template v-if="generating">
+            <NSpin size="small">
+              <div class="text-sm text-(--ui-text-muted)">
+                正在调用写作模型生成角色，完成后会自动保存到角色档案。
+              </div>
+            </NSpin>
             <div
               class="rounded-lg bg-(--ui-bg-elevated) p-3 max-h-64 overflow-y-auto"
             >
@@ -3427,30 +3072,26 @@ async function savePlotPoint() {
             </div>
           </template>
           <template v-else>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-(--ui-text)"
-                >生成数量</label
-              >
-              <NInputNumber
-                v-model:value="generateCount"
-                :min="1"
-                :max="20"
-                class="w-full"
-              />
-            </div>
-            <div class="space-y-1.5">
-              <label class="text-sm font-medium text-(--ui-text)"
-                >提示词模板</label
-              >
-              <NSelect
-                v-model:value="generatePromptId"
-                :options="promptOptions"
-                placeholder="选择提示词模板"
-              />
-              <p class="text-xs text-(--ui-text-dimmed)">
-                管理员可在后台「提示词模板」中配置角色生成提示词
-              </p>
-            </div>
+            <NForm>
+              <NFormItem label="生成数量">
+                <NInputNumber
+                  v-model:value="generateCount"
+                  :min="1"
+                  :max="20"
+                  class="w-full"
+                />
+              </NFormItem>
+              <NFormItem label="生成规则">
+                <NSelect
+                  v-model:value="generatePromptId"
+                  :options="promptOptions"
+                  placeholder="选择生成规则"
+                />
+              </NFormItem>
+            </NForm>
+            <p class="text-xs text-(--ui-text-dimmed)">
+              内置规则会根据小说简介、世界观、章节大纲和已有角色生成新角色；自定义规则来自后台「提示词模板」，用于替换内置角色设计要求。
+            </p>
           </template>
         </div>
         <template #footer>

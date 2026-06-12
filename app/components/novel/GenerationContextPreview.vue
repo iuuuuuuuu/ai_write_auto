@@ -6,6 +6,7 @@ interface Props {
   chapterId: number
   chapterOutline?: string
   direction?: string
+  aiConfigId?: number
   skillIds?: number[]
 }
 
@@ -57,6 +58,7 @@ async function fetchPreview() {
           chapterId: props.chapterId,
           chapterOutline: props.chapterOutline?.trim() || undefined,
           direction: props.direction?.trim() || undefined,
+          aiConfigId: props.aiConfigId,
           skillIds: props.skillIds || []
         }
       }
@@ -94,7 +96,12 @@ function updateSectionSelection(
 defineExpose({ fetchPreview })
 
 watch(
-  () => [props.chapterOutline, props.direction, props.skillIds?.join(',')],
+  () => [
+    props.chapterOutline,
+    props.direction,
+    props.aiConfigId,
+    props.skillIds?.join(',')
+  ],
   () => {
     emit('ready-change', false)
   }

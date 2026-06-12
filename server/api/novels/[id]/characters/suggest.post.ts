@@ -2,11 +2,12 @@ import { z } from 'zod'
 import { streamAi, toAiOptions } from '../../../../utils/ai-client'
 import { recordUsage } from '../../../../utils/ai-stream'
 import { buildCharacterGenerationPrompt } from '../../../../utils/ai-prompts'
+import { parseJsonArrayLike } from '../../../../utils/json-salvage'
+import { resolveNovelAiConfig } from '../../../../utils/ai-configs'
 import {
   NovelSchema,
   NovelOutlineSchema,
-  CharacterSchema,
-  AiConfigSchema
+  CharacterSchema
 } from '../../../../database/entities'
 
 export default defineEventHandler(async (event) => {
@@ -29,27 +30,12 @@ export default defineEventHandler(async (event) => {
     })
     .parse(body)
 
-  const configEntry = await em.findOne(
-    AiConfigSchema,
-    { purpose: 'extraction', enabled: true },
-    { populate: ['aiModel', 'aiModel.provider'] }
+  const aiConfig = await resolveNovelAiConfig(
+    em,
+    auth.userId,
+    novelId,
+    'extraction'
   )
-  if (!configEntry || !configEntry.aiModel) {
-    throw createError({ statusCode: 400, message: '未找到信息提取的 AI 配置' })
-  }
-  const aiModel = configEntry.aiModel as any
-  if (!aiModel.enabled)
-    throw createError({
-      statusCode: 400,
-      message: `模型「${aiModel.name}」已被禁用`
-    })
-  const provider = aiModel.provider
-  const aiConfig = {
-    apiUrl: provider.apiUrl,
-    apiKey: provider.apiKey,
-    model: aiModel.model,
-    modelId: aiModel.id
-  }
 
   const existingCharacters = await em.find(CharacterSchema, { novel: novelId })
   const outlines = await em.find(
@@ -87,11 +73,12 @@ export default defineEventHandler(async (event) => {
   for await (const chunk of streamAi(
     toAiOptions(aiConfig, {
       messages,
-      temperature: 0.8,
+      temperature: 0.5,
+      thinkingEnabled: false,
       maxTokens: 4096,
       tracking: {
         userId: auth.userId,
-        configId: configEntry.id,
+        configId: aiConfig.configId,
         modelId: aiConfig.modelId,
         purpose: 'extraction',
         scenario: 'character_suggest',
@@ -112,22 +99,18 @@ export default defineEventHandler(async (event) => {
     {
       em,
       userId: auth.userId,
-      configId: configEntry.id,
+      configId: aiConfig.configId,
       model: aiConfig.model
     },
     inputTokens,
     outputTokens
   )
 
-  const cleaned = result
-    .replace(/^```(?:json|JSON)?\s*\n?/gm, '')
-    .replace(/\n?```\s*$/gm, '')
-    .trim()
-  const parsed: unknown = JSON.parse(cleaned)
-  if (!Array.isArray(parsed)) {
+  const parsed = parseJsonArrayLike(result)
+  if (!parsed.length) {
     throw createError({
       statusCode: 500,
-      message: 'AI returned invalid format'
+      message: 'AI 返回格式无效，请重试'
     })
   }
 

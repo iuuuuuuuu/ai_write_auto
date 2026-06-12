@@ -13,14 +13,29 @@
  */
 
 /** AI 偶尔把数组裹进对象里返回，按优先级在这些字段里找数组。 */
-const WRAPPER_KEYS = ['outlines', 'chapters', 'items', 'data', 'results'] as const
+const WRAPPER_KEYS = [
+  'issues',
+  'suggestions',
+  'queries',
+  'outlines',
+  'chapters',
+  'problems',
+  'items',
+  'data',
+  'results'
+] as const
+const OBJECT_WRAPPER_KEYS = ['data', 'result', 'item', 'payload'] as const
 
-export function parsePartialJsonArray(raw: string): unknown[] {
-  if (!raw) return []
-  const cleaned = raw
+function stripJsonFence(raw: string): string {
+  return raw
     .replace(/^```(?:json|JSON)?\s*\n?/gm, '')
     .replace(/\n?```\s*$/gm, '')
     .trim()
+}
+
+export function parsePartialJsonArray(raw: string): unknown[] {
+  if (!raw) return []
+  const cleaned = stripJsonFence(raw)
   if (!cleaned) return []
 
   // 1) 贪婪匹配 [...] 整体解析
@@ -67,4 +82,69 @@ export function parsePartialJsonArray(raw: string): unknown[] {
   }
 
   return []
+}
+
+export const parseJsonArrayLike = parsePartialJsonArray
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function findBalancedObjectSlice(value: string): string | null {
+  const start = value.indexOf('{')
+  if (start < 0) return null
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < value.length; index++) {
+    const char = value[index]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+    if (char === '"') {
+      inString = !inString
+      continue
+    }
+    if (inString) continue
+    if (char === '{') depth++
+    if (char === '}') {
+      depth--
+      if (depth === 0) return value.slice(start, index + 1)
+    }
+  }
+  return null
+}
+
+export function parseJsonObjectLike(
+  raw: string
+): Record<string, unknown> | null {
+  if (!raw) return null
+  const cleaned = stripJsonFence(raw)
+  if (!cleaned) return null
+  if (cleaned.trimStart().startsWith('[')) return null
+
+  const candidates = [cleaned]
+  const balanced = findBalancedObjectSlice(cleaned)
+  if (balanced && balanced !== cleaned) candidates.push(balanced)
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate) as unknown
+      if (!isPlainObject(parsed)) continue
+      for (const key of OBJECT_WRAPPER_KEYS) {
+        const inner = parsed[key]
+        if (isPlainObject(inner)) return inner
+      }
+      return parsed
+    } catch {
+      /* 尝试下一个候选 */
+    }
+  }
+
+  return null
 }

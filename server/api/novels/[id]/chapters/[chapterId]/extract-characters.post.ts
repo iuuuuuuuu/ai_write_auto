@@ -60,6 +60,7 @@ export default defineEventHandler(async (event) => {
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
+      thinkingEnabled: false,
       // 按正文长度动态给上限（角色清单随正文增长），避免长章节角色多被固定上限截断
       maxTokens: dynamicMaxTokens(estimateTokens(chapter.content) * 0.5, {
         floor: 2000,

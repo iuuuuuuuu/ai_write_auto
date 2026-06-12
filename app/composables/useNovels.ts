@@ -21,6 +21,7 @@ interface NovelSummary {
 
 export function useNovels() {
   const novels = useState<NovelSummary[]>('novels', () => [])
+  const { removeNovelHistory } = useReadingHistory()
 
   async function fetchNovels() {
     const data = await $fetch<{ items: NovelSummary[] }>('/api/novels')
@@ -30,7 +31,7 @@ export function useNovels() {
   async function createNovel(data: NovelCreateInput) {
     const novel = await $fetch<NovelSummary>('/api/novels', {
       method: 'POST',
-      body: data,
+      body: data
     })
     novels.value.unshift(novel)
     return novel
@@ -39,12 +40,17 @@ export function useNovels() {
   async function deleteNovel(id: number) {
     await $fetch(`/api/novels/${id}`, { method: 'DELETE' })
     novels.value = novels.value.filter((n) => n.id !== id)
+    removeNovelHistory(id)
   }
 
-  async function importNovel(title: string, content: string, format: 'txt' | 'md') {
+  async function importNovel(
+    title: string,
+    content: string,
+    format: 'txt' | 'md'
+  ) {
     return await $fetch('/api/novels/import', {
       method: 'POST',
-      body: { title, content, format },
+      body: { title, content, format }
     })
   }
 
@@ -53,6 +59,6 @@ export function useNovels() {
     fetchNovels,
     createNovel,
     deleteNovel,
-    importNovel,
+    importNovel
   }
 }

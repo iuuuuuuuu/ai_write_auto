@@ -459,6 +459,7 @@ export async function extractCharacterStateChangesForChapter(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
+      thinkingEnabled: false,
       maxTokens: dynamicMaxTokens(estimateTokens(chapter.content) * 0.4, {
         floor: 1800,
         cap: 5000

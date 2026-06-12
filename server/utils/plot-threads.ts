@@ -19,6 +19,7 @@ import {
 import { indexForeshadowing, indexPlotEvent } from '../services/content-rag'
 import { filterUsablePlotPoints } from './plot-points'
 import { isActiveChapterRef } from './chapter-refs'
+import { parseJsonArrayLike } from './json-salvage'
 
 export type ThreadKind =
   | 'foreshadow_setup'
@@ -55,35 +56,8 @@ export function plotThreadSignature(kind: ThreadKind, summary: string): string {
 
 /** 容错解析 AI 返回的线索 JSON 数组（贪婪匹配 → 截断 salvage），结构非法的条目丢弃。纯函数，便于单测。 */
 export function parsePlotThreads(raw: string): ParsedThread[] {
-  const cleaned = raw
-    .replace(/^```(?:json|JSON)?\s*\n?/gm, '')
-    .replace(/\n?```\s*$/gm, '')
-    .trim()
-
-  let parsed: unknown = null
-  const m = cleaned.match(/\[[\s\S]*\]/)
-  const candidate = m?.[0] ?? cleaned
-  try {
-    parsed = JSON.parse(candidate)
-  } catch {
-    // 截断 salvage：截到最后一个完整对象，补齐括号再解析
-    const lastClose = cleaned.lastIndexOf('}')
-    const open = cleaned.indexOf('[')
-    if (lastClose > 0 && open >= 0 && open < lastClose) {
-      let fix = cleaned.slice(open, lastClose + 1)
-      if (fix.split('"').length % 2 === 0) fix += '"'
-      const opens = (fix.match(/\{/g) || []).length
-      const closes = (fix.match(/\}/g) || []).length
-      for (let i = 0; i < opens - closes; i++) fix += '}'
-      fix += ']'
-      try {
-        parsed = JSON.parse(fix)
-      } catch {
-        /* 仍失败 → 返回空 */
-      }
-    }
-  }
-  if (!Array.isArray(parsed)) return []
+  const parsed = parseJsonArrayLike(raw)
+  if (!parsed.length) return []
 
   const out: ParsedThread[] = []
   for (const item of parsed as Array<Record<string, unknown>>) {
@@ -202,6 +176,7 @@ export async function runPlotThreadExtraction(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
+      thinkingEnabled: false,
       maxTokens: 1500,
       tracking: {
         userId,
