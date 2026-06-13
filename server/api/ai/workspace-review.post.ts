@@ -260,9 +260,7 @@ ${(chapter.content || '').slice(0, 6000)}
               MAX_TOKENS_REVIEW
             )
           )
-          for await (const chunk of streamAi(
-            budgeted.options
-          )) {
+          for await (const chunk of streamAi(budgeted.options)) {
             if (chunk.content) reviewContent += chunk.content
             if (chunk.usage) {
               inputTokens = chunk.usage.prompt_tokens || inputTokens

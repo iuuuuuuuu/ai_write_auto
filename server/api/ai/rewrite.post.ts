@@ -137,9 +137,10 @@ export default defineEventHandler(async (event) => {
     inlineAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
   )
 
-  return createInlineStreamResponse(
-    event,
-    budgeted.options,
-    { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
-  )
+  return createInlineStreamResponse(event, budgeted.options, {
+    em,
+    userId: auth.userId,
+    configId: aiConfig.id,
+    model: aiConfig.model
+  })
 })

@@ -57,9 +57,10 @@ export default defineEventHandler(async (event) => {
     standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
   )
 
-  return createStreamResponse(
-    event,
-    budgeted.options,
-    { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
-  )
+  return createStreamResponse(event, budgeted.options, {
+    em,
+    userId: auth.userId,
+    configId: aiConfig.id,
+    model: aiConfig.model
+  })
 })

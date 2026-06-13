@@ -25,7 +25,9 @@ const filterUserId = shallowRef<number | null>(null)
 const message = useMessage()
 const dialog = useDialog()
 
-const { data: userList } = await useFetch<Array<{ id: number; username: string }>>('/api/admin/users', {
+const { data: userList } = await useFetch<
+  Array<{ id: number; username: string }>
+>('/api/admin/users', {
   params: { pageSize: 100 },
   transform: (data: any) => data.items || data,
   default: () => []
@@ -33,7 +35,10 @@ const { data: userList } = await useFetch<Array<{ id: number; username: string }
 
 const userOptions = computed(() => [
   { label: '全部用户', value: null },
-  ...(userList.value || []).map((u: any) => ({ label: u.username, value: u.id }))
+  ...(userList.value || []).map((u: any) => ({
+    label: u.username,
+    value: u.id
+  }))
 ])
 
 const queryParams = computed(() => {
@@ -92,7 +97,11 @@ const columns = computed(() => [
     key: 'enabled',
     width: 70,
     render(row: AdminAiConfig) {
-      return h(NSwitch, { size: 'small', value: row.enabled, onUpdateValue: () => toggleEnabled(row) })
+      return h(NSwitch, {
+        size: 'small',
+        value: row.enabled,
+        onUpdateValue: () => toggleEnabled(row)
+      })
     }
   },
   {
@@ -101,8 +110,18 @@ const columns = computed(() => [
     width: 110,
     render(row: AdminAiConfig) {
       return h('div', { class: 'space-y-0.5' }, [
-        h('span', { class: 'text-xs' }, purposeLabels[row.purpose] || row.purpose),
-        row.isDefault ? h(NTag, { size: 'small', bordered: false, type: 'info' }, () => '默认') : null
+        h(
+          'span',
+          { class: 'text-xs' },
+          purposeLabels[row.purpose] || row.purpose
+        ),
+        row.isDefault ?
+          h(
+            NTag,
+            { size: 'small', bordered: false, type: 'info' },
+            () => '默认'
+          )
+        : null
       ])
     }
   },
@@ -113,7 +132,11 @@ const columns = computed(() => [
     render(row: AdminAiConfig) {
       return h('div', { class: 'space-y-0.5' }, [
         h('p', { class: 'text-xs font-medium' }, row.modelName || row.model),
-        h('p', { class: 'text-[11px] text-(--ui-text-dimmed) truncate' }, row.model)
+        h(
+          'p',
+          { class: 'text-[11px] text-(--ui-text-dimmed) truncate' },
+          row.model
+        )
       ])
     }
   },
@@ -123,9 +146,20 @@ const columns = computed(() => [
     width: 100,
     render(row: AdminAiConfig) {
       if (row.username) {
-        return h('a', { href: `/admin/users/${row.userId}`, class: 'text-xs text-primary-500 hover:underline' }, row.username)
+        return h(
+          'a',
+          {
+            href: `/admin/users/${row.userId}`,
+            class: 'text-xs text-primary-500 hover:underline'
+          },
+          row.username
+        )
       }
-      return h('span', { class: 'text-xs text-(--ui-text-dimmed)' }, `ID:${row.userId}`)
+      return h(
+        'span',
+        { class: 'text-xs text-(--ui-text-dimmed)' },
+        `ID:${row.userId}`
+      )
     }
   },
   {
@@ -141,7 +175,11 @@ const columns = computed(() => [
     key: 'maxTokens',
     width: 100,
     render(row: AdminAiConfig) {
-      return h('span', { class: 'text-xs' }, row.maxTokens ? row.maxTokens.toLocaleString() : '-')
+      return h(
+        'span',
+        { class: 'text-xs' },
+        row.maxTokens ? row.maxTokens.toLocaleString() : '-'
+      )
     }
   },
   {
@@ -149,9 +187,17 @@ const columns = computed(() => [
     key: 'actions',
     width: 70,
     render(row: AdminAiConfig) {
-      return h(NBtn, { size: 'tiny', quaternary: true, onClick: () => deleteConfig(row) }, {
-        icon: () => h(resolveComponent('Icon'), { icon: 'lucide:trash-2', class: 'w-3.5 h-3.5 text-red-500' })
-      })
+      return h(
+        NBtn,
+        { size: 'tiny', quaternary: true, onClick: () => deleteConfig(row) },
+        {
+          icon: () =>
+            h(resolveComponent('Icon'), {
+              icon: 'lucide:trash-2',
+              class: 'w-3.5 h-3.5 text-red-500'
+            })
+        }
+      )
     }
   }
 ])
@@ -160,10 +206,14 @@ const columns = computed(() => [
 <template>
   <div class="flex flex-col h-full space-y-4">
     <section class="card-glass relative overflow-hidden p-5 md:p-6">
-      <div class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div
+        class="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
+      >
         <div>
           <p class="text-sm text-(--ui-text-muted)">Admin / AI</p>
-          <h1 class="mt-1 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)">
+          <h1
+            class="mt-1 text-2xl font-semibold tracking-tight text-(--ui-text-highlighted)"
+          >
             模型配置
           </h1>
           <p class="mt-1 max-w-2xl text-sm text-(--ui-text-muted)">
@@ -187,7 +237,10 @@ const columns = computed(() => [
             clearable
           >
             <template #prefix>
-              <Icon icon="lucide:search" class="text-(--ui-text-dimmed)" />
+              <Icon
+                icon="lucide:search"
+                class="text-(--ui-text-dimmed)"
+              />
             </template>
           </NInput>
         </div>
@@ -207,13 +260,18 @@ const columns = computed(() => [
       >
         <template #empty>
           <div class="py-8 text-center">
-            <Icon icon="lucide:settings" class="size-10 text-(--ui-text-dimmed)/30 mx-auto mb-3" />
+            <Icon
+              icon="lucide:settings"
+              class="size-10 text-(--ui-text-dimmed)/30 mx-auto mb-3"
+            />
             <p class="text-sm text-(--ui-text-dimmed)">暂无模型配置</p>
           </div>
         </template>
       </NDataTable>
 
-      <div class="flex items-center justify-between pt-3 border-t border-(--ui-border) mt-3">
+      <div
+        class="flex items-center justify-between pt-3 border-t border-(--ui-border) mt-3"
+      >
         <span class="text-xs text-(--ui-text-dimmed)">共 {{ total }} 条</span>
         <NPagination
           :page="page"

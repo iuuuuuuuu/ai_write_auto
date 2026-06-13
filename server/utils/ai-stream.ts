@@ -87,7 +87,12 @@ export interface PreparedBudgetedAiOptions {
 export function standardAiBudgetOptions(
   contextWindowTokens: number,
   desiredOutputTokens: number,
-  overrides: Partial<Omit<TokenBudgetInput, 'messages' | 'contextWindowTokens' | 'desiredOutputTokens'>> = {}
+  overrides: Partial<
+    Omit<
+      TokenBudgetInput,
+      'messages' | 'contextWindowTokens' | 'desiredOutputTokens'
+    >
+  > = {}
 ): Omit<TokenBudgetInput, 'messages'> {
   return {
     contextWindowTokens,

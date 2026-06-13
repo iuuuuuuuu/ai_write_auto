@@ -152,7 +152,9 @@ export default defineEventHandler(async (event) => {
       desiredOutputTokens,
       reserveTokens: 1024,
       minOutputTokens: 1024,
-      minimumInputTokens: resolveMinimumInputTokens(aiConfig.contextWindowTokens)
+      minimumInputTokens: resolveMinimumInputTokens(
+        aiConfig.contextWindowTokens
+      )
     }
   )
 

@@ -453,10 +453,13 @@ export async function extractCharacterStateChangesForChapter(
       overallArc: character.overallArc
     }))
   })
-  const desiredOutputTokens = dynamicMaxTokens(estimateTokens(chapter.content) * 0.4, {
-    floor: 1800,
-    cap: 5000
-  })
+  const desiredOutputTokens = dynamicMaxTokens(
+    estimateTokens(chapter.content) * 0.4,
+    {
+      floor: 1800,
+      cap: 5000
+    }
+  )
   const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,

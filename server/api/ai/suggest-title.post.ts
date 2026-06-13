@@ -110,9 +110,7 @@ export default defineEventHandler(async (event) => {
     content: title,
     inputTokens,
     outputTokens
-  } = await collectAiStreamWithUsage(
-    budgeted.options
-  )
+  } = await collectAiStreamWithUsage(budgeted.options)
 
   await recordUsage(
     {

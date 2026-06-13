@@ -176,16 +176,20 @@ async function processTask(task: GenerationTask): Promise<void> {
           const messages = buildSummaryPrompt(chapter.content)
           const desiredOutputTokens = 500
           const aiResult = await callAiStreaming(
-            budgetTaskAiOptions(aiConfig, {
-              messages,
-              temperature: 0.3,
-              tracking: buildTaskTracking(
-                aiConfig,
-                'task_extract_summary',
-                'extraction',
-                chapter.id
-              )
-            }, desiredOutputTokens)
+            budgetTaskAiOptions(
+              aiConfig,
+              {
+                messages,
+                temperature: 0.3,
+                tracking: buildTaskTracking(
+                  aiConfig,
+                  'task_extract_summary',
+                  'extraction',
+                  chapter.id
+                )
+              },
+              desiredOutputTokens
+            )
           )
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
@@ -222,16 +226,20 @@ async function processTask(task: GenerationTask): Promise<void> {
             { floor: 2000, cap: 6000 }
           )
           const aiResult = await callAiStreaming(
-            budgetTaskAiOptions(aiConfig, {
-              messages,
-              temperature: 0.2,
-              tracking: buildTaskTracking(
-                aiConfig,
-                'task_character_extract',
-                'extraction',
-                chapter.id
-              )
-            }, desiredOutputTokens)
+            budgetTaskAiOptions(
+              aiConfig,
+              {
+                messages,
+                temperature: 0.2,
+                tracking: buildTaskTracking(
+                  aiConfig,
+                  'task_character_extract',
+                  'extraction',
+                  chapter.id
+                )
+              },
+              desiredOutputTokens
+            )
           )
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
@@ -337,16 +345,20 @@ async function processTask(task: GenerationTask): Promise<void> {
               )
               const desiredStoryOutputTokens = 500
               const storyResult = await callAiStreaming(
-                budgetTaskAiOptions(aiConfig, {
-                  messages: storyMessages,
-                  temperature: 0.3,
-                  tracking: buildTaskTracking(
-                    aiConfig,
-                    'task_character_story',
-                    'extraction',
-                    chapter.id
-                  )
-                }, desiredStoryOutputTokens)
+                budgetTaskAiOptions(
+                  aiConfig,
+                  {
+                    messages: storyMessages,
+                    temperature: 0.3,
+                    tracking: buildTaskTracking(
+                      aiConfig,
+                      'task_character_story',
+                      'extraction',
+                      chapter.id
+                    )
+                  },
+                  desiredStoryOutputTokens
+                )
               )
               const chapterStory = storyResult.content
               totalInputTokens += storyResult.inputTokens
@@ -362,16 +374,20 @@ async function processTask(task: GenerationTask): Promise<void> {
               )
               const desiredArcOutputTokens = 800
               const arcResult = await callAiStreaming(
-                budgetTaskAiOptions(aiConfig, {
-                  messages: arcMessages,
-                  temperature: 0.3,
-                  tracking: buildTaskTracking(
-                    aiConfig,
-                    'task_character_arc',
-                    'extraction',
-                    chapter.id
-                  )
-                }, desiredArcOutputTokens)
+                budgetTaskAiOptions(
+                  aiConfig,
+                  {
+                    messages: arcMessages,
+                    temperature: 0.3,
+                    tracking: buildTaskTracking(
+                      aiConfig,
+                      'task_character_arc',
+                      'extraction',
+                      chapter.id
+                    )
+                  },
+                  desiredArcOutputTokens
+                )
               )
               totalInputTokens += arcResult.inputTokens
               totalOutputTokens += arcResult.outputTokens
@@ -500,15 +516,19 @@ async function processTask(task: GenerationTask): Promise<void> {
             )
             const desiredOutputTokens = 500
             const arcResult = await callAiStreaming(
-              budgetTaskAiOptions(aiConfig, {
-                messages,
-                temperature: 0.3,
-                tracking: buildTaskTracking(
-                  aiConfig,
-                  'task_story_arc_generate',
-                  'extraction'
-                )
-              }, desiredOutputTokens)
+              budgetTaskAiOptions(
+                aiConfig,
+                {
+                  messages,
+                  temperature: 0.3,
+                  tracking: buildTaskTracking(
+                    aiConfig,
+                    'task_story_arc_generate',
+                    'extraction'
+                  )
+                },
+                desiredOutputTokens
+              )
             )
             const arcSummary = arcResult.content
             totalInputTokens += arcResult.inputTokens
@@ -562,15 +582,19 @@ async function processTask(task: GenerationTask): Promise<void> {
           ]
           const desiredOutputTokens = 500
           const styleResult = await callAiStreaming(
-            budgetTaskAiOptions(aiConfig, {
-              messages,
-              temperature: 0.3,
-              tracking: buildTaskTracking(
-                aiConfig,
-                'task_style_analysis',
-                'style_analysis'
-              )
-            }, desiredOutputTokens)
+            budgetTaskAiOptions(
+              aiConfig,
+              {
+                messages,
+                temperature: 0.3,
+                tracking: buildTaskTracking(
+                  aiConfig,
+                  'task_style_analysis',
+                  'style_analysis'
+                )
+              },
+              desiredOutputTokens
+            )
           )
           const styleGuide = styleResult.content
           totalInputTokens += styleResult.inputTokens

@@ -54,10 +54,13 @@ export default defineEventHandler(async (event) => {
   )
 
   const messages = buildCharacterExtractionPrompt(chapter.content)
-  const desiredOutputTokens = dynamicMaxTokens(estimateTokens(chapter.content) * 0.5, {
-    floor: 2000,
-    cap: 6000
-  })
+  const desiredOutputTokens = dynamicMaxTokens(
+    estimateTokens(chapter.content) * 0.5,
+    {
+      floor: 2000,
+      cap: 6000
+    }
+  )
   const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
