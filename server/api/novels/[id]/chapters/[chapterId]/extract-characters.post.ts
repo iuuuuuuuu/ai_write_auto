@@ -2,7 +2,9 @@ import { streamAi, toAiOptions } from '~~/server/utils/ai-client'
 import {
   recordUsage,
   estimateTokens,
-  dynamicMaxTokens
+  dynamicMaxTokens,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions
 } from '~~/server/utils/ai-stream'
 import { resolveNovelAiConfig } from '~~/server/utils/ai-configs'
 import { buildCharacterExtractionPrompt } from '~~/server/utils/ai-prompts'
@@ -52,20 +54,16 @@ export default defineEventHandler(async (event) => {
   )
 
   const messages = buildCharacterExtractionPrompt(chapter.content)
-
-  let aiContent = ''
-  let inputTokens = 0
-  let outputTokens = 0
-  for await (const chunk of streamAi(
+  const desiredOutputTokens = dynamicMaxTokens(estimateTokens(chapter.content) * 0.5, {
+    floor: 2000,
+    cap: 6000
+  })
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
       thinkingEnabled: false,
-      // 按正文长度动态给上限（角色清单随正文增长），避免长章节角色多被固定上限截断
-      maxTokens: dynamicMaxTokens(estimateTokens(chapter.content) * 0.5, {
-        floor: 2000,
-        cap: 6000
-      }),
+      maxTokens: desiredOutputTokens,
       tracking: {
         userId: auth.userId,
         configId: aiConfig.configId,
@@ -77,8 +75,14 @@ export default defineEventHandler(async (event) => {
         novelId,
         chapterId
       }
-    })
-  )) {
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
+  let aiContent = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(budgeted.options)) {
     if (chunk.content) aiContent += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens

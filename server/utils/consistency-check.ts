@@ -1,6 +1,7 @@
 import type { EntityManager } from '@mikro-orm/core'
 import { createHash } from 'node:crypto'
 import { streamAi, toAiOptions } from './ai-client'
+import { prepareBudgetedAiOptions, standardAiBudgetOptions } from './ai-stream'
 import { buildConsistencyCheckPrompt } from './ai-prompts'
 import {
   AiConfigSchema,
@@ -134,6 +135,7 @@ export async function runConsistencyCheck(
     modelId: aiModel.id,
     configId: config.id
   }
+  const contextWindowTokens = aiModel.contextWindowTokens || 32768
 
   const novel = await em.findOne(NovelSchema, { id: novelId })
 
@@ -217,14 +219,13 @@ export async function runConsistencyCheck(
       content: targetChapter.content
     }
   })
-
-  let result = ''
-  for await (const chunk of streamAi(
+  const desiredOutputTokens = 2000
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
       thinkingEnabled: false,
-      maxTokens: 2000,
+      maxTokens: desiredOutputTokens,
       tracking: {
         userId,
         configId: config.id,
@@ -235,8 +236,12 @@ export async function runConsistencyCheck(
         novelId,
         chapterId
       }
-    })
-  )) {
+    }),
+    standardAiBudgetOptions(contextWindowTokens, desiredOutputTokens)
+  )
+
+  let result = ''
+  for await (const chunk of streamAi(budgeted.options)) {
     if (chunk.content) result += chunk.content
   }
 

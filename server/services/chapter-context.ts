@@ -218,6 +218,10 @@ export interface PrepareChapterOptions {
   /** 本次生成应注入的写作技能包 id（小说默认启用 + 本次勾选），加载失败静默跳过 */
   skillIds?: number[]
   contextSelection?: GenerationContextSelection
+  generationBudget?: {
+    maxOutputTokens?: number
+    targetWords?: number
+  }
 }
 
 export interface PrepareChapterResult {
@@ -381,7 +385,8 @@ export async function prepareChapterContext(
     foreshadowing: opts.foreshadowing,
     recentChapterContent: opts.recentChapterContent,
     characterStateChanges: selectedContext.characterStateChanges,
-    skills
+    skills,
+    generationBudget: opts.generationBudget
   })
 
   return {

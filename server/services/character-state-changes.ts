@@ -4,7 +4,9 @@ import { streamAi, toAiOptions } from '../utils/ai-client'
 import {
   recordUsage,
   estimateTokens,
-  dynamicMaxTokens
+  dynamicMaxTokens,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions
 } from '../utils/ai-stream'
 import { resolveNovelAiConfig } from '../utils/ai-configs'
 import { parsePartialJsonArray } from '../utils/json-salvage'
@@ -451,19 +453,16 @@ export async function extractCharacterStateChangesForChapter(
       overallArc: character.overallArc
     }))
   })
-
-  let aiContent = ''
-  let inputTokens = 0
-  let outputTokens = 0
-  for await (const chunk of streamAi(
+  const desiredOutputTokens = dynamicMaxTokens(estimateTokens(chapter.content) * 0.4, {
+    floor: 1800,
+    cap: 5000
+  })
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
       thinkingEnabled: false,
-      maxTokens: dynamicMaxTokens(estimateTokens(chapter.content) * 0.4, {
-        floor: 1800,
-        cap: 5000
-      }),
+      maxTokens: desiredOutputTokens,
       tracking: {
         userId: input.userId,
         configId: aiConfig.configId,
@@ -474,8 +473,14 @@ export async function extractCharacterStateChangesForChapter(
         novelId: input.novelId,
         chapterId: input.chapterId
       }
-    })
-  )) {
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
+  let aiContent = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(budgeted.options)) {
     if (chunk.content) aiContent += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens

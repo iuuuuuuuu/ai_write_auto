@@ -19,6 +19,7 @@ interface AiModelItem {
   name: string
   model: string
   maxTokens: number
+  contextWindowTokens: number
   enabled: boolean
   supportsThinking: boolean
   thinkingEnabled: boolean
@@ -347,6 +348,7 @@ const modelForm = reactive({
   name: '',
   model: '',
   maxTokens: 4096,
+  contextWindowTokens: 32768,
   enabled: true,
   supportsThinking: false,
   thinkingEnabled: false,
@@ -375,6 +377,7 @@ function resetModelForm() {
   modelForm.name = ''
   modelForm.model = ''
   modelForm.maxTokens = 4096
+  modelForm.contextWindowTokens = 32768
   modelForm.enabled = true
   modelForm.supportsThinking = false
   modelForm.thinkingEnabled = false
@@ -401,6 +404,7 @@ function startEditModel(model: AiModelItem, providerId: number) {
   modelForm.name = model.name
   modelForm.model = model.model
   modelForm.maxTokens = model.maxTokens
+  modelForm.contextWindowTokens = model.contextWindowTokens
   modelForm.enabled = model.enabled
   modelForm.supportsThinking = model.supportsThinking
   modelForm.thinkingEnabled = model.thinkingEnabled
@@ -434,6 +438,7 @@ async function saveModel() {
         name: modelForm.name.trim(),
         model: modelForm.model.trim(),
         maxTokens: modelForm.maxTokens,
+        contextWindowTokens: modelForm.contextWindowTokens,
         enabled: modelForm.enabled,
         supportsThinking: modelForm.supportsThinking,
         thinkingEnabled:
@@ -515,6 +520,7 @@ async function toggleModelEnabled(model: AiModelItem) {
         name: model.name,
         model: model.model,
         maxTokens: model.maxTokens,
+        contextWindowTokens: model.contextWindowTokens,
         enabled: !model.enabled
       },
       { successMessage: model.enabled ? '模型已禁用' : '模型已启用' }
@@ -954,8 +960,9 @@ async function deleteConfig(config: AiConfigItem) {
                   >
                 </div>
                 <p class="text-[10px] text-(--ui-text-dimmed) truncate">
-                  {{ model.model }} ·
-                  {{ model.maxTokens.toLocaleString() }} tokens
+                  {{ model.model }} · 最大输出
+                  {{ model.maxTokens.toLocaleString() }} tokens · 上下文
+                  {{ model.contextWindowTokens.toLocaleString() }} tokens
                 </p>
               </div>
 
@@ -1507,7 +1514,10 @@ async function deleteConfig(config: AiConfigItem) {
           </NFormItem>
         </div>
         <div class="grid gap-4 sm:grid-cols-2">
-          <NFormItem label="最大 Tokens">
+          <NFormItem
+            label="最大输出 Tokens"
+            description="单次生成允许模型输出的 token 上限；章节正文过长时会按上下文窗口自动压缩。"
+          >
             <NInputNumber
               v-model:value="modelForm.maxTokens"
               :min="256"
@@ -1516,6 +1526,20 @@ async function deleteConfig(config: AiConfigItem) {
               size="small"
             />
           </NFormItem>
+          <NFormItem
+            label="上下文窗口 Tokens"
+            description="模型输入 + 输出的总窗口。系统会据此为上下文和正文输出分配预算，降低截断概率。"
+          >
+            <NInputNumber
+              v-model:value="modelForm.contextWindowTokens"
+              :min="4096"
+              :max="2000000"
+              :step="4096"
+              size="small"
+            />
+          </NFormItem>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
           <NFormItem label="状态">
             <NCheckbox
               v-model:checked="modelForm.enabled"

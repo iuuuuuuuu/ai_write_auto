@@ -11,6 +11,8 @@ import {
   recordUsage,
   estimateTokens,
   dynamicMaxTokens,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions,
   type StreamContext
 } from '../utils/ai-stream'
 import {
@@ -97,8 +99,22 @@ async function resolveConfigForPurpose(
     apiKey: provider.apiKey,
     model: aiModel.model,
     temperature: config.temperature,
-    maxTokens: aiModel.maxTokens
+    maxTokens: aiModel.maxTokens,
+    contextWindowTokens: aiModel.contextWindowTokens || 32768
   }
+}
+
+type AiOptionsOverrides = NonNullable<Parameters<typeof toAiOptions>[1]>
+
+function budgetTaskAiOptions(
+  aiConfig: ResolvedAiConfig,
+  overrides: AiOptionsOverrides,
+  desiredOutputTokens: number
+) {
+  return prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, { ...overrides, maxTokens: desiredOutputTokens }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  ).options
 }
 
 function getEntityId(entity: unknown): number {
@@ -158,18 +174,18 @@ async function processTask(task: GenerationTask): Promise<void> {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildSummaryPrompt(chapter.content)
+          const desiredOutputTokens = 500
           const aiResult = await callAiStreaming(
-            toAiOptions(aiConfig, {
+            budgetTaskAiOptions(aiConfig, {
               messages,
               temperature: 0.3,
-              maxTokens: 500,
               tracking: buildTaskTracking(
                 aiConfig,
                 'task_extract_summary',
                 'extraction',
                 chapter.id
               )
-            })
+            }, desiredOutputTokens)
           )
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
@@ -201,22 +217,21 @@ async function processTask(task: GenerationTask): Promise<void> {
         const aiConfig = await resolveConfigForPurpose(em, 'extraction', userId)
         if (aiConfig) {
           const messages = buildCharacterExtractionPrompt(chapter.content)
+          const desiredOutputTokens = dynamicMaxTokens(
+            estimateTokens(chapter.content) * 0.5,
+            { floor: 2000, cap: 6000 }
+          )
           const aiResult = await callAiStreaming(
-            toAiOptions(aiConfig, {
+            budgetTaskAiOptions(aiConfig, {
               messages,
               temperature: 0.2,
-              // 按正文长度动态给上限（角色清单随正文增长），避免长章节角色多被固定 2000 截断
-              maxTokens: dynamicMaxTokens(
-                estimateTokens(chapter.content) * 0.5,
-                { floor: 2000, cap: 6000 }
-              ),
               tracking: buildTaskTracking(
                 aiConfig,
                 'task_character_extract',
                 'extraction',
                 chapter.id
               )
-            })
+            }, desiredOutputTokens)
           )
           result = aiResult.content
           totalInputTokens += aiResult.inputTokens
@@ -320,18 +335,18 @@ async function processTask(task: GenerationTask): Promise<void> {
                   background: a.background
                 }))
               )
+              const desiredStoryOutputTokens = 500
               const storyResult = await callAiStreaming(
-                toAiOptions(aiConfig, {
+                budgetTaskAiOptions(aiConfig, {
                   messages: storyMessages,
                   temperature: 0.3,
-                  maxTokens: 500,
                   tracking: buildTaskTracking(
                     aiConfig,
                     'task_character_story',
                     'extraction',
                     chapter.id
                   )
-                })
+                }, desiredStoryOutputTokens)
               )
               const chapterStory = storyResult.content
               totalInputTokens += storyResult.inputTokens
@@ -345,18 +360,18 @@ async function processTask(task: GenerationTask): Promise<void> {
                 chapterStory,
                 chapter.chapterNumber
               )
+              const desiredArcOutputTokens = 800
               const arcResult = await callAiStreaming(
-                toAiOptions(aiConfig, {
+                budgetTaskAiOptions(aiConfig, {
                   messages: arcMessages,
                   temperature: 0.3,
-                  maxTokens: 800,
                   tracking: buildTaskTracking(
                     aiConfig,
                     'task_character_arc',
                     'extraction',
                     chapter.id
                   )
-                })
+                }, desiredArcOutputTokens)
               )
               totalInputTokens += arcResult.inputTokens
               totalOutputTokens += arcResult.outputTokens
@@ -483,17 +498,17 @@ async function processTask(task: GenerationTask): Promise<void> {
               startChapter,
               endChapter
             )
+            const desiredOutputTokens = 500
             const arcResult = await callAiStreaming(
-              toAiOptions(aiConfig, {
+              budgetTaskAiOptions(aiConfig, {
                 messages,
                 temperature: 0.3,
-                maxTokens: 500,
                 tracking: buildTaskTracking(
                   aiConfig,
                   'task_story_arc_generate',
                   'extraction'
                 )
-              })
+              }, desiredOutputTokens)
             )
             const arcSummary = arcResult.content
             totalInputTokens += arcResult.inputTokens
@@ -545,17 +560,17 @@ async function processTask(task: GenerationTask): Promise<void> {
               content: `请分析以下小说片段的写作风格：\n\n${sampleText}`
             }
           ]
+          const desiredOutputTokens = 500
           const styleResult = await callAiStreaming(
-            toAiOptions(aiConfig, {
+            budgetTaskAiOptions(aiConfig, {
               messages,
               temperature: 0.3,
-              maxTokens: 500,
               tracking: buildTaskTracking(
                 aiConfig,
                 'task_style_analysis',
                 'style_analysis'
               )
-            })
+            }, desiredOutputTokens)
           )
           const styleGuide = styleResult.content
           totalInputTokens += styleResult.inputTokens

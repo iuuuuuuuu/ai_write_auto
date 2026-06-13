@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { toAiOptions } from '../../utils/ai-client'
-import { collectAiStreamWithUsage, recordUsage } from '../../utils/ai-stream'
+import {
+  collectAiStreamWithUsage,
+  prepareBudgetedAiOptions,
+  recordUsage,
+  standardAiBudgetOptions
+} from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import {
   NovelSchema,
@@ -76,16 +81,12 @@ export default defineEventHandler(async (event) => {
         : `小说：${novel.title}${novel.genre ? `（${novel.genre}）` : ''}\n第${chapterNumber}章${previousHint}${outlineHint}\n\n===\n请为这一章生成一个 4-10 字的章节标题（名词短语或动宾短语，如「宫廷初遇」「危机四伏」）。\n直接输出标题，不要思考过程、序号、引号、前缀。`
     }
   ]
-
-  const {
-    content: title,
-    inputTokens,
-    outputTokens
-  } = await collectAiStreamWithUsage(
+  const desiredOutputTokens = 600
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.8,
-      maxTokens: 600, // 增大到 600 以容纳思考模型的思考过程 + 标题输出
+      maxTokens: desiredOutputTokens,
       extraBody: {
         enable_thinking: false,
         reasoning_effort: 'low'
@@ -101,7 +102,16 @@ export default defineEventHandler(async (event) => {
         novelId: data.novelId,
         chapterId: data.chapterId ?? null
       }
-    })
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
+  const {
+    content: title,
+    inputTokens,
+    outputTokens
+  } = await collectAiStreamWithUsage(
+    budgeted.options
   )
 
   await recordUsage(

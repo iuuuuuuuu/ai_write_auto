@@ -202,6 +202,22 @@ describe('ai-prompts', () => {
       expect(result[1].content).toContain('玄幻')
     })
 
+    it('includes explicit output budget when provided', () => {
+      const result = buildGenerationPrompt({
+        novel: { title: '测试小说' },
+        chapters: [],
+        characters: [],
+        plotPoints: [],
+        generationBudget: {
+          maxOutputTokens: 6000,
+          targetWords: 3000
+        }
+      })
+
+      expect(result[0].content).toContain('最大输出约 6000 tokens')
+      expect(result[0].content).toContain('目标正文约 3000 字')
+    })
+
     it('系统提示含反「AI 腔」负向约束，且不含被移除的「生动的描写」反向指令', () => {
       const result = buildGenerationPrompt({
         novel: { title: '测试' },

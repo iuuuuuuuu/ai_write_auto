@@ -1,5 +1,8 @@
 import { z } from 'zod'
-import { createTrackedStreamResponse } from '../../utils/ai-stream'
+import {
+  createTrackedStreamResponse,
+  prepareBudgetedAiOptions
+} from '../../utils/ai-stream'
 import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildRegenerationPrompt } from '../../utils/ai-prompts'
@@ -27,6 +30,10 @@ const regenerateSchema = z.object({
   reasoningEffort: z.enum(['low', 'medium', 'high']).optional(),
   maxTokens: z.number().int().min(256).max(128000).optional()
 })
+
+function resolveMinimumInputTokens(contextWindowTokens: number): number {
+  return Math.max(4096, Math.floor(contextWindowTokens * 0.25))
+}
 
 export default defineEventHandler(async (event) => {
   const auth = requireAuth(event)
@@ -117,31 +124,41 @@ export default defineEventHandler(async (event) => {
   })
   await em.flush()
 
+  const desiredOutputTokens = data.maxTokens || aiConfig.maxTokens || 4096
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: data.temperature,
+      topP: data.topP,
+      thinkingEnabled: data.thinkingEnabled,
+      reasoningEffort: data.reasoningEffort,
+      maxTokens: desiredOutputTokens,
+      extraBody: PROSE_SAMPLING,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'chapter_regenerate',
+        source: 'api_route',
+        endpoint: '/api/ai/regenerate',
+        novelId: data.novelId,
+        chapterId: data.chapterId || null,
+        taskId: task.id
+      }
+    }),
+    {
+      contextWindowTokens: aiConfig.contextWindowTokens,
+      desiredOutputTokens,
+      reserveTokens: 1024,
+      minOutputTokens: 1024,
+      minimumInputTokens: resolveMinimumInputTokens(aiConfig.contextWindowTokens)
+    }
+  )
+
   return createTrackedStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: data.temperature,
-        topP: data.topP,
-        thinkingEnabled: data.thinkingEnabled,
-        reasoningEffort: data.reasoningEffort,
-        maxTokens: data.maxTokens || aiConfig.maxTokens || 4096,
-        extraBody: PROSE_SAMPLING,
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'chapter_regenerate',
-          source: 'api_route',
-          endpoint: '/api/ai/regenerate',
-          novelId: data.novelId,
-          chapterId: data.chapterId || null,
-          taskId: task.id
-        }
-      })
-    },
+    budgeted.options,
     {
       em,
       userId: auth.userId,
@@ -150,7 +167,8 @@ export default defineEventHandler(async (event) => {
     },
     {
       taskId: task.id,
-      trackStats: true
+      trackStats: true,
+      budget: budgeted.budget
     }
   )
 })

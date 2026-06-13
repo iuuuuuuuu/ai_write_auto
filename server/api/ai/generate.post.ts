@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { createTrackedStreamResponse } from '../../utils/ai-stream'
+import {
+  buildTokenBudget,
+  createTrackedStreamResponse,
+  prepareBudgetedAiOptions
+} from '../../utils/ai-stream'
 import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { NovelSchema, GenerationTaskSchema } from '../../database/entities'
@@ -54,6 +58,14 @@ function formatWorkflowPlanDirection(
   ]
     .filter(Boolean)
     .join('\n')
+}
+
+function resolveTargetWords(maxOutputTokens: number): number {
+  return Math.max(800, Math.floor(maxOutputTokens / 2))
+}
+
+function resolveMinimumInputTokens(contextWindowTokens: number): number {
+  return Math.max(4096, Math.floor(contextWindowTokens * 0.25))
 }
 
 export default defineEventHandler(async (event) => {
@@ -116,6 +128,16 @@ export default defineEventHandler(async (event) => {
     requestSkillIds: data.skillIds
   })
 
+  const desiredOutputTokens = data.maxTokens || aiConfig.maxTokens || 4096
+  const initialBudget = buildTokenBudget({
+    messages: [],
+    contextWindowTokens: aiConfig.contextWindowTokens,
+    desiredOutputTokens,
+    reserveTokens: 1024,
+    minOutputTokens: 1024,
+    minimumInputTokens: resolveMinimumInputTokens(aiConfig.contextWindowTokens)
+  })
+
   const { messages } = await prepareChapterContext(em, {
     novel,
     novelId: data.novelId,
@@ -137,8 +159,47 @@ export default defineEventHandler(async (event) => {
     recentChapterContent: contextInputs.recentChapterContent,
     depth: 'query-only',
     skillIds: contextInputs.skillIds,
-    contextSelection: data.contextSelection
+    contextSelection: data.contextSelection,
+    generationBudget: {
+      maxOutputTokens: initialBudget.maxOutputTokens,
+      targetWords: resolveTargetWords(initialBudget.maxOutputTokens)
+    }
   })
+
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: data.temperature,
+      topP: data.topP,
+      thinkingEnabled: data.thinkingEnabled,
+      reasoningEffort: data.reasoningEffort,
+      maxTokens: desiredOutputTokens,
+      extraBody: PROSE_SAMPLING,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'chapter_generate',
+        source: 'api_route',
+        endpoint: '/api/ai/generate',
+        novelId: data.novelId,
+        chapterId: data.chapterId || null
+      }
+    }),
+    {
+      contextWindowTokens: aiConfig.contextWindowTokens,
+      desiredOutputTokens,
+      reserveTokens: 1024,
+      minOutputTokens: 1024,
+      minimumInputTokens: resolveMinimumInputTokens(aiConfig.contextWindowTokens)
+    }
+  )
+
+  if (budgeted.options.tracking) {
+    budgeted.options.tracking.taskId = undefined
+  }
+  const budget = budgeted.budget
 
   const task = em.create(GenerationTaskSchema, {
     novel: data.novelId,
@@ -147,6 +208,10 @@ export default defineEventHandler(async (event) => {
     status: 'running'
   })
   await em.flush()
+  if (budgeted.options.tracking) {
+    budgeted.options.tracking.taskId = task.id
+  }
+
   if (data.workflowPlanId) {
     await linkChapterWorkflowPlanToTask(em, {
       planId: data.workflowPlanId,
@@ -158,29 +223,7 @@ export default defineEventHandler(async (event) => {
 
   return createTrackedStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: data.temperature,
-        topP: data.topP,
-        thinkingEnabled: data.thinkingEnabled,
-        reasoningEffort: data.reasoningEffort,
-        maxTokens: data.maxTokens || aiConfig.maxTokens || 4096,
-        extraBody: PROSE_SAMPLING,
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'chapter_generate',
-          source: 'api_route',
-          endpoint: '/api/ai/generate',
-          novelId: data.novelId,
-          chapterId: data.chapterId || null,
-          taskId: task.id
-        }
-      })
-    },
+    budgeted.options,
     {
       em,
       userId: auth.userId,
@@ -189,7 +232,8 @@ export default defineEventHandler(async (event) => {
     },
     {
       taskId: task.id,
-      trackStats: true
+      trackStats: true,
+      budget
     }
   )
 })

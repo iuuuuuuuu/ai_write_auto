@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { createStreamResponse, dynamicMaxTokens } from '../../utils/ai-stream'
+import {
+  createStreamResponse,
+  dynamicMaxTokens,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions
+} from '../../utils/ai-stream'
 import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildOutlineGenerationPrompt } from '../../utils/ai-prompts'
@@ -53,31 +58,33 @@ export default defineEventHandler(async (event) => {
     startChapter,
     existingOutlines: data.existingOutlines
   })
+  const desiredOutputTokens = dynamicMaxTokens(data.chapterCount * 120 + 300, {
+    floor: 1000,
+    cap: 8000
+  })
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.5,
+      thinkingEnabled: false,
+      maxTokens: desiredOutputTokens,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'outline_generate',
+        source: 'api_route',
+        endpoint: '/api/ai/generate-outline',
+        novelId: data.novelId
+      }
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
 
   return createStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: 0.5,
-        thinkingEnabled: false,
-        // 按章数动态给上限（每章大纲 JSON 约 ~120 tokens），避免大 chapterCount 被固定 4000 截断
-        maxTokens: dynamicMaxTokens(data.chapterCount * 120 + 300, {
-          floor: 1000,
-          cap: 8000
-        }),
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'outline_generate',
-          source: 'api_route',
-          endpoint: '/api/ai/generate-outline',
-          novelId: data.novelId
-        }
-      })
-    },
+    budgeted.options,
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model },
     { parseJsonResult: true }
   )

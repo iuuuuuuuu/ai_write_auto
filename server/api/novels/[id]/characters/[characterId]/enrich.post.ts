@@ -5,7 +5,11 @@ import {
   NovelOutlineSchema
 } from '~~/server/database/entities'
 import { streamAi, toAiOptions } from '~~/server/utils/ai-client'
-import { recordUsage } from '~~/server/utils/ai-stream'
+import {
+  prepareBudgetedAiOptions,
+  recordUsage,
+  standardAiBudgetOptions
+} from '~~/server/utils/ai-stream'
 import { resolveNovelAiConfig } from '~~/server/utils/ai-configs'
 import { buildCharacterEnrichPrompt } from '~~/server/utils/ai-prompts'
 import { parseJsonObjectLike } from '~~/server/utils/json-salvage'
@@ -116,16 +120,13 @@ export default defineEventHandler(async (event) => {
     })),
     fieldsToEnrich: emptyFields
   })
-
-  let aiResult = ''
-  let inputTokens = 0
-  let outputTokens = 0
-  for await (const chunk of streamAi(
+  const desiredOutputTokens = 2048
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.5,
       thinkingEnabled: false,
-      maxTokens: 2048,
+      maxTokens: desiredOutputTokens,
       tracking: {
         userId: auth.userId,
         configId: aiConfig.configId,
@@ -137,8 +138,14 @@ export default defineEventHandler(async (event) => {
         novelId,
         characterId
       }
-    })
-  )) {
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
+  let aiResult = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(budgeted.options)) {
     if (chunk.content) aiResult += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens

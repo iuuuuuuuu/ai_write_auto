@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { createInlineStreamResponse } from '../../utils/ai-stream'
+import {
+  createInlineStreamResponse,
+  inlineAiBudgetOptions,
+  prepareBudgetedAiOptions
+} from '../../utils/ai-stream'
 import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import {
@@ -106,27 +110,31 @@ ${context}
     }
   ]
 
+  const desiredOutputTokens = MAX_TOKENS_FRAGMENT
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: parseFloat(aiConfig.temperature || '0.75'),
+      maxTokens: desiredOutputTokens,
+      extraBody: PROSE_SAMPLING,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'fragment_generate',
+        source: 'api_route',
+        endpoint: '/api/ai/fragment',
+        novelId: data.novelId,
+        chapterId: data.chapterId
+      }
+    }),
+    inlineAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
   return createInlineStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: parseFloat(aiConfig.temperature || '0.75'),
-        maxTokens: MAX_TOKENS_FRAGMENT,
-        extraBody: PROSE_SAMPLING,
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'fragment_generate',
-          source: 'api_route',
-          endpoint: '/api/ai/fragment',
-          novelId: data.novelId,
-          chapterId: data.chapterId
-        }
-      })
-    },
+    budgeted.options,
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
   )
 })

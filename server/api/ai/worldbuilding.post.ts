@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
-import { createStreamResponse } from '../../utils/ai-stream'
+import {
+  createStreamResponse,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions
+} from '../../utils/ai-stream'
 import { toAiOptions } from '../../utils/ai-client'
 
 const worldbuildingSchema = z.object({
@@ -39,25 +43,28 @@ export default defineEventHandler(async (event) => {
       content: `小说标题：${data.title}\n类型：${data.genre || '未指定'}\n简介：${data.description || '暂无简介'}`
     }
   ]
+  const desiredOutputTokens = 1500
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.85,
+      maxTokens: desiredOutputTokens,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'worldbuilding_generate',
+        source: 'api_route',
+        endpoint: '/api/ai/worldbuilding'
+      }
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
 
   return createStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: 0.85,
-        maxTokens: 1500,
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'worldbuilding_generate',
-          source: 'api_route',
-          endpoint: '/api/ai/worldbuilding'
-        }
-      })
-    },
+    budgeted.options,
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model },
     { parseJsonResult: 'object' }
   )

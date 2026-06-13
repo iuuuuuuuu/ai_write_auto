@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { createStreamResponse } from '../../utils/ai-stream'
+import {
+  createStreamResponse,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions
+} from '../../utils/ai-stream'
 import { toAiOptions } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { MAX_TOKENS_SUGGEST } from '../../utils/ai-constants'
@@ -61,27 +65,30 @@ export default defineEventHandler(async (event) => {
     },
     characters: characters.slice(0, 10)
   })
+  const desiredOutputTokens = MAX_TOKENS_SUGGEST
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.4,
+      maxTokens: desiredOutputTokens,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'chapter_suggest',
+        source: 'api_route',
+        endpoint: '/api/ai/suggest',
+        novelId: data.novelId,
+        chapterId: data.chapterId
+      }
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
 
   return createStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: 0.4,
-        maxTokens: MAX_TOKENS_SUGGEST,
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'chapter_suggest',
-          source: 'api_route',
-          endpoint: '/api/ai/suggest',
-          novelId: data.novelId,
-          chapterId: data.chapterId
-        }
-      })
-    },
+    budgeted.options,
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model },
     { parseJsonResult: true }
   )

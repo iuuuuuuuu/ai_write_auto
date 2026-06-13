@@ -137,7 +137,7 @@ const columns = computed(() => [
     }
   },
   {
-    title: 'Max Tokens',
+    title: '最大输出 Tokens',
     key: 'maxTokens',
     width: 100,
     render(row: AdminAiConfig) {

@@ -11,6 +11,7 @@ import GenerationContextPreview from '../../../../components/novel/GenerationCon
 import { computeLineDiff, type DiffLine } from '../../../../utils/diff'
 import { consumeSSEStream } from '../../../../utils/sse-stream'
 import {
+  buildDefaultChapterOutlineIdea,
   cleanAiChapterTitle,
   formatAiTitleUsage,
   stripChapterNumberPrefix,
@@ -530,7 +531,32 @@ type AiStreamPayload = Partial<{
   content: string
   done: boolean
   error: string
+  truncated: boolean
+  budget: {
+    maxOutputTokens: number
+    inputTrimmed: boolean
+    outputWasReduced: boolean
+  }
 }>
+
+function showGenerationBudgetFeedback(data: AiStreamPayload) {
+  if (data.truncated) {
+    message.warning(
+      '已自动续写，但模型仍到达输出上限。可提高模型最大输出 Tokens，或缩短本章目标/上下文。'
+    )
+    return
+  }
+  if (data.budget?.inputTrimmed) {
+    message.info(
+      '本次生成已按模型上下文窗口裁剪较早上下文，保留了最近内容和生成指令'
+    )
+  }
+  if (data.budget?.outputWasReduced) {
+    message.info(
+      `本次最大输出已按上下文窗口调整为 ${data.budget.maxOutputTokens.toLocaleString()} tokens`
+    )
+  }
+}
 
 interface OutlineItem {
   id: number
@@ -1885,7 +1911,13 @@ const generationContextSummary = computed(() => {
 function openGenerateWizard() {
   generateWizardStep.value = 1
   chapterOutlineDraft.value = currentChapterOutline.value?.description || ''
-  outlineIdea.value = generateDirection.value.trim()
+  outlineIdea.value =
+    chapter.value ?
+      buildDefaultChapterOutlineIdea({
+        chapterNumber: chapter.value.chapterNumber,
+        chapterTitle: chapter.value.title
+      })
+    : ''
   generationContextSelection.value = null
   generationContextReady.value = false
   showGenerateDialog.value = true
@@ -2685,7 +2717,7 @@ async function generateChapter() {
         const trimmed = line.trim()
         if (!trimmed || !trimmed.startsWith('data: ')) continue
         try {
-          const data = JSON.parse(trimmed.slice(6))
+          const data = JSON.parse(trimmed.slice(6)) as AiStreamPayload
           if (data.content) {
             contentBuffer += data.content
             if (!rafId) {
@@ -2696,6 +2728,7 @@ async function generateChapter() {
             }
           }
           if (data.done) {
+            showGenerationBudgetFeedback(data)
             if (rafId) {
               cancelAnimationFrame(rafId)
               rafId = null
@@ -2795,7 +2828,7 @@ async function regenerateWithFeedback() {
         const trimmed = line.trim()
         if (!trimmed || !trimmed.startsWith('data: ')) continue
         try {
-          const data = JSON.parse(trimmed.slice(6))
+          const data = JSON.parse(trimmed.slice(6)) as AiStreamPayload
           if (data.content) {
             contentBuffer += data.content
             if (!rafId) {
@@ -2806,6 +2839,7 @@ async function regenerateWithFeedback() {
             }
           }
           if (data.done) {
+            showGenerationBudgetFeedback(data)
             if (rafId) {
               cancelAnimationFrame(rafId)
               rafId = null

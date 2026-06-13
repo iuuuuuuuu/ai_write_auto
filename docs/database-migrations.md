@@ -4,7 +4,7 @@ This project uses MikroORM as the database abstraction layer for SQLite/LibSQL a
 
 ## Current Baseline
 
-- Schema version: `2026.06.10.005`
+- Schema version: `2026.06.10.006`
 - Schema sync entry point: `server/database/schema-sync.ts`
 - Entity definitions: `server/database/entities/index.ts`
 - Runtime database config: `data/db-config.json`
@@ -43,6 +43,10 @@ SQLite backup settings also use `site_config`:
 
 - `backup_max_count`
 - `backup_auto_on_startup`
+
+## Schema Notes
+
+- `2026.06.10.006`: adds `ai_models.context_window_tokens` with a default of `32768` so generation can budget model input and output separately from the existing maximum output token limit.
 
 ## Adding A Schema Change
 

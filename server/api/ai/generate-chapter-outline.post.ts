@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { toAiOptions } from '../../utils/ai-client'
-import { createStreamResponse } from '../../utils/ai-stream'
+import {
+  createStreamResponse,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions
+} from '../../utils/ai-stream'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import { buildChapterOutlinePrompt } from '../../utils/ai-prompts'
 import {
@@ -108,13 +112,12 @@ export default defineEventHandler(async (event) => {
           description: outline.description
         }))
   })
-
-  return createStreamResponse(
-    event,
+  const desiredOutputTokens = 1200
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.8,
-      maxTokens: 1200,
+      maxTokens: desiredOutputTokens,
       tracking: {
         userId: auth.userId,
         configId: aiConfig.configId,
@@ -127,6 +130,12 @@ export default defineEventHandler(async (event) => {
         chapterId: data.chapterId
       }
     }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
+  return createStreamResponse(
+    event,
+    budgeted.options,
     {
       em,
       userId: auth.userId,

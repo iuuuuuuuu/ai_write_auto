@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { streamAi, toAiOptions } from '../../utils/ai-client'
-import { recordUsage } from '../../utils/ai-stream'
+import {
+  prepareBudgetedAiOptions,
+  recordUsage,
+  standardAiBudgetOptions
+} from '../../utils/ai-stream'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildStyleAnalysisPrompt } from '../../utils/ai-prompts'
 import { NovelSchema, ChapterSchema } from '../../database/entities'
@@ -53,15 +57,12 @@ export default defineEventHandler(async (event) => {
   }
 
   const messages = buildStyleAnalysisPrompt(sampleText)
-
-  let styleGuide = ''
-  let inputTokens = 0
-  let outputTokens = 0
-  for await (const chunk of streamAi(
+  const desiredOutputTokens = 1000
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.3,
-      maxTokens: 1000,
+      maxTokens: desiredOutputTokens,
       tracking: {
         userId: auth.userId,
         configId: aiConfig.configId,
@@ -72,8 +73,14 @@ export default defineEventHandler(async (event) => {
         endpoint: '/api/ai/analyze-style',
         novelId: data.novelId
       }
-    })
-  )) {
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
+  let styleGuide = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(budgeted.options)) {
     if (chunk.content) styleGuide += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens

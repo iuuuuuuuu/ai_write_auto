@@ -44,6 +44,229 @@ export function dynamicMaxTokens(
   return Math.max(floor, Math.min(n, cap))
 }
 
+export interface TokenBudgetInput {
+  messages: AiRequestOptions['messages']
+  contextWindowTokens?: number | null
+  desiredOutputTokens: number
+  reserveTokens?: number
+  minOutputTokens?: number
+  minimumInputTokens?: number
+}
+
+export interface TokenBudgetResult {
+  contextWindowTokens: number | null
+  inputTokensEstimate: number
+  maxInputTokens: number | null
+  maxOutputTokens: number
+  reserveTokens: number
+  inputOverBudget: boolean
+  outputWasReduced: boolean
+}
+
+export interface TrimMessagesResult {
+  messages: AiRequestOptions['messages']
+  inputTokensEstimate: number
+  trimmed: boolean
+}
+
+export interface AiTokenBudgetMetadata {
+  contextWindowTokens: number | null
+  maxInputTokens: number | null
+  maxOutputTokens: number
+  inputTokensEstimate: number
+  inputTrimmed: boolean
+  inputOverBudget: boolean
+  outputWasReduced: boolean
+}
+
+export interface PreparedBudgetedAiOptions {
+  options: AiRequestOptions
+  budget: AiTokenBudgetMetadata
+}
+
+export function standardAiBudgetOptions(
+  contextWindowTokens: number,
+  desiredOutputTokens: number,
+  overrides: Partial<Omit<TokenBudgetInput, 'messages' | 'contextWindowTokens' | 'desiredOutputTokens'>> = {}
+): Omit<TokenBudgetInput, 'messages'> {
+  return {
+    contextWindowTokens,
+    desiredOutputTokens,
+    reserveTokens: overrides.reserveTokens ?? 1024,
+    minOutputTokens: overrides.minOutputTokens ?? 256,
+    minimumInputTokens:
+      overrides.minimumInputTokens ??
+      Math.max(1024, Math.floor(contextWindowTokens * 0.25))
+  }
+}
+
+export function inlineAiBudgetOptions(
+  contextWindowTokens: number,
+  desiredOutputTokens: number
+): Omit<TokenBudgetInput, 'messages'> {
+  return standardAiBudgetOptions(contextWindowTokens, desiredOutputTokens, {
+    reserveTokens: 512,
+    minOutputTokens: 256
+  })
+}
+
+function estimateMessagesTokens(messages: AiRequestOptions['messages']) {
+  return messages.reduce(
+    (sum, message) => sum + estimateTokens(message.content),
+    0
+  )
+}
+
+export function buildTokenBudget(input: TokenBudgetInput): TokenBudgetResult {
+  const reserveTokens = Math.max(0, Math.floor(input.reserveTokens ?? 512))
+  const desiredOutputTokens = Math.max(1, Math.floor(input.desiredOutputTokens))
+  const minOutputTokens = Math.max(1, Math.floor(input.minOutputTokens ?? 256))
+  const minimumInputTokens = Math.max(
+    0,
+    Math.floor(input.minimumInputTokens ?? 0)
+  )
+  const inputTokensEstimate = estimateMessagesTokens(input.messages)
+  const contextWindowTokens =
+    (
+      typeof input.contextWindowTokens === 'number' &&
+      Number.isFinite(input.contextWindowTokens) &&
+      input.contextWindowTokens > 0
+    ) ?
+      Math.floor(input.contextWindowTokens)
+    : null
+
+  if (!contextWindowTokens) {
+    return {
+      contextWindowTokens: null,
+      inputTokensEstimate,
+      maxInputTokens: null,
+      maxOutputTokens: desiredOutputTokens,
+      reserveTokens,
+      inputOverBudget: false,
+      outputWasReduced: false
+    }
+  }
+
+  const availableAfterReserve = Math.max(0, contextWindowTokens - reserveTokens)
+  const protectedInputTokens = Math.min(
+    minimumInputTokens,
+    Math.max(0, availableAfterReserve - minOutputTokens)
+  )
+  const outputCap = Math.max(
+    minOutputTokens,
+    availableAfterReserve - protectedInputTokens
+  )
+  const maxOutputTokens = Math.min(desiredOutputTokens, outputCap)
+  const maxInputTokens = Math.max(
+    0,
+    contextWindowTokens - maxOutputTokens - reserveTokens
+  )
+
+  return {
+    contextWindowTokens,
+    inputTokensEstimate,
+    maxInputTokens,
+    maxOutputTokens,
+    reserveTokens,
+    inputOverBudget: inputTokensEstimate > maxInputTokens,
+    outputWasReduced: maxOutputTokens < desiredOutputTokens
+  }
+}
+
+export function trimMessagesToTokenBudget(
+  messages: AiRequestOptions['messages'],
+  maxInputTokens: number | null
+): TrimMessagesResult {
+  if (!maxInputTokens || maxInputTokens <= 0) {
+    return {
+      messages,
+      inputTokensEstimate: estimateMessagesTokens(messages),
+      trimmed: false
+    }
+  }
+
+  const currentEstimate = estimateMessagesTokens(messages)
+  if (currentEstimate <= maxInputTokens) {
+    return { messages, inputTokensEstimate: currentEstimate, trimmed: false }
+  }
+
+  const nextMessages = messages.map((message) => ({ ...message }))
+  for (let index = nextMessages.length - 1; index >= 0; index--) {
+    const message = nextMessages[index]
+    if (
+      !message ||
+      message.role === 'system' ||
+      message.content.length <= 120
+    ) {
+      continue
+    }
+
+    const marker =
+      '（前文上下文因模型输入预算已裁剪，仅保留末尾关键指令和最近上下文。）\n'
+    const minChars = Math.min(message.content.length, 200)
+    let low = minChars
+    let high = message.content.length
+    let best = message.content.slice(-minChars)
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2)
+      const candidate = marker + message.content.slice(-mid)
+      nextMessages[index] = { ...message, content: candidate }
+      const estimate = estimateMessagesTokens(nextMessages)
+      if (estimate <= maxInputTokens) {
+        best = candidate
+        low = mid + 1
+      } else {
+        high = mid - 1
+      }
+    }
+
+    nextMessages[index] = { ...message, content: best }
+    const nextEstimate = estimateMessagesTokens(nextMessages)
+    if (nextEstimate <= maxInputTokens) {
+      return {
+        messages: nextMessages,
+        inputTokensEstimate: nextEstimate,
+        trimmed: true
+      }
+    }
+  }
+
+  return {
+    messages: nextMessages,
+    inputTokensEstimate: estimateMessagesTokens(nextMessages),
+    trimmed: true
+  }
+}
+
+export function prepareBudgetedAiOptions(
+  options: AiRequestOptions,
+  input: Omit<TokenBudgetInput, 'messages'>
+): PreparedBudgetedAiOptions {
+  const budget = buildTokenBudget({ ...input, messages: options.messages })
+  const trimmed = trimMessagesToTokenBudget(
+    options.messages,
+    budget.maxInputTokens
+  )
+
+  return {
+    options: {
+      ...options,
+      messages: trimmed.messages,
+      maxTokens: budget.maxOutputTokens
+    },
+    budget: {
+      contextWindowTokens: budget.contextWindowTokens,
+      maxInputTokens: budget.maxInputTokens,
+      maxOutputTokens: budget.maxOutputTokens,
+      inputTokensEstimate: trimmed.inputTokensEstimate,
+      inputTrimmed: trimmed.trimmed,
+      inputOverBudget: budget.inputOverBudget,
+      outputWasReduced: budget.outputWasReduced
+    }
+  }
+}
+
 export async function recordUsage(
   ctx: StreamContext,
   inputTokens: number,
@@ -171,6 +394,10 @@ const CONTINUATION_PROMPT =
 export interface ContinuationOptions {
   /** 最多续写轮数（不含首轮），默认 3 */
   maxRounds?: number
+  /** 续写轮次仅携带已生成内容末尾字符数，避免完整正文反复挤占上下文。默认 3000 */
+  continuationTailChars?: number
+  /** 每轮续写追加断点尾段后，仍按该输入预算裁剪 messages。 */
+  maxInputTokens?: number | null
   /** 目标正文字数（可选）：未达 90% 也会触发续写。P0 默认不传，仅靠截断信号驱动。 */
   targetWords?: number
   /** 轮间中止检查（如批量的「任务已取消」）。返回 true 则停止续写。 */
@@ -199,7 +426,11 @@ export async function streamWithContinuation(
   opts: ContinuationOptions = {}
 ): Promise<ContinuationResult> {
   const maxRounds = opts.maxRounds ?? 3
-  const { targetWords, checkAbort } = opts
+  const continuationTailChars = Math.max(
+    1,
+    Math.floor(opts.continuationTailChars ?? 3000)
+  )
+  const { targetWords, checkAbort, maxInputTokens } = opts
 
   const first = await collectStream(options, signal, onChunk)
   let fullContent = first.fullContent
@@ -215,14 +446,19 @@ export async function streamWithContinuation(
   while (needMore() && rounds < maxRounds && !signal.aborted && fullContent) {
     if (checkAbort && (await checkAbort())) break
     rounds++
+    const continuationContext = fullContent.slice(-continuationTailChars)
 
     const extendMessages = [
       ...options.messages,
-      { role: 'assistant' as const, content: fullContent },
+      { role: 'assistant' as const, content: continuationContext },
       { role: 'user' as const, content: CONTINUATION_PROMPT }
     ]
+    const continuationMessages = trimMessagesToTokenBudget(
+      extendMessages,
+      maxInputTokens ?? null
+    ).messages
     const next = await collectStream(
-      { ...options, messages: extendMessages },
+      { ...options, messages: continuationMessages },
       signal,
       onChunk
     )
@@ -357,6 +593,7 @@ export interface TrackedStreamOptions {
   trackStats?: boolean
   onComplete?: (fullContent: string) => Promise<void>
   autoExtend?: boolean
+  budget?: AiTokenBudgetMetadata
 }
 
 export function createTrackedStreamResponse(
@@ -386,7 +623,7 @@ export function createTrackedStreamResponse(
           options,
           signal,
           (content) => send({ content, done: false }),
-          { maxRounds }
+          { maxRounds, maxInputTokens: tracked.budget?.maxInputTokens ?? null }
         )
 
         if (!fullContent) {
@@ -425,7 +662,8 @@ export function createTrackedStreamResponse(
           content: '',
           done: true,
           taskId: tracked.taskId,
-          truncated: finalTruncated
+          truncated: finalTruncated,
+          budget: tracked.budget
         })
         controller.close()
       } catch (err: any) {

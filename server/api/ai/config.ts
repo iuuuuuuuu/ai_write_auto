@@ -29,6 +29,7 @@ function serializeAiModel(model: any) {
     name: model.name,
     model: model.model,
     maxTokens: model.maxTokens,
+    contextWindowTokens: model.contextWindowTokens,
     enabled: model.enabled,
     lastCheckAt:
       model.lastCheckAt?.toISOString?.() || model.lastCheckAt || null,

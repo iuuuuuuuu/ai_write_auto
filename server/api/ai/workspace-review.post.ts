@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { streamAi, toAiOptions } from '../../utils/ai-client'
-import { recordUsage, createRequestSignal } from '../../utils/ai-stream'
+import {
+  createRequestSignal,
+  prepareBudgetedAiOptions,
+  recordUsage,
+  standardAiBudgetOptions
+} from '../../utils/ai-stream'
 import {
   resolveNovelAiConfig,
   type ResolvedAiConfig
@@ -231,7 +236,7 @@ ${(chapter.content || '').slice(0, 6000)}
           let reviewContent = ''
           let inputTokens = 0
           let outputTokens = 0
-          for await (const chunk of streamAi(
+          const budgeted = prepareBudgetedAiOptions(
             toAiOptions(aiConfig, {
               messages,
               temperature: 0.2,
@@ -249,7 +254,14 @@ ${(chapter.content || '').slice(0, 6000)}
                 chapterId: chapter.id,
                 taskId
               }
-            })
+            }),
+            standardAiBudgetOptions(
+              aiConfig.contextWindowTokens,
+              MAX_TOKENS_REVIEW
+            )
+          )
+          for await (const chunk of streamAi(
+            budgeted.options
           )) {
             if (chunk.content) reviewContent += chunk.content
             if (chunk.usage) {

@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { createInlineStreamResponse } from '../../utils/ai-stream'
+import {
+  createInlineStreamResponse,
+  inlineAiBudgetOptions,
+  prepareBudgetedAiOptions
+} from '../../utils/ai-stream'
 import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveUserAiConfig } from '../../utils/ai-configs'
 import { buildTextProtocolRules } from '../../utils/ai-prompts'
@@ -40,25 +44,29 @@ ${buildTextProtocolRules()}`
     }
   ]
 
+  const desiredOutputTokens = aiConfig.maxTokens || 4096
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: parseFloat(aiConfig.temperature || '0.7'),
+      maxTokens: desiredOutputTokens,
+      extraBody: PROSE_SAMPLING,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'inline_expand',
+        source: 'api_route',
+        endpoint: '/api/ai/text-expand'
+      }
+    }),
+    inlineAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
   return createInlineStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: parseFloat(aiConfig.temperature || '0.7'),
-        maxTokens: aiConfig.maxTokens || 4096,
-        extraBody: PROSE_SAMPLING,
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'inline_expand',
-          source: 'api_route',
-          endpoint: '/api/ai/text-expand'
-        }
-      })
-    },
+    budgeted.options,
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
   )
 })

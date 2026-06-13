@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import {
   createStreamResponse,
-  dynamicMaxTokens
+  dynamicMaxTokens,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions
 } from '../../../../utils/ai-stream'
 import { toAiOptions } from '../../../../utils/ai-client'
 import { buildCharacterGenerationPrompt } from '../../../../utils/ai-prompts'
@@ -82,30 +84,33 @@ export default defineEventHandler(async (event) => {
     count,
     customPrompt
   })
+  const desiredOutputTokens = dynamicMaxTokens(count * 650 + 800, {
+    floor: 2000,
+    cap: 10000
+  })
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: 0.5,
+      thinkingEnabled: false,
+      maxTokens: desiredOutputTokens,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'character_generate',
+        source: 'api_route',
+        endpoint: '/api/novels/[id]/characters/generate',
+        novelId
+      }
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
 
   return createStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: 0.5,
-        thinkingEnabled: false,
-        maxTokens: dynamicMaxTokens(count * 650 + 800, {
-          floor: 2000,
-          cap: 10000
-        }),
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'character_generate',
-          source: 'api_route',
-          endpoint: '/api/novels/[id]/characters/generate',
-          novelId
-        }
-      })
-    },
+    budgeted.options,
     {
       em,
       userId: auth.userId,

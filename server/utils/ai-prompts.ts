@@ -251,6 +251,10 @@ export function buildGenerationPrompt(context: {
   }>
   characterStateChanges?: PromptCharacterStateChange[]
   skills?: PromptWritingSkill[]
+  generationBudget?: {
+    maxOutputTokens?: number
+    targetWords?: number
+  }
 }): Array<{ role: 'system' | 'user'; content: string }> {
   const {
     novel,
@@ -286,6 +290,15 @@ ${buildProseProtocolRules(novel)}
 
 ## 输出
 - 重要：必须在一个完整的段落结尾处停止，不要在句子中间截断。如果接近字数上限，请在当前段落写完后自然收束`
+
+  if (context.generationBudget?.maxOutputTokens) {
+    systemPrompt += `
+- 本轮最大输出约 ${context.generationBudget.maxOutputTokens} tokens，请在该预算内规划章节节奏，优先保证结尾完整。`
+  }
+  if (context.generationBudget?.targetWords) {
+    systemPrompt += `
+- 目标正文约 ${context.generationBudget.targetWords} 字；若预算不足，请缩短场景密度，不要在句中中断。`
+  }
 
   if (novel.styleGuide) {
     systemPrompt += `\n\n## 风格指南\n${novel.styleGuide}`
@@ -1440,7 +1453,9 @@ function formatChapterPlanExistingPartial(
   if (!existingPartialPlan) return ''
   const goal = cleanChapterPlanUserText(existingPartialPlan.goal)
   const conflict = cleanChapterPlanUserText(existingPartialPlan.conflict)
-  const turningPoint = cleanChapterPlanUserText(existingPartialPlan.turningPoint)
+  const turningPoint = cleanChapterPlanUserText(
+    existingPartialPlan.turningPoint
+  )
   const beats = cleanChapterPlanUserTextList(existingPartialPlan.beats)
   const interestHooks = cleanChapterPlanUserTextList(
     existingPartialPlan.interestHooks

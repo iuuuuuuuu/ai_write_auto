@@ -43,6 +43,7 @@ export interface AiModel {
   [OptionalProps]?:
     | 'id'
     | 'enabled'
+    | 'contextWindowTokens'
     | 'supportsThinking'
     | 'thinkingEnabled'
     | 'reasoningEffort'
@@ -64,6 +65,7 @@ export interface AiModel {
   name: string
   model: string
   maxTokens: number
+  contextWindowTokens: number
   enabled: boolean
   supportsThinking: boolean
   thinkingEnabled: boolean
@@ -705,6 +707,11 @@ export const AiModelSchema = new EntitySchema<AiModel>({
     name: { type: 'string' },
     model: { type: 'string' },
     maxTokens: { type: 'number', fieldName: 'max_tokens', default: 4096 },
+    contextWindowTokens: {
+      type: 'number',
+      fieldName: 'context_window_tokens',
+      default: 32768
+    },
     enabled: { type: 'boolean', default: true },
     supportsThinking: {
       type: 'boolean',

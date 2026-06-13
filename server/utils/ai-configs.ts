@@ -48,6 +48,7 @@ export interface ResolvedAiConfig {
   thinkingEnabled: boolean | null
   reasoningEffort: string | null
   maxTokens: number
+  contextWindowTokens: number
   capabilities: AiModelCapabilities
 }
 
@@ -131,6 +132,7 @@ function toResolved(
     thinkingEnabled: params.thinkingEnabled,
     reasoningEffort: params.reasoningEffort,
     maxTokens: aiModel.maxTokens,
+    contextWindowTokens: aiModel.contextWindowTokens,
     capabilities
   }
 }

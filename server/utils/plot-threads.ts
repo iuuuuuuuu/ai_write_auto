@@ -8,6 +8,7 @@
 import type { EntityManager } from '@mikro-orm/core'
 import { createHash } from 'node:crypto'
 import { streamAi, toAiOptions } from './ai-client'
+import { prepareBudgetedAiOptions, standardAiBudgetOptions } from './ai-stream'
 import { normalizeText } from './consistency-check'
 import { buildPlotThreadExtractionPrompt } from './ai-prompts'
 import {
@@ -139,6 +140,7 @@ export async function runPlotThreadExtraction(
     modelId: aiModel.id,
     configId: config.id
   }
+  const contextWindowTokens = aiModel.contextWindowTokens || 32768
 
   const chapter = await em.findOne(
     ChapterSchema,
@@ -168,16 +170,13 @@ export async function runPlotThreadExtraction(
     activeForeshadowing: activeFs.map((f) => ({ content: f.content })),
     activePlotPoints: activePp.map((p) => ({ description: p.description }))
   })
-
-  let result = ''
-  let inputTokens = 0
-  let outputTokens = 0
-  for await (const chunk of streamAi(
+  const desiredOutputTokens = 1500
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.2,
       thinkingEnabled: false,
-      maxTokens: 1500,
+      maxTokens: desiredOutputTokens,
       tracking: {
         userId,
         configId: config.id,
@@ -188,8 +187,14 @@ export async function runPlotThreadExtraction(
         novelId,
         chapterId
       }
-    })
-  )) {
+    }),
+    standardAiBudgetOptions(contextWindowTokens, desiredOutputTokens)
+  )
+
+  let result = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(budgeted.options)) {
     if (chunk.content) result += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens

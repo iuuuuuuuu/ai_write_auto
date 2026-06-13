@@ -5,10 +5,13 @@ const { mockStreamAi } = vi.hoisted(() => ({ mockStreamAi: vi.fn() }))
 vi.mock('../server/utils/ai-client', () => ({ streamAi: mockStreamAi }))
 
 import {
+  buildTokenBudget,
   collectAiStreamWithUsage,
   createStreamResponse,
   estimateTokens,
   dynamicMaxTokens,
+  prepareBudgetedAiOptions,
+  trimMessagesToTokenBudget,
   trimToCompleteEnding,
   streamWithContinuation
 } from '../server/utils/ai-stream'
@@ -117,6 +120,111 @@ describe('ai-stream', () => {
     })
   })
 
+  describe('buildTokenBudget', () => {
+    it('reserves output and safety space inside the context window', () => {
+      const result = buildTokenBudget({
+        messages: [
+          { role: 'system', content: '系统提示' },
+          { role: 'user', content: '用户输入'.repeat(1000) }
+        ],
+        contextWindowTokens: 4096,
+        desiredOutputTokens: 2048,
+        reserveTokens: 512
+      })
+
+      expect(result.contextWindowTokens).toBe(4096)
+      expect(result.maxOutputTokens).toBe(2048)
+      expect(result.maxInputTokens).toBe(1536)
+      expect(result.inputTokensEstimate).toBeGreaterThan(result.maxInputTokens)
+      expect(result.inputOverBudget).toBe(true)
+    })
+
+    it('shrinks output when the desired output cannot fit the context window', () => {
+      const result = buildTokenBudget({
+        messages: [{ role: 'user', content: '短输入' }],
+        contextWindowTokens: 1200,
+        desiredOutputTokens: 2000,
+        reserveTokens: 200,
+        minOutputTokens: 256
+      })
+
+      expect(result.maxOutputTokens).toBe(1000)
+      expect(result.maxInputTokens).toBe(0)
+      expect(result.outputWasReduced).toBe(true)
+    })
+
+    it('preserves a minimum input budget before assigning output tokens', () => {
+      const result = buildTokenBudget({
+        messages: [{ role: 'user', content: '上下文'.repeat(2000) }],
+        contextWindowTokens: 8192,
+        desiredOutputTokens: 8000,
+        reserveTokens: 1024,
+        minOutputTokens: 1024,
+        minimumInputTokens: 4096
+      })
+
+      expect(result.maxInputTokens).toBe(4096)
+      expect(result.maxOutputTokens).toBe(3072)
+      expect(result.outputWasReduced).toBe(true)
+    })
+  })
+
+  describe('trimMessagesToTokenBudget', () => {
+    it('keeps system prompt and the tail of long user prompts inside budget', () => {
+      const result = trimMessagesToTokenBudget(
+        [
+          { role: 'system', content: '系统规则：保持风格。' },
+          {
+            role: 'user',
+            content: `小说信息。${'很长的历史上下文。'.repeat(1000)}\n## 生成指令\n请生成完整正文。`
+          }
+        ],
+        900
+      )
+
+      expect(result.trimmed).toBe(true)
+      expect(result.messages[0]?.content).toBe('系统规则：保持风格。')
+      expect(result.messages[1]?.content).toContain(
+        '上下文因模型输入预算已裁剪'
+      )
+      expect(result.messages[1]?.content).toContain('## 生成指令')
+      expect(result.inputTokensEstimate).toBeLessThanOrEqual(900)
+    })
+  })
+
+  describe('prepareBudgetedAiOptions', () => {
+    it('returns messages, max output tokens and metadata from one shared budget path', () => {
+      const result = prepareBudgetedAiOptions(
+        {
+          ...opts,
+          messages: [
+            { role: 'system', content: '系统规则：保持风格。' },
+            {
+              role: 'user',
+              content: `小说信息。${'很长的历史上下文。'.repeat(1000)}\n## 生成指令\n请生成完整正文。`
+            }
+          ],
+          maxTokens: 8000
+        },
+        {
+          contextWindowTokens: 8192,
+          desiredOutputTokens: 8000,
+          reserveTokens: 1024,
+          minOutputTokens: 1024,
+          minimumInputTokens: 4096
+        }
+      )
+
+      expect(result.options.maxTokens).toBe(3072)
+      expect(result.budget.maxOutputTokens).toBe(3072)
+      expect(result.budget.maxInputTokens).toBe(4096)
+      expect(result.budget.inputTrimmed).toBe(true)
+      expect(result.options.messages[1]?.content).toContain(
+        '上下文因模型输入预算已裁剪'
+      )
+    })
+  })
+
   describe('trimToCompleteEnding', () => {
     it('剪掉末尾不完整的半句', () => {
       expect(trimToCompleteEnding('他推开门。外面下着')).toBe('他推开门。')
@@ -194,6 +302,79 @@ describe('ai-stream', () => {
       expect(r.rounds).toBe(1)
       expect(r.inputTokens).toBe(15)
       expect(r.outputTokens).toBe(28)
+    })
+
+    it('续写请求只携带断点前尾段，避免把完整正文反复塞回上下文', async () => {
+      const firstContent = `开头。${'中间内容'.repeat(1200)}结尾断在这里`
+      let call = 0
+      mockStreamAi.mockImplementation(() => {
+        call++
+        return call === 1 ?
+            fakeStream([
+              { content: firstContent, done: false },
+              { content: '', done: true, truncated: true }
+            ])
+          : fakeStream([
+              { content: '，补完。', done: false },
+              { content: '', done: true, truncated: false }
+            ])
+      })
+
+      await streamWithContinuation(opts, signal, () => {}, {
+        continuationTailChars: 120
+      })
+
+      const secondCallOptions = mockStreamAi.mock.calls[1]?.[0]
+      const assistantMessage = secondCallOptions.messages.find(
+        (message: { role: string }) => message.role === 'assistant'
+      )
+      expect(assistantMessage.content.length).toBeLessThanOrEqual(120)
+      expect(assistantMessage.content).not.toContain('开头。')
+      expect(assistantMessage.content).toContain('结尾断在这里')
+    })
+
+    it('续写请求追加尾段后仍按输入预算裁剪', async () => {
+      const firstContent = '第一轮被截断。'
+      let call = 0
+      mockStreamAi.mockImplementation(() => {
+        call++
+        return call === 1 ?
+            fakeStream([
+              { content: firstContent, done: false },
+              { content: '', done: true, truncated: true }
+            ])
+          : fakeStream([
+              { content: '第二轮补完。', done: false },
+              { content: '', done: true, truncated: false }
+            ])
+      })
+
+      await streamWithContinuation(
+        {
+          ...opts,
+          messages: [
+            { role: 'system', content: '系统规则：保持风格。' },
+            {
+              role: 'user',
+              content: `小说信息。${'很长的历史上下文。'.repeat(1000)}\n## 生成指令\n请生成完整正文。`
+            }
+          ]
+        },
+        signal,
+        () => {},
+        { maxInputTokens: 900 }
+      )
+
+      const secondCallOptions = mockStreamAi.mock.calls[1]?.[0]
+      const secondInputEstimate = estimateTokens(
+        secondCallOptions.messages
+          .map((message: { content: string }) => message.content)
+          .join('')
+      )
+      expect(secondInputEstimate).toBeLessThanOrEqual(900)
+      expect(secondCallOptions.messages[1]?.content).toContain(
+        '上下文因模型输入预算已裁剪'
+      )
     })
 
     it('始终截断：达 maxRounds 停止并把末尾半句剪到完整结尾', async () => {

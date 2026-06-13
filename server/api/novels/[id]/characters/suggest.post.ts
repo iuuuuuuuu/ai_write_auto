@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { streamAi, toAiOptions } from '../../../../utils/ai-client'
-import { recordUsage } from '../../../../utils/ai-stream'
+import {
+  prepareBudgetedAiOptions,
+  recordUsage,
+  standardAiBudgetOptions
+} from '../../../../utils/ai-stream'
 import { buildCharacterGenerationPrompt } from '../../../../utils/ai-prompts'
 import { parseJsonArrayLike } from '../../../../utils/json-salvage'
 import { resolveNovelAiConfig } from '../../../../utils/ai-configs'
@@ -66,16 +70,13 @@ export default defineEventHandler(async (event) => {
     })),
     count
   })
-
-  let result = ''
-  let inputTokens = 0
-  let outputTokens = 0
-  for await (const chunk of streamAi(
+  const desiredOutputTokens = 4096
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(aiConfig, {
       messages,
       temperature: 0.5,
       thinkingEnabled: false,
-      maxTokens: 4096,
+      maxTokens: desiredOutputTokens,
       tracking: {
         userId: auth.userId,
         configId: aiConfig.configId,
@@ -86,8 +87,14 @@ export default defineEventHandler(async (event) => {
         endpoint: '/api/novels/[id]/characters/suggest',
         novelId
       }
-    })
-  )) {
+    }),
+    standardAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
+  let result = ''
+  let inputTokens = 0
+  let outputTokens = 0
+  for await (const chunk of streamAi(budgeted.options)) {
     if (chunk.content) result += chunk.content
     if (chunk.usage) {
       inputTokens = chunk.usage.prompt_tokens || inputTokens

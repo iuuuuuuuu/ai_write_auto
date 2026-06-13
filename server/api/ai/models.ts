@@ -16,6 +16,7 @@ const modelSchema = z.object({
   name: z.string().min(1).max(80),
   model: z.string().min(1),
   maxTokens: z.number().int().positive().optional(),
+  contextWindowTokens: z.number().int().positive().optional(),
   enabled: z.boolean().optional(),
   supportsThinking: z.boolean().optional(),
   thinkingEnabled: z.boolean().optional(),
@@ -71,6 +72,7 @@ function serializeModel(model: any) {
     name: model.name,
     model: model.model,
     maxTokens: model.maxTokens,
+    contextWindowTokens: model.contextWindowTokens,
     enabled: model.enabled,
     ...modelCapabilityFields(model),
     operational: isModelOperational({
@@ -104,7 +106,15 @@ export default defineEventHandler(async (event) => {
 
     const orderBy: Record<string, 'ASC' | 'DESC'> = {}
     orderBy.enabled = 'DESC'
-    if (['name', 'maxTokens', 'createdAt', 'model'].includes(sortField)) {
+    if (
+      [
+        'name',
+        'maxTokens',
+        'contextWindowTokens',
+        'createdAt',
+        'model'
+      ].includes(sortField)
+    ) {
       orderBy[sortField] = sortOrder as 'ASC' | 'DESC'
     }
 
@@ -145,6 +155,8 @@ export default defineEventHandler(async (event) => {
         provider: data.providerId,
         model: data.model,
         maxTokens: data.maxTokens ?? existing.maxTokens,
+        contextWindowTokens:
+          data.contextWindowTokens ?? existing.contextWindowTokens,
         enabled: data.enabled ?? existing.enabled,
         ...modelCapabilityAssign(data),
         ...(data.lastCheckAt ?
@@ -165,6 +177,7 @@ export default defineEventHandler(async (event) => {
       name: data.name,
       model: data.model,
       maxTokens: data.maxTokens ?? 4096,
+      contextWindowTokens: data.contextWindowTokens ?? 32768,
       enabled: data.enabled ?? true,
       ...modelCapabilityAssign(data),
       ...(data.lastCheckAt ?

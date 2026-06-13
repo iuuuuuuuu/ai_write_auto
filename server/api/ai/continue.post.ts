@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { createInlineStreamResponse } from '../../utils/ai-stream'
+import {
+  createInlineStreamResponse,
+  inlineAiBudgetOptions,
+  prepareBudgetedAiOptions
+} from '../../utils/ai-stream'
 import { toAiOptions, PROSE_SAMPLING } from '../../utils/ai-client'
 import { resolveNovelAiConfig } from '../../utils/ai-configs'
 import {
@@ -127,27 +131,31 @@ ${buildProseProtocolRules(novel)}${novel.styleGuide ? `\n\n## 风格指南\n${no
     }
   ]
 
+  const desiredOutputTokens = MAX_TOKENS_ACTION
+  const budgeted = prepareBudgetedAiOptions(
+    toAiOptions(aiConfig, {
+      messages,
+      temperature: parseFloat(aiConfig.temperature || '0.7'),
+      maxTokens: desiredOutputTokens,
+      extraBody: PROSE_SAMPLING,
+      tracking: {
+        userId: auth.userId,
+        configId: aiConfig.configId,
+        modelId: aiConfig.modelId,
+        purpose: 'generation',
+        scenario: 'inline_continue',
+        source: 'api_route',
+        endpoint: '/api/ai/continue',
+        novelId: data.novelId,
+        chapterId: data.chapterId
+      }
+    }),
+    inlineAiBudgetOptions(aiConfig.contextWindowTokens, desiredOutputTokens)
+  )
+
   return createInlineStreamResponse(
     event,
-    {
-      ...toAiOptions(aiConfig, {
-        messages,
-        temperature: parseFloat(aiConfig.temperature || '0.7'),
-        maxTokens: MAX_TOKENS_ACTION,
-        extraBody: PROSE_SAMPLING,
-        tracking: {
-          userId: auth.userId,
-          configId: aiConfig.configId,
-          modelId: aiConfig.modelId,
-          purpose: 'generation',
-          scenario: 'inline_continue',
-          source: 'api_route',
-          endpoint: '/api/ai/continue',
-          novelId: data.novelId,
-          chapterId: data.chapterId
-        }
-      })
-    },
+    budgeted.options,
     { em, userId: auth.userId, configId: aiConfig.id, model: aiConfig.model }
   )
 })
