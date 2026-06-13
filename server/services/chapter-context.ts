@@ -1,6 +1,10 @@
 import type { EntityManager } from '@mikro-orm/core'
 import { toAiOptions } from '../utils/ai-client'
-import { collectAiStreamWithUsage } from '../utils/ai-stream'
+import {
+  collectAiStreamWithUsage,
+  prepareBudgetedAiOptions,
+  standardAiBudgetOptions
+} from '../utils/ai-stream'
 import { parseJsonArrayLike } from '../utils/json-salvage'
 import {
   resolvePlanningConfig,
@@ -112,11 +116,12 @@ async function planQueries(
     foreshadowingTitles: opts.foreshadowingTitles,
     recentSummaries: opts.recentSummaries
   })
-  const res = await collectAiStreamWithUsage(
+  const desiredOutputTokens = 256
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(cfg, {
       messages,
       temperature: 0.3,
-      maxTokens: 256,
+      maxTokens: desiredOutputTokens,
       // query 生成是廉价结构化调用：关掉思考链，省 token、降首 token 延迟。
       // 不支持这些字段的供应商会忽略它们；真失败则上层回落 seed-only。
       extraBody: { enable_thinking: false, reasoning_effort: 'low' },
@@ -129,8 +134,10 @@ async function planQueries(
         source: 'service',
         novelId: opts.novelId
       }
-    })
+    }),
+    standardAiBudgetOptions(cfg.contextWindowTokens, desiredOutputTokens)
   )
+  const res = await collectAiStreamWithUsage(budgeted.options)
   usage.inputTokens += res.inputTokens
   usage.outputTokens += res.outputTokens
   return parseQueryList(res.content)

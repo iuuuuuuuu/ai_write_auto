@@ -19,7 +19,9 @@ vi.mock('../server/utils/ai-client', () => ({
   toAiOptions: (config: any, overrides: any) => ({ ...config, ...overrides })
 }))
 vi.mock('../server/utils/ai-stream', () => ({
-  collectAiStreamWithUsage: mockCollectAi
+  collectAiStreamWithUsage: mockCollectAi,
+  prepareBudgetedAiOptions: (options: unknown) => ({ options }),
+  standardAiBudgetOptions: () => ({})
 }))
 vi.mock('../server/utils/ai-configs', () => ({
   resolvePlanningConfig: mockResolvePlanning,

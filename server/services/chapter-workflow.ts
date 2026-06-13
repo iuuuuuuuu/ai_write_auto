@@ -1,6 +1,11 @@
 import type { EntityManager } from '@mikro-orm/core'
 import { toAiOptions } from '../utils/ai-client'
-import { collectAiStreamWithUsage, recordUsage } from '../utils/ai-stream'
+import {
+  collectAiStreamWithUsage,
+  prepareBudgetedAiOptions,
+  recordUsage,
+  standardAiBudgetOptions
+} from '../utils/ai-stream'
 import { resolveNovelAiConfig } from '../utils/ai-configs'
 import {
   buildChapterPlanFieldPrompt,
@@ -444,12 +449,13 @@ async function generateChapterPlanField(input: {
         failureReason: input.repair.failureReason
       })
     : buildChapterPlanFieldPrompt(promptContext)
-  const result = await collectAiStreamWithUsage(
+  const desiredOutputTokens = input.job.maxTokens
+  const budgeted = prepareBudgetedAiOptions(
     toAiOptions(input.aiConfig, {
       messages,
       temperature: input.repair ? 0.2 : CHAPTER_PLAN_TEMPERATURE,
       thinkingEnabled: false,
-      maxTokens: input.job.maxTokens,
+      maxTokens: desiredOutputTokens,
       connectTimeoutMs: CHAPTER_PLAN_CONNECT_TIMEOUT_MS,
       tracking: {
         userId: input.userId,
@@ -463,8 +469,13 @@ async function generateChapterPlanField(input: {
         novelId: input.novelId,
         chapterId: input.chapterId
       }
-    })
+    }),
+    standardAiBudgetOptions(
+      input.aiConfig.contextWindowTokens,
+      desiredOutputTokens
+    )
   )
+  const result = await collectAiStreamWithUsage(budgeted.options)
 
   let value: ChapterPlanFieldValue
   try {

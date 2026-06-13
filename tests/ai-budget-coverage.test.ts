@@ -21,13 +21,7 @@ function lineNumberAt(content: string, index: number): number {
 }
 
 function isAllowlisted(relativePath: string, line: string): boolean {
-  return (
-    relativePath === 'server/utils/ai-client.ts' ||
-    (relativePath === 'server/services/chapter-context.ts' &&
-      line.includes('toAiOptions(cfg,')) ||
-    (relativePath === 'server/services/chapter-workflow.ts' &&
-      line.includes('toAiOptions(input.aiConfig,'))
-  )
+  return relativePath === 'server/utils/ai-client.ts'
 }
 
 describe('AI token budget coverage', () => {
